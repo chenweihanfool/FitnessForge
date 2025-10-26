@@ -53,6 +53,9 @@ export type WeeklyStats = {
   weekEnd: string;
   totalBaselineValue: number; // 基准值总和（数据 × 重量系数）
   entryCount: number; // 记录数量
+  strengthValue: number; // 力量分类基准值
+  cardioValue: number; // 有氧分类基准值
+  activityValue: number; // 活动量分类基准值
 };
 
 // 排名数据类型
@@ -63,4 +66,7 @@ export type RankingData = {
   averageWeeklyValue: number;
   rank: number; // 当前周在历史中的排名（1=最好）
   totalWeeks: number; // 总周数
+  strengthRank: number; // 力量分类排名
+  cardioRank: number; // 有氧分类排名
+  activityRank: number; // 活动量分类排名
 };

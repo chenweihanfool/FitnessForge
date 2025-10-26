@@ -151,10 +151,23 @@ export class MemStorage implements IStorage {
       });
 
     let totalBaselineValue = 0;
+    let strengthValue = 0;
+    let cardioValue = 0;
+    let activityValue = 0;
+
     for (const entry of entries) {
       const exercise = this.exercises.get(entry.exerciseId);
       if (exercise) {
-        totalBaselineValue += entry.value * exercise.weightFactor;
+        const baseline = entry.value * exercise.weightFactor;
+        totalBaselineValue += baseline;
+
+        if (exercise.category === '力量') {
+          strengthValue += baseline;
+        } else if (exercise.category === '有氧') {
+          cardioValue += baseline;
+        } else if (exercise.category === '活动量') {
+          activityValue += baseline;
+        }
       }
     }
 
@@ -163,6 +176,9 @@ export class MemStorage implements IStorage {
       weekEnd: weekEnd.toISOString(),
       totalBaselineValue,
       entryCount: entries.length,
+      strengthValue,
+      cardioValue,
+      activityValue,
     };
   }
 
@@ -272,12 +288,18 @@ export class MemStorage implements IStorage {
           weekEnd: weekEnd.toISOString(),
           totalBaselineValue: 0,
           entryCount: 0,
+          strengthValue: 0,
+          cardioValue: 0,
+          activityValue: 0,
         },
         bestWeek: null,
         worstWeek: null,
         averageWeeklyValue: 0,
         rank: 0,
         totalWeeks: 0,
+        strengthRank: 0,
+        cardioRank: 0,
+        activityRank: 0,
       };
     }
 
@@ -301,9 +323,25 @@ export class MemStorage implements IStorage {
     const totalValue = allWeeklyStats.reduce((sum, week) => sum + week.totalBaselineValue, 0);
     const averageWeeklyValue = totalValue / allWeeklyStats.length;
 
-    // 计算排名（降序，值越大排名越高）
+    // 计算总排名（降序，值越大排名越高）
     const sorted = [...allWeeklyStats].sort((a, b) => b.totalBaselineValue - a.totalBaselineValue);
     const rank = sorted.findIndex(w => 
+      w.weekStart === currentWeek.weekStart && w.weekEnd === currentWeek.weekEnd
+    ) + 1;
+
+    // 计算分类排名
+    const strengthSorted = [...allWeeklyStats].sort((a, b) => b.strengthValue - a.strengthValue);
+    const strengthRank = strengthSorted.findIndex(w => 
+      w.weekStart === currentWeek.weekStart && w.weekEnd === currentWeek.weekEnd
+    ) + 1;
+
+    const cardioSorted = [...allWeeklyStats].sort((a, b) => b.cardioValue - a.cardioValue);
+    const cardioRank = cardioSorted.findIndex(w => 
+      w.weekStart === currentWeek.weekStart && w.weekEnd === currentWeek.weekEnd
+    ) + 1;
+
+    const activitySorted = [...allWeeklyStats].sort((a, b) => b.activityValue - a.activityValue);
+    const activityRank = activitySorted.findIndex(w => 
       w.weekStart === currentWeek.weekStart && w.weekEnd === currentWeek.weekEnd
     ) + 1;
 
@@ -314,6 +352,9 @@ export class MemStorage implements IStorage {
       averageWeeklyValue,
       rank,
       totalWeeks: allWeeklyStats.length,
+      strengthRank,
+      cardioRank,
+      activityRank,
     };
   }
 
@@ -464,12 +505,24 @@ export class DbStorage implements IStorage {
       );
 
     let totalBaselineValue = 0;
+    let strengthValue = 0;
+    let cardioValue = 0;
+    let activityValue = 0;
     let entryCount = 0;
 
     for (const entry of entries) {
       if (entry.exercise) {
-        totalBaselineValue += entry.value * entry.exercise.weightFactor;
+        const baseline = entry.value * entry.exercise.weightFactor;
+        totalBaselineValue += baseline;
         entryCount++;
+
+        if (entry.exercise.category === '力量') {
+          strengthValue += baseline;
+        } else if (entry.exercise.category === '有氧') {
+          cardioValue += baseline;
+        } else if (entry.exercise.category === '活动量') {
+          activityValue += baseline;
+        }
       }
     }
 
@@ -478,6 +531,9 @@ export class DbStorage implements IStorage {
       weekEnd: weekEnd.toISOString(),
       totalBaselineValue,
       entryCount,
+      strengthValue,
+      cardioValue,
+      activityValue,
     };
   }
 
@@ -581,12 +637,18 @@ export class DbStorage implements IStorage {
           weekEnd: weekEnd.toISOString(),
           totalBaselineValue: 0,
           entryCount: 0,
+          strengthValue: 0,
+          cardioValue: 0,
+          activityValue: 0,
         },
         bestWeek: null,
         worstWeek: null,
         averageWeeklyValue: 0,
         rank: 0,
         totalWeeks: 0,
+        strengthRank: 0,
+        cardioRank: 0,
+        activityRank: 0,
       };
     }
 
@@ -610,9 +672,25 @@ export class DbStorage implements IStorage {
     const totalValue = allWeeklyStats.reduce((sum, week) => sum + week.totalBaselineValue, 0);
     const averageWeeklyValue = totalValue / allWeeklyStats.length;
 
-    // 计算排名（降序，值越大排名越高）
+    // 计算总排名（降序，值越大排名越高）
     const sorted = [...allWeeklyStats].sort((a, b) => b.totalBaselineValue - a.totalBaselineValue);
     const rank = sorted.findIndex(w => 
+      w.weekStart === currentWeek.weekStart && w.weekEnd === currentWeek.weekEnd
+    ) + 1;
+
+    // 计算分类排名
+    const strengthSorted = [...allWeeklyStats].sort((a, b) => b.strengthValue - a.strengthValue);
+    const strengthRank = strengthSorted.findIndex(w => 
+      w.weekStart === currentWeek.weekStart && w.weekEnd === currentWeek.weekEnd
+    ) + 1;
+
+    const cardioSorted = [...allWeeklyStats].sort((a, b) => b.cardioValue - a.cardioValue);
+    const cardioRank = cardioSorted.findIndex(w => 
+      w.weekStart === currentWeek.weekStart && w.weekEnd === currentWeek.weekEnd
+    ) + 1;
+
+    const activitySorted = [...allWeeklyStats].sort((a, b) => b.activityValue - a.activityValue);
+    const activityRank = activitySorted.findIndex(w => 
       w.weekStart === currentWeek.weekStart && w.weekEnd === currentWeek.weekEnd
     ) + 1;
 
@@ -623,6 +701,9 @@ export class DbStorage implements IStorage {
       averageWeeklyValue,
       rank,
       totalWeeks: allWeeklyStats.length,
+      strengthRank,
+      cardioRank,
+      activityRank,
     };
   }
 
