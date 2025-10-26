@@ -33,7 +33,7 @@ Preferred communication style: Simple, everyday language.
 
 **Exercise Types Table**: Stores custom exercise definitions including UUID, name, unit, weight factor, and category (力量/有氧/柔韧性/核心/平衡/活动量).
 **Workout Entries Table**: Records individual workout data with foreign key to exercise type, numerical value, timestamp, and optional notes.
-**Computed Statistics**: Weekly aggregations of total baseline value, entry counts, rankings, and performance metrics.
+**Computed Statistics**: Weekly aggregations of total baseline value, entry counts, rankings, and performance metrics. Includes category-specific statistics (strengthValue, cardioValue, activityValue) and separate rankings for each category.
 
 ### Key Architectural Decisions
 
