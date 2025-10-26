@@ -45,6 +45,7 @@ Preferred communication style: Simple, everyday language.
 **Import/Export Workflow**: CSV-based data portability. An Excel import script (`server/import-excel.ts`) supports importing exercise definitions and historical workout data.
 **Exercise Categorization System**: Exercises are organized into predefined categories with UI filtering capabilities.
 **Timezone Handling (UTC+8)**: All user-facing time inputs and displays use Taipei time (UTC+8). Frontend converts datetime-local inputs to UTC before sending to backend; backend stores all timestamps in UTC. Timezone utilities (`getTaipeiTime`, `toTaipeiTime`) in `client/src/lib/timezone.ts` ensure consistent time handling across the application.
+**Average Steps Auto-Conversion**: For the "每周平均步数" exercise type, users input daily average steps and the system automatically multiplies by 7 to calculate weekly total steps before storage. The UI dynamically displays the conversion (daily → weekly) and final baseline calculation. Historical data imported from Excel is already in weekly format and bypasses this conversion.
 
 ## External Dependencies
 
