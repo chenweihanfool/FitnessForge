@@ -41,6 +41,7 @@ Preferred communication style: Simple, everyday language.
 - `/api/entries` - CRUD operations for workout entries
 - `/api/stats/ranking` - Weekly ranking calculations
 - `/api/stats/trends` - Historical weekly statistics
+- `/api/stats/current-week-details` - Detailed breakdown of current week's baseline calculation
 - `/api/import` - CSV data import with file upload
 - `/api/export` - CSV data export
 
@@ -126,6 +127,34 @@ Preferred communication style: Simple, everyday language.
 - **Drizzle Kit**: Database migration tool and schema management
 
 ## Recent Changes
+
+### 2025-10-26: Click-to-View Weekly Baseline Details
+
+**本周基准值计算详情功能**:
+- Added `getCurrentWeekDetails` method to IStorage interface and both storage implementations (MemStorage, DbStorage)
+- Created API endpoint `/api/stats/current-week-details` to fetch detailed breakdown of current week's baseline calculation
+- Enhanced StatsCard component with clickable functionality and visual hint ("点击查看详情")
+- Implemented interactive Dialog in Dashboard showing:
+  - Calculation formula: 基准值 = Σ(运动数据 × 权重系数)
+  - Detailed table with exercise name, unit, weight factor, count, total value, baseline value, and percentage
+  - Data sorted by baseline value (descending)
+  - Summary row showing totals and 100% confirmation
+
+**Critical Fix**:
+- Aligned getCurrentWeekDetails with getRankingData to use the same week definition ("last week with data" rather than "current calendar week")
+- Both methods now consistently return data for 2025-10-13 to 2025-10-19 with baseline value 80169.6
+- Prevents confusion when true current week has no data
+
+**Technical Implementation**:
+- getCurrentWeekDetails calls getRankingData first to get consistent week boundaries
+- Dialog uses conditional rendering with loading state
+- React Query enabled only when dialog is open for performance
+- Test coverage: E2E test verifies full user interaction flow from card click to dialog display and close
+
+**UI/UX Enhancements**:
+- Added `clickable` and `onClick` props to StatsCard
+- Applied hover-elevate and active-elevate-2 for interactive feedback
+- Table displays 9 exercises with 每周平均步数 (steps) contributing 81.3% of total baseline
 
 ### 2025-10-26: Excel Import and Exercise Categorization
 

@@ -11,7 +11,7 @@ import {
 } from "@shared/schema";
 import { randomUUID } from "crypto";
 import { drizzle } from "drizzle-orm/node-postgres";
-import { eq, and, gte, lte, desc } from "drizzle-orm";
+import { eq, and, gte, lte, desc, sql, sum, count } from "drizzle-orm";
 import { Pool } from "pg";
 
 export interface IStorage {
@@ -32,6 +32,20 @@ export interface IStorage {
   getWeeklyStats(weekStart: Date, weekEnd: Date): Promise<WeeklyStats>;
   getAllWeeklyStats(): Promise<WeeklyStats[]>;
   getRankingData(): Promise<RankingData>;
+  getCurrentWeekDetails(): Promise<{
+    weekStart: string;
+    weekEnd: string;
+    totalBaselineValue: number;
+    entryCount: number;
+    details: Array<{
+      exerciseName: string;
+      exerciseUnit: string;
+      weightFactor: number;
+      count: number;
+      totalValue: number;
+      baselineValue: number;
+    }>;
+  }>;
 }
 
 export class MemStorage implements IStorage {
@@ -180,6 +194,62 @@ export class MemStorage implements IStorage {
     }
 
     return weeklyStats;
+  }
+
+  async getCurrentWeekDetails() {
+    // 获取排名数据以获得"当前周"（实际上是最后一周有数据的周）
+    const rankingData = await this.getRankingData();
+    const weekStart = new Date(rankingData.currentWeek.weekStart);
+    const weekEnd = new Date(rankingData.currentWeek.weekEnd);
+
+    const entries = Array.from(this.workoutEntries.values())
+      .filter(entry => {
+        const entryDate = new Date(entry.date);
+        return entryDate >= weekStart && entryDate <= weekEnd;
+      });
+
+    const exerciseStats = new Map<string, {
+      exerciseName: string;
+      exerciseUnit: string;
+      weightFactor: number;
+      count: number;
+      totalValue: number;
+      baselineValue: number;
+    }>();
+
+    for (const entry of entries) {
+      const exercise = this.exercises.get(entry.exerciseId);
+      if (!exercise) continue;
+
+      const existing = exerciseStats.get(entry.exerciseId);
+      if (existing) {
+        existing.count++;
+        existing.totalValue += entry.value;
+        existing.baselineValue += entry.value * exercise.weightFactor;
+      } else {
+        exerciseStats.set(entry.exerciseId, {
+          exerciseName: exercise.name,
+          exerciseUnit: exercise.unit,
+          weightFactor: exercise.weightFactor,
+          count: 1,
+          totalValue: entry.value,
+          baselineValue: entry.value * exercise.weightFactor,
+        });
+      }
+    }
+
+    const details = Array.from(exerciseStats.values())
+      .sort((a, b) => b.baselineValue - a.baselineValue);
+
+    const totalBaselineValue = details.reduce((sum, d) => sum + d.baselineValue, 0);
+
+    return {
+      weekStart: weekStart.toISOString(),
+      weekEnd: weekEnd.toISOString(),
+      totalBaselineValue,
+      entryCount: entries.length,
+      details,
+    };
   }
 
   async getRankingData(): Promise<RankingData> {
@@ -435,6 +505,58 @@ export class DbStorage implements IStorage {
     }
 
     return weeklyStats;
+  }
+
+  async getCurrentWeekDetails() {
+    // 获取排名数据以获得"当前周"（实际上是最后一周有数据的周）
+    const rankingData = await this.getRankingData();
+    const weekStart = new Date(rankingData.currentWeek.weekStart);
+    const weekEnd = new Date(rankingData.currentWeek.weekEnd);
+
+    const result = await this.db
+      .select({
+        exerciseName: exercises.name,
+        exerciseUnit: exercises.unit,
+        weightFactor: exercises.weightFactor,
+        count: sql<number>`cast(count(${workoutEntries.id}) as int)`,
+        totalValue: sql<number>`cast(sum(${workoutEntries.value}) as float)`,
+        baselineValue: sql<number>`cast(sum(${workoutEntries.value} * ${exercises.weightFactor}) as float)`,
+      })
+      .from(workoutEntries)
+      .innerJoin(exercises, eq(workoutEntries.exerciseId, exercises.id))
+      .where(
+        and(
+          gte(workoutEntries.date, weekStart),
+          lte(workoutEntries.date, weekEnd)
+        )
+      )
+      .groupBy(exercises.id, exercises.name, exercises.unit, exercises.weightFactor);
+
+    const details = result.sort((a, b) => b.baselineValue - a.baselineValue);
+
+    const totalBaselineValue = details.reduce((sum, d) => sum + d.baselineValue, 0);
+
+    const entryCountResult = await this.db
+      .select({
+        count: sql<number>`cast(count(*) as int)`,
+      })
+      .from(workoutEntries)
+      .where(
+        and(
+          gte(workoutEntries.date, weekStart),
+          lte(workoutEntries.date, weekEnd)
+        )
+      );
+
+    const entryCount = entryCountResult[0]?.count || 0;
+
+    return {
+      weekStart: weekStart.toISOString(),
+      weekEnd: weekEnd.toISOString(),
+      totalBaselineValue,
+      entryCount,
+      details,
+    };
   }
 
   async getRankingData(): Promise<RankingData> {

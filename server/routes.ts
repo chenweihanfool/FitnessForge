@@ -143,6 +143,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // 获取本周详细统计
+  app.get("/api/stats/current-week-details", async (req, res) => {
+    try {
+      const details = await storage.getCurrentWeekDetails();
+      res.json(details);
+    } catch (error) {
+      res.status(500).json({ error: "获取本周详细数据失败" });
+    }
+  });
+
   // ==================== CSV 导入导出 API ====================
 
   // CSV 导入

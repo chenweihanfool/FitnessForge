@@ -12,6 +12,8 @@ interface StatsCardProps {
   };
   className?: string;
   testId?: string;
+  onClick?: () => void;
+  clickable?: boolean;
 }
 
 export function StatsCard({
@@ -22,9 +24,15 @@ export function StatsCard({
   trend,
   className = "",
   testId,
+  onClick,
+  clickable = false,
 }: StatsCardProps) {
   return (
-    <Card className={className} data-testid={testId}>
+    <Card 
+      className={`${className} ${clickable ? "cursor-pointer hover-elevate active-elevate-2" : ""}`}
+      data-testid={testId}
+      onClick={onClick}
+    >
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
         <CardTitle className="text-sm font-medium text-muted-foreground">
           {title}
@@ -38,9 +46,12 @@ export function StatsCard({
         {subtitle && (
           <p className="text-xs text-muted-foreground mt-1">{subtitle}</p>
         )}
+        {clickable && (
+          <p className="text-xs text-primary mt-2">点击查看详情</p>
+        )}
         {trend && (
           <p className={`text-xs mt-2 ${trend.isPositive ? "text-chart-3" : "text-destructive"}`}>
-            {trend.isPositive ? "↑" : "↓"} {Math.abs(trend.value)}% 与上周相比
+            {trend.isPositive ? "↑" : "↓"} {Math.abs(trend.value).toFixed(1)}% 与上周相比
           </p>
         )}
       </CardContent>
