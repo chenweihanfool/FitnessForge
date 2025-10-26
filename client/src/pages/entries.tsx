@@ -114,6 +114,13 @@ export default function Entries() {
     // 需要转换为UTC时间发送给后端
     const submissionData = { ...data };
     
+    // 检查是否是"每周平均步数"，如果是则自动乘以7
+    const selectedExercise = exercises?.find((e) => e.id === data.exerciseId);
+    if (selectedExercise?.name === '每周平均步数') {
+      // 用户输入的是平均步数，需要乘以7得到每周总步数
+      submissionData.value = data.value * 7;
+    }
+    
     if (submissionData.date) {
       // datetime-local返回的是不带时区的字符串，如"2025-10-26T18:00"
       // 我们将其视为UTC+8时间，需要转换为UTC
@@ -182,27 +189,48 @@ export default function Entries() {
                 <FormField
                   control={form.control}
                   name="value"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>数据值</FormLabel>
-                      <FormControl>
-                        <Input
-                          type="number"
-                          step="0.1"
-                          placeholder="输入数据值"
-                          {...field}
-                          onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
-                          data-testid="input-entry-value"
-                        />
-                      </FormControl>
-                      {field.value > 0 && form.watch("exerciseId") && (
-                        <FormDescription>
-                          基准值: {calculateBaselineValue(field.value, form.watch("exerciseId")).toFixed(2)}
-                        </FormDescription>
-                      )}
-                      <FormMessage />
-                    </FormItem>
-                  )}
+                  render={({ field }) => {
+                    const selectedExercise = exercises?.find((e) => e.id === form.watch("exerciseId"));
+                    const isAverageSteps = selectedExercise?.name === '每周平均步数';
+                    
+                    return (
+                      <FormItem>
+                        <FormLabel>
+                          {isAverageSteps ? '每日平均步数' : '数据值'}
+                        </FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            step="0.1"
+                            placeholder={isAverageSteps ? "输入每日平均步数" : "输入数据值"}
+                            {...field}
+                            onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
+                            data-testid="input-entry-value"
+                          />
+                        </FormControl>
+                        {field.value > 0 && form.watch("exerciseId") && (
+                          <FormDescription>
+                            {isAverageSteps ? (
+                              <>
+                                每周总步数: {(field.value * 7).toFixed(0)} 步 | 
+                                基准值: {calculateBaselineValue(field.value * 7, form.watch("exerciseId")).toFixed(2)}
+                              </>
+                            ) : (
+                              <>
+                                基准值: {calculateBaselineValue(field.value, form.watch("exerciseId")).toFixed(2)}
+                              </>
+                            )}
+                          </FormDescription>
+                        )}
+                        {isAverageSteps && (
+                          <FormDescription className="text-xs text-muted-foreground">
+                            系统将自动乘以7计算每周总步数
+                          </FormDescription>
+                        )}
+                        <FormMessage />
+                      </FormItem>
+                    );
+                  }}
                 />
                 <FormField
                   control={form.control}
