@@ -3,7 +3,7 @@ import { Pool } from 'pg';
 
 async function importData() {
   // 读取Excel文件
-  const workbook = XLSX.readFile('attached_assets/運動_1761462690646.xlsx');
+  const workbook = XLSX.readFile('attached_assets/運動_1761465046408.xlsx');
   const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
   const data = XLSX.utils.sheet_to_json(firstSheet, { header: 1 }) as any[][];
 
@@ -31,6 +31,16 @@ async function importData() {
           category: category
         });
       }
+    }
+    
+    // 添加活动量数据（步数，索引16）
+    if (names[16] && units[16]) {
+      exercises.push({
+        name: '每周平均步数',
+        unit: String(units[16]), // 步數
+        weightFactor: 1.4, // 用户指定的权重值
+        category: '其他'
+      });
     }
 
     console.log('准备导入的运动项目:');
@@ -70,6 +80,18 @@ async function importData() {
             );
             entriesCount++;
           }
+        }
+      }
+      
+      // 导入活动量数据（索引16 - 步数）
+      if (row[16] && Number(row[16]) > 0) {
+        const stepValue = parseFloat(String(row[16]));
+        if (exerciseIds['每周平均步数']) {
+          await pool.query(
+            'INSERT INTO workout_entries (exercise_id, value, date) VALUES ($1, $2, $3)',
+            [exerciseIds['每周平均步数'], stepValue, date]
+          );
+          entriesCount++;
         }
       }
     }

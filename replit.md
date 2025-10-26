@@ -157,7 +157,16 @@ Preferred communication style: Simple, everyday language.
 - Edit form converts NULL/undefined back to "none" for display
 
 **Data Statistics**:
-- Total exercises: 14 (11 imported + 3 test)
-- Total workout entries: 544
+- Total exercises: 12 (9 strength + 2 cardio + 1 activity)
+- Total workout entries: 602
 - Date range: 2024-09-08 to 2025-10-26
-- Top exercises by baseline value: 重训台 (113,465), 哑铃深蹲 (59,805), 伏地起身 (50,960)
+- Top exercises by baseline value: 每周平均步数 (2,490,023), 重训台 (113,465), 哑铃深蹲 (59,805)
+
+**Activity Data (Steps)**:
+- Exercise name: 每周平均步数 (Weekly Average Steps)
+- Unit: 步數 (steps)
+- Weight factor: 1.4 (user-specified for activity tracking)
+- Category: 其他 (Other)
+- Total records: 59 entries
+- Total steps: 1,778,588 steps
+- Baseline value: 2,490,023 (steps × 1.4)
