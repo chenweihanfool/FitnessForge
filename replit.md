@@ -23,7 +23,7 @@ Preferred communication style: Simple, everyday language.
 ### Backend Architecture
 
 **Runtime**: Node.js with Express.js.
-**API Design**: RESTful API for CRUD operations on exercises and workout entries, and endpoints for statistics (ranking, trends, current week details, category breakdown), CSV import, and export.
+**API Design**: RESTful API for CRUD operations on exercises and workout entries, and endpoints for statistics (ranking, trends, current week details, category breakdown, exercise weekly average), CSV import, and export.
 **Storage Layer**: PostgreSQL database accessed via `pg` library with Drizzle ORM for schema definition and camelCase/snake_case mapping.
 **File Upload**: Multer for handling CSV file uploads.
 **CSV Processing**: PapaParse for parsing and generating CSV files.
@@ -46,6 +46,7 @@ Preferred communication style: Simple, everyday language.
 **Exercise Categorization System**: Exercises are organized into predefined categories with UI filtering capabilities.
 **Timezone Handling (UTC+8)**: All user-facing time inputs and displays use Taipei time (UTC+8). Frontend converts datetime-local inputs to UTC before sending to backend; backend stores all timestamps in UTC. Timezone utilities (`getTaipeiTime`, `toTaipeiTime`) in `client/src/lib/timezone.ts` ensure consistent time handling across the application.
 **Average Steps Auto-Conversion**: For the "每周平均步数" exercise type, users input daily average steps and the system automatically multiplies by 7 to calculate weekly total steps before storage. The UI dynamically displays the conversion (daily → weekly) and final baseline calculation. Historical data imported from Excel is already in weekly format and bypasses this conversion.
+**Exercise Weekly Average Display**: When recording new workout entries, the form displays the historical weekly average for the selected exercise type. The backend computes weekly averages by grouping all historical entries by week and calculating the mean across weeks. The frontend displays this reference value below the exercise selector: for "每周平均步数" it shows both daily and weekly averages (e.g., "历史周平均: 10000 步/天 (70000 步/周)"), while other exercises show the value with their unit (e.g., "历史周平均: 50.5 KG"). This helps users set realistic goals based on their past performance. The feature uses TanStack Query with a complete URL queryKey (`/api/stats/exercise-average/${exerciseId}`) to leverage the default fetcher.
 
 ## External Dependencies
 
