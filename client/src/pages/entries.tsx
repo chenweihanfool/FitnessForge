@@ -55,6 +55,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { getTaipeiTime } from "@/lib/timezone";
 
 export default function Entries() {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
@@ -103,13 +104,28 @@ export default function Entries() {
     defaultValues: {
       exerciseId: "",
       value: 0,
-      date: new Date().toISOString().slice(0, 16),
+      date: getTaipeiTime(),
       notes: "",
     },
   });
 
   const onSubmit = (data: InsertWorkoutEntry) => {
-    createMutation.mutate(data);
+    // 用户输入的时间是台北时间（UTC+8）
+    // 需要转换为UTC时间发送给后端
+    const submissionData = { ...data };
+    
+    if (submissionData.date) {
+      // datetime-local返回的是不带时区的字符串，如"2025-10-26T18:00"
+      // 我们将其视为UTC+8时间，需要转换为UTC
+      // 方法：将字符串解析为UTC时间（通过添加Z），然后减去8小时
+      const dateStr = submissionData.date + ':00.000Z'; // 添加秒和UTC标记
+      const taipeiAsUtc = new Date(dateStr); // 现在这个时间会被当作UTC解析
+      // 减去8小时得到真正的UTC时间
+      const realUtc = new Date(taipeiAsUtc.getTime() - (8 * 60 * 60 * 1000));
+      submissionData.date = realUtc.toISOString();
+    }
+    
+    createMutation.mutate(submissionData);
   };
 
   const calculateBaselineValue = (value: number, exerciseId: string) => {
@@ -193,7 +209,7 @@ export default function Entries() {
                   name="date"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>日期时间</FormLabel>
+                      <FormLabel>日期时间（台北时间 UTC+8）</FormLabel>
                       <FormControl>
                         <Input
                           type="datetime-local"
@@ -201,6 +217,9 @@ export default function Entries() {
                           data-testid="input-entry-date"
                         />
                       </FormControl>
+                      <FormDescription>
+                        请输入台北时间，系统将自动转换为UTC存储
+                      </FormDescription>
                       <FormMessage />
                     </FormItem>
                   )}

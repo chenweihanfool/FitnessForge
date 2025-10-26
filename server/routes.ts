@@ -104,7 +104,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const entry = await storage.createWorkoutEntry(validatedData);
       res.status(201).json(entry);
     } catch (error) {
-      res.status(400).json({ error: "创建记录失败，请检查输入数据" });
+      console.error("创建记录失败:", error);
+      res.status(400).json({ error: "创建记录失败，请检查输入数据", details: error instanceof Error ? error.message : String(error) });
     }
   });
 
