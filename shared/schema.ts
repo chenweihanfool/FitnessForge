@@ -1,5 +1,4 @@
 import { pgTable, text, varchar, real, timestamp } from "drizzle-orm/pg-core";
-import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { sql } from "drizzle-orm";
 
@@ -11,6 +10,13 @@ export const exercises = pgTable("exercises", {
   weightFactor: real("weight_factor").notNull().default(1), // 重量转换系数，用于标准化计算
 });
 
+// 定义camelCase的insert schema
+export const insertExerciseSchema = z.object({
+  name: z.string().min(1),
+  unit: z.string().min(1),
+  weightFactor: z.number().default(1),
+});
+
 // 运动记录表
 export const workoutEntries = pgTable("workout_entries", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -20,15 +26,11 @@ export const workoutEntries = pgTable("workout_entries", {
   notes: text("notes"), // 可选备注
 });
 
-// 插入schemas
-export const insertExerciseSchema = createInsertSchema(exercises).omit({
-  id: true,
-});
-
-export const insertWorkoutEntrySchema = createInsertSchema(workoutEntries).omit({
-  id: true,
-}).extend({
+export const insertWorkoutEntrySchema = z.object({
+  exerciseId: z.string(),
+  value: z.number(),
   date: z.string().optional(), // 允许从前端传递ISO日期字符串
+  notes: z.string().optional(),
 });
 
 // 类型定义

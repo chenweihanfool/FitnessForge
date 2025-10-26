@@ -40,7 +40,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const exercise = await storage.createExercise(validatedData);
       res.status(201).json(exercise);
     } catch (error) {
-      res.status(400).json({ error: "创建运动失败，请检查输入数据" });
+      console.error("创建运动失败:", error);
+      res.status(400).json({ error: "创建运动失败，请检查输入数据", details: error instanceof Error ? error.message : String(error) });
     }
   });
 
