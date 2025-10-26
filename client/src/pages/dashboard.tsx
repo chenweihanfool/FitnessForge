@@ -136,7 +136,13 @@ export default function Dashboard() {
         <StatsCard
           title="总分排名"
           value={rankingData ? `${rankingData.rank}/${rankingData.totalWeeks}` : "暂无"}
-          subtitle="历史周排名"
+          subtitle={
+            rankingData && rankingData.rank > 1
+              ? `距第一名差距: ${(rankingData.topWeekTotalValue - rankingData.currentWeek.totalBaselineValue).toFixed(1)}`
+              : rankingData && rankingData.rank === 1
+              ? "🏆 当前第一名"
+              : "历史周排名"
+          }
           icon={Award}
           testId="card-rank"
         />
@@ -146,21 +152,39 @@ export default function Dashboard() {
         <StatsCard
           title="力量排名"
           value={rankingData && rankingData.totalWeeks > 0 ? `${rankingData.strengthRank}/${rankingData.totalWeeks}` : "暂无"}
-          subtitle={`本周: ${rankingData?.currentWeek?.strengthValue?.toFixed(1) ?? "0"}`}
+          subtitle={
+            rankingData && rankingData.strengthRank > 1
+              ? `本周: ${rankingData.currentWeek.strengthValue.toFixed(1)} | 距第一: ${(rankingData.topWeekStrengthValue - rankingData.currentWeek.strengthValue).toFixed(1)}`
+              : rankingData && rankingData.strengthRank === 1
+              ? `本周: ${rankingData.currentWeek.strengthValue.toFixed(1)} | 🏆 第一名`
+              : `本周: ${rankingData?.currentWeek?.strengthValue?.toFixed(1) ?? "0"}`
+          }
           icon={Award}
           testId="card-strength-rank"
         />
         <StatsCard
           title="有氧排名"
           value={rankingData && rankingData.totalWeeks > 0 ? `${rankingData.cardioRank}/${rankingData.totalWeeks}` : "暂无"}
-          subtitle={`本周: ${rankingData?.currentWeek?.cardioValue?.toFixed(1) ?? "0"}`}
+          subtitle={
+            rankingData && rankingData.cardioRank > 1
+              ? `本周: ${rankingData.currentWeek.cardioValue.toFixed(1)} | 距第一: ${(rankingData.topWeekCardioValue - rankingData.currentWeek.cardioValue).toFixed(1)}`
+              : rankingData && rankingData.cardioRank === 1
+              ? `本周: ${rankingData.currentWeek.cardioValue.toFixed(1)} | 🏆 第一名`
+              : `本周: ${rankingData?.currentWeek?.cardioValue?.toFixed(1) ?? "0"}`
+          }
           icon={Award}
           testId="card-cardio-rank"
         />
         <StatsCard
           title="活动量排名"
           value={rankingData && rankingData.totalWeeks > 0 ? `${rankingData.activityRank}/${rankingData.totalWeeks}` : "暂无"}
-          subtitle={`本周: ${rankingData?.currentWeek?.activityValue?.toFixed(1) ?? "0"}`}
+          subtitle={
+            rankingData && rankingData.activityRank > 1
+              ? `本周: ${rankingData.currentWeek.activityValue.toFixed(1)} | 距第一: ${(rankingData.topWeekActivityValue - rankingData.currentWeek.activityValue).toFixed(1)}`
+              : rankingData && rankingData.activityRank === 1
+              ? `本周: ${rankingData.currentWeek.activityValue.toFixed(1)} | 🏆 第一名`
+              : `本周: ${rankingData?.currentWeek?.activityValue?.toFixed(1) ?? "0"}`
+          }
           icon={Award}
           testId="card-activity-rank"
         />
