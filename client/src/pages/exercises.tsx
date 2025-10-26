@@ -21,7 +21,8 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import { Plus, Dumbbell, Trash2, Pencil } from "lucide-react";
+import { Plus, Dumbbell, Trash2, Pencil, Filter } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -38,10 +39,13 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 
+const CATEGORIES = ["力量", "有氧", "柔韧性", "核心", "平衡", "其他"];
+
 export default function Exercises() {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [editingExercise, setEditingExercise] = useState<Exercise | null>(null);
   const [deletingExercise, setDeletingExercise] = useState<Exercise | null>(null);
+  const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const { toast } = useToast();
 
   const { data: exercises, isLoading } = useQuery<Exercise[]>({
@@ -93,6 +97,7 @@ export default function Exercises() {
       name: "",
       unit: "",
       weightFactor: 1,
+      category: "",
     },
   });
 
@@ -102,6 +107,7 @@ export default function Exercises() {
       name: "",
       unit: "",
       weightFactor: 1,
+      category: "",
     },
   });
 
@@ -121,17 +127,26 @@ export default function Exercises() {
       name: exercise.name,
       unit: exercise.unit,
       weightFactor: exercise.weightFactor,
+      category: exercise.category || "",
     });
   };
 
+  // 筛选运动列表
+  const filteredExercises = exercises?.filter((ex) => {
+    if (selectedCategory === "all") return true;
+    if (selectedCategory === "uncategorized") return !ex.category;
+    return ex.category === selectedCategory;
+  }) || [];
+
   return (
     <div className="space-y-6" data-testid="page-exercises">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold">运动管理</h1>
-          <p className="text-muted-foreground mt-2">管理您的运动类型和转换系数</p>
-        </div>
-        <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold">运动管理</h1>
+            <p className="text-muted-foreground mt-2">管理您的运动类型和转换系数</p>
+          </div>
+          <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
           <DialogTrigger asChild>
             <Button data-testid="button-create-exercise">
               <Plus className="mr-2 h-4 w-4" />
@@ -213,6 +228,27 @@ export default function Exercises() {
             </Form>
           </DialogContent>
         </Dialog>
+        </div>
+        <div className="flex items-center gap-2">
+          <Filter className="h-4 w-4 text-muted-foreground" />
+          <Select value={selectedCategory} onValueChange={setSelectedCategory}>
+            <SelectTrigger className="w-[180px]" data-testid="select-category-filter">
+              <SelectValue placeholder="选择分类" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all" data-testid="category-all">全部</SelectItem>
+              <SelectItem value="uncategorized" data-testid="category-uncategorized">未分类</SelectItem>
+              {CATEGORIES.map((cat) => (
+                <SelectItem key={cat} value={cat} data-testid={`category-${cat}`}>
+                  {cat}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <span className="text-sm text-muted-foreground">
+            共 {filteredExercises.length} 项运动
+          </span>
+        </div>
       </div>
 
       {isLoading ? (

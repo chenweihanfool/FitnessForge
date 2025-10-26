@@ -54,7 +54,7 @@ export class MemStorage implements IStorage {
 
   async createExercise(insertExercise: InsertExercise): Promise<Exercise> {
     const id = randomUUID();
-    const exercise: Exercise = { ...insertExercise, id };
+    const exercise: Exercise = { ...insertExercise, id, category: insertExercise.category ?? null };
     this.exercises.set(id, exercise);
     return exercise;
   }
@@ -63,7 +63,7 @@ export class MemStorage implements IStorage {
     const existing = this.exercises.get(id);
     if (!existing) return undefined;
 
-    const updated: Exercise = { ...insertExercise, id };
+    const updated: Exercise = { ...insertExercise, id, category: insertExercise.category ?? null };
     this.exercises.set(id, updated);
     return updated;
   }
@@ -286,6 +286,7 @@ export class DbStorage implements IStorage {
       name: insertExercise.name,
       unit: insertExercise.unit,
       weightFactor: insertExercise.weightFactor,
+      category: insertExercise.category ?? null,
     }).returning();
     return result[0];
   }
@@ -297,6 +298,7 @@ export class DbStorage implements IStorage {
         name: insertExercise.name,
         unit: insertExercise.unit,
         weightFactor: insertExercise.weightFactor,
+        category: insertExercise.category ?? null,
       })
       .where(eq(exercises.id, id))
       .returning();
