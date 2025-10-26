@@ -69,4 +69,8 @@ export type RankingData = {
   strengthRank: number; // 力量分类排名
   cardioRank: number; // 有氧分类排名
   activityRank: number; // 活动量分类排名
+  topWeekTotalValue: number; // 总分第一名的数值
+  topWeekStrengthValue: number; // 力量第一名的数值
+  topWeekCardioValue: number; // 有氧第一名的数值
+  topWeekActivityValue: number; // 活动量第一名的数值
 };

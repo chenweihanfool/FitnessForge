@@ -300,6 +300,10 @@ export class MemStorage implements IStorage {
         strengthRank: 0,
         cardioRank: 0,
         activityRank: 0,
+        topWeekTotalValue: 0,
+        topWeekStrengthValue: 0,
+        topWeekCardioValue: 0,
+        topWeekActivityValue: 0,
       };
     }
 
@@ -345,6 +349,12 @@ export class MemStorage implements IStorage {
       w.weekStart === currentWeek.weekStart && w.weekEnd === currentWeek.weekEnd
     ) + 1;
 
+    // 获取各分类第一名的数值
+    const topWeekTotalValue = sorted[0].totalBaselineValue;
+    const topWeekStrengthValue = strengthSorted[0].strengthValue;
+    const topWeekCardioValue = cardioSorted[0].cardioValue;
+    const topWeekActivityValue = activitySorted[0].activityValue;
+
     return {
       currentWeek,
       bestWeek,
@@ -355,6 +365,10 @@ export class MemStorage implements IStorage {
       strengthRank,
       cardioRank,
       activityRank,
+      topWeekTotalValue,
+      topWeekStrengthValue,
+      topWeekCardioValue,
+      topWeekActivityValue,
     };
   }
 
@@ -649,6 +663,10 @@ export class DbStorage implements IStorage {
         strengthRank: 0,
         cardioRank: 0,
         activityRank: 0,
+        topWeekTotalValue: 0,
+        topWeekStrengthValue: 0,
+        topWeekCardioValue: 0,
+        topWeekActivityValue: 0,
       };
     }
 
@@ -694,6 +712,12 @@ export class DbStorage implements IStorage {
       w.weekStart === currentWeek.weekStart && w.weekEnd === currentWeek.weekEnd
     ) + 1;
 
+    // 获取各分类第一名的数值
+    const topWeekTotalValue = sorted[0].totalBaselineValue;
+    const topWeekStrengthValue = strengthSorted[0].strengthValue;
+    const topWeekCardioValue = cardioSorted[0].cardioValue;
+    const topWeekActivityValue = activitySorted[0].activityValue;
+
     return {
       currentWeek,
       bestWeek,
@@ -704,6 +728,10 @@ export class DbStorage implements IStorage {
       strengthRank,
       cardioRank,
       activityRank,
+      topWeekTotalValue,
+      topWeekStrengthValue,
+      topWeekCardioValue,
+      topWeekActivityValue,
     };
   }
 
