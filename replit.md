@@ -44,6 +44,7 @@ Preferred communication style: Simple, everyday language.
 **Responsive Layout**: Sidebar navigation for desktop, collapsible for mobile.
 **Import/Export Workflow**: CSV-based data portability. An Excel import script (`server/import-excel.ts`) supports importing exercise definitions and historical workout data.
 **Exercise Categorization System**: Exercises are organized into predefined categories with UI filtering capabilities.
+**Timezone Handling (UTC+8)**: All user-facing time inputs and displays use Taipei time (UTC+8). Frontend converts datetime-local inputs to UTC before sending to backend; backend stores all timestamps in UTC. Timezone utilities (`getTaipeiTime`, `toTaipeiTime`) in `client/src/lib/timezone.ts` ensure consistent time handling across the application.
 
 ## External Dependencies
 
