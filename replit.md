@@ -44,7 +44,7 @@ Preferred communication style: Simple, everyday language.
 - `/api/import` - CSV data import with file upload
 - `/api/export` - CSV data export
 
-**Storage Layer**: Abstract storage interface (`IStorage`) with in-memory implementation (`MemStorage`), designed to be swappable with database implementations. The schema is defined using Drizzle ORM, prepared for PostgreSQL integration.
+**Storage Layer**: PostgreSQL database accessed via `pg` library with `DbStorage` implementation. The schema is defined using Drizzle ORM with proper camelCase/snake_case mapping between frontend and database.
 
 **File Upload**: Multer middleware for handling CSV file uploads in memory.
 
@@ -55,9 +55,10 @@ Preferred communication style: Simple, everyday language.
 ### Data Schema
 
 **Exercise Types Table**: Stores custom exercise definitions with:
-- Unique identifiers
+- Unique identifiers (UUID)
 - Exercise name and unit of measurement
 - Weight factor for standardized calculations across different exercise types
+- Category field for organizing exercises (力量/有氧/柔韧性/核心/平衡/其他)
 
 **Workout Entries Table**: Records individual workout data with:
 - Foreign key reference to exercise type
@@ -84,7 +85,9 @@ Preferred communication style: Simple, everyday language.
 
 **Responsive Layout**: Sidebar navigation for desktop, collapsible with mobile sheet overlay, ensuring consistent UX across devices.
 
-**Import/Export Workflow**: CSV-based data portability allowing users to backup data and migrate between instances.
+**Import/Export Workflow**: CSV-based data portability allowing users to backup data and migrate between instances. Excel import script (`server/import-excel.ts`) supports importing exercise definitions and historical workout data from structured Excel files.
+
+**Exercise Categorization System**: Exercises can be organized into predefined categories (力量/有氧/柔韧性/核心/平衡/其他) with filtering capabilities in the UI. Category field is optional and stored as NULL/undefined in the database for uncategorized exercises.
 
 ## External Dependencies
 
@@ -102,9 +105,10 @@ Preferred communication style: Simple, everyday language.
 ### Backend Services
 - **Express.js**: Web application framework
 - **Drizzle ORM**: TypeScript ORM with schema definition for PostgreSQL
-- **@neondatabase/serverless**: PostgreSQL database driver (prepared for future use)
+- **pg**: PostgreSQL client library for database connections
 - **Multer**: Multipart/form-data file upload handling
 - **PapaParse**: CSV parsing and serialization
+- **xlsx**: Excel file parsing for data import
 
 ### Development Tools
 - **Vite**: Fast build tool and development server with HMR
@@ -118,5 +122,42 @@ Preferred communication style: Simple, everyday language.
 - **date-fns**: Modern date utility library with localization support (Chinese locale)
 
 ### Database (Configured)
-- **PostgreSQL**: Relational database (via Neon serverless driver)
+- **PostgreSQL**: Relational database (via pg driver)
 - **Drizzle Kit**: Database migration tool and schema management
+
+## Recent Changes
+
+### 2025-10-26: Excel Import and Exercise Categorization
+
+**Excel Data Import**:
+- Created `server/import-excel.ts` script to import exercise definitions and workout entries from Excel files
+- Successfully imported 11 exercise types (9 strength, 2 cardio) with categories and weight factors
+- Imported 543 historical workout entries spanning from September 2024 to October 2025
+- Excel format: Row 3 = units, Row 4 = weight factors, Row 5 = exercise names, Row 9+ = weekly data
+- Note: Import script currently lacks idempotency checks and transaction safety (future improvement)
+
+**Exercise Categorization System**:
+- Added `category` field to exercises table (optional text field)
+- Implemented category filter in Exercises page with predefined categories: 力量/有氧/柔韧性/核心/平衡/其他
+- Added category selection in create and edit exercise forms
+- Category badges displayed on exercise cards
+- Filter options: All, specific categories, and Uncategorized
+- Fixed Radix UI SelectItem empty string error by using "none" as display value and converting to undefined for API
+
+**Database Migration**:
+- Migrated from in-memory storage to PostgreSQL using `pg` library
+- Implemented `DbStorage` class with proper camelCase/snake_case mapping
+- Created database tables: exercises, workout_entries
+- Used `npm run db:push` for schema synchronization
+
+**Technical Implementation**:
+- Form defaultValues use "none" for uncategorized exercises (display layer)
+- API submissions convert "none" to undefined (data layer)
+- Database stores NULL for uncategorized exercises
+- Edit form converts NULL/undefined back to "none" for display
+
+**Data Statistics**:
+- Total exercises: 14 (11 imported + 3 test)
+- Total workout entries: 544
+- Date range: 2024-09-08 to 2025-10-26
+- Top exercises by baseline value: 重训台 (113,465), 哑铃深蹲 (59,805), 伏地起身 (50,960)

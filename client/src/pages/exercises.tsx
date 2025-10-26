@@ -97,7 +97,7 @@ export default function Exercises() {
       name: "",
       unit: "",
       weightFactor: 1,
-      category: "",
+      category: "none",
     },
   });
 
@@ -107,17 +107,25 @@ export default function Exercises() {
       name: "",
       unit: "",
       weightFactor: 1,
-      category: "",
+      category: "none",
     },
   });
 
   const onCreateSubmit = (data: InsertExercise) => {
-    createMutation.mutate(data);
+    const submitData = {
+      ...data,
+      category: data.category === "none" ? undefined : data.category,
+    };
+    createMutation.mutate(submitData);
   };
 
   const onUpdateSubmit = (data: InsertExercise) => {
     if (editingExercise) {
-      updateMutation.mutate({ id: editingExercise.id, data });
+      const submitData = {
+        ...data,
+        category: data.category === "none" ? undefined : data.category,
+      };
+      updateMutation.mutate({ id: editingExercise.id, data: submitData });
     }
   };
 
@@ -127,7 +135,7 @@ export default function Exercises() {
       name: exercise.name,
       unit: exercise.unit,
       weightFactor: exercise.weightFactor,
-      category: exercise.category || "",
+      category: exercise.category || "none",
     });
   };
 
@@ -211,6 +219,31 @@ export default function Exercises() {
                     </FormItem>
                   )}
                 />
+                <FormField
+                  control={form.control}
+                  name="category"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>分类（可选）</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <FormControl>
+                          <SelectTrigger data-testid="select-exercise-category">
+                            <SelectValue placeholder="选择分类" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="none" data-testid="category-option-none">无分类</SelectItem>
+                          {CATEGORIES.map((cat) => (
+                            <SelectItem key={cat} value={cat} data-testid={`category-option-${cat}`}>
+                              {cat}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
                 <div className="flex justify-end gap-2">
                   <Button
                     type="button"
@@ -264,9 +297,9 @@ export default function Exercises() {
             </Card>
           ))}
         </div>
-      ) : exercises && exercises.length > 0 ? (
+      ) : filteredExercises.length > 0 ? (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {exercises.map((exercise) => (
+          {filteredExercises.map((exercise) => (
             <Card key={exercise.id} data-testid={`card-exercise-${exercise.id}`}>
               <CardHeader>
                 <div className="flex items-start justify-between gap-2">
@@ -300,15 +333,25 @@ export default function Exercises() {
                 </div>
               </CardHeader>
               <CardContent>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">重量系数</span>
-                  <Badge variant="secondary" data-testid={`badge-weight-${exercise.id}`}>
-                    × {exercise.weightFactor}
-                  </Badge>
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">重量系数</span>
+                    <Badge variant="secondary" data-testid={`badge-weight-${exercise.id}`}>
+                      × {exercise.weightFactor}
+                    </Badge>
+                  </div>
+                  {exercise.category && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-muted-foreground">分类</span>
+                      <Badge variant="outline" data-testid={`badge-category-${exercise.id}`}>
+                        {exercise.category}
+                      </Badge>
+                    </div>
+                  )}
+                  <p className="text-xs text-muted-foreground mt-2">
+                    基准值 = 数据 × {exercise.weightFactor}
+                  </p>
                 </div>
-                <p className="text-xs text-muted-foreground mt-2">
-                  基准值 = 数据 × {exercise.weightFactor}
-                </p>
               </CardContent>
             </Card>
           ))}
@@ -373,6 +416,31 @@ export default function Exercises() {
                         data-testid="input-edit-weight"
                       />
                     </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={editForm.control}
+                name="category"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>分类（可选）</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger data-testid="select-edit-category">
+                          <SelectValue placeholder="选择分类" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="none" data-testid="edit-category-option-none">无分类</SelectItem>
+                        {CATEGORIES.map((cat) => (
+                          <SelectItem key={cat} value={cat} data-testid={`edit-category-option-${cat}`}>
+                            {cat}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                     <FormMessage />
                   </FormItem>
                 )}
