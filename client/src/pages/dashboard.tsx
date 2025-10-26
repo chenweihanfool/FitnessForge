@@ -140,7 +140,7 @@ export default function Dashboard() {
             rankingData && rankingData.rank > 1
               ? `距第一名差距: ${(rankingData.topWeekTotalValue - rankingData.currentWeek.totalBaselineValue).toFixed(1)}`
               : rankingData && rankingData.rank === 1
-              ? "🏆 当前第一名"
+              ? "当前第一名"
               : "历史周排名"
           }
           icon={Award}
@@ -156,7 +156,7 @@ export default function Dashboard() {
             rankingData && rankingData.strengthRank > 1
               ? `本周: ${rankingData.currentWeek.strengthValue.toFixed(1)} | 距第一: ${(rankingData.topWeekStrengthValue - rankingData.currentWeek.strengthValue).toFixed(1)}`
               : rankingData && rankingData.strengthRank === 1
-              ? `本周: ${rankingData.currentWeek.strengthValue.toFixed(1)} | 🏆 第一名`
+              ? `本周: ${rankingData.currentWeek.strengthValue.toFixed(1)} | 当前第一名`
               : `本周: ${rankingData?.currentWeek?.strengthValue?.toFixed(1) ?? "0"}`
           }
           icon={Award}
@@ -169,7 +169,7 @@ export default function Dashboard() {
             rankingData && rankingData.cardioRank > 1
               ? `本周: ${rankingData.currentWeek.cardioValue.toFixed(1)} | 距第一: ${(rankingData.topWeekCardioValue - rankingData.currentWeek.cardioValue).toFixed(1)}`
               : rankingData && rankingData.cardioRank === 1
-              ? `本周: ${rankingData.currentWeek.cardioValue.toFixed(1)} | 🏆 第一名`
+              ? `本周: ${rankingData.currentWeek.cardioValue.toFixed(1)} | 当前第一名`
               : `本周: ${rankingData?.currentWeek?.cardioValue?.toFixed(1) ?? "0"}`
           }
           icon={Award}
@@ -182,7 +182,7 @@ export default function Dashboard() {
             rankingData && rankingData.activityRank > 1
               ? `本周: ${rankingData.currentWeek.activityValue.toFixed(1)} | 距第一: ${(rankingData.topWeekActivityValue - rankingData.currentWeek.activityValue).toFixed(1)}`
               : rankingData && rankingData.activityRank === 1
-              ? `本周: ${rankingData.currentWeek.activityValue.toFixed(1)} | 🏆 第一名`
+              ? `本周: ${rankingData.currentWeek.activityValue.toFixed(1)} | 当前第一名`
               : `本周: ${rankingData?.currentWeek?.activityValue?.toFixed(1) ?? "0"}`
           }
           icon={Award}
