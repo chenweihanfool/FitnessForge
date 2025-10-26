@@ -134,11 +134,35 @@ export default function Dashboard() {
           testId="card-best-record"
         />
         <StatsCard
-          title="当前排名"
+          title="总分排名"
           value={rankingData ? `${rankingData.rank}/${rankingData.totalWeeks}` : "暂无"}
           subtitle="历史周排名"
           icon={Award}
           testId="card-rank"
+        />
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-3">
+        <StatsCard
+          title="力量排名"
+          value={rankingData && rankingData.totalWeeks > 0 ? `${rankingData.strengthRank}/${rankingData.totalWeeks}` : "暂无"}
+          subtitle={`本周: ${rankingData?.currentWeek?.strengthValue?.toFixed(1) ?? "0"}`}
+          icon={Award}
+          testId="card-strength-rank"
+        />
+        <StatsCard
+          title="有氧排名"
+          value={rankingData && rankingData.totalWeeks > 0 ? `${rankingData.cardioRank}/${rankingData.totalWeeks}` : "暂无"}
+          subtitle={`本周: ${rankingData?.currentWeek?.cardioValue?.toFixed(1) ?? "0"}`}
+          icon={Award}
+          testId="card-cardio-rank"
+        />
+        <StatsCard
+          title="活动量排名"
+          value={rankingData && rankingData.totalWeeks > 0 ? `${rankingData.activityRank}/${rankingData.totalWeeks}` : "暂无"}
+          subtitle={`本周: ${rankingData?.currentWeek?.activityValue?.toFixed(1) ?? "0"}`}
+          icon={Award}
+          testId="card-activity-rank"
         />
       </div>
 
