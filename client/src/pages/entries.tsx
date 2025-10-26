@@ -109,6 +109,13 @@ export default function Entries() {
     },
   });
 
+  const selectedExerciseId = form.watch("exerciseId");
+  
+  const { data: weeklyAverageData } = useQuery<{ average: number | null }>({
+    queryKey: selectedExerciseId ? [`/api/stats/exercise-average/${selectedExerciseId}`] : [],
+    enabled: !!selectedExerciseId,
+  });
+
   const onSubmit = (data: InsertWorkoutEntry) => {
     // 用户输入的时间是台北时间（UTC+8）
     // 需要转换为UTC时间发送给后端
@@ -165,26 +172,37 @@ export default function Entries() {
                 <FormField
                   control={form.control}
                   name="exerciseId"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>运动类型</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value}>
-                        <FormControl>
-                          <SelectTrigger data-testid="select-exercise">
-                            <SelectValue placeholder="选择运动类型" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          {exercises?.map((exercise) => (
-                            <SelectItem key={exercise.id} value={exercise.id} data-testid={`select-option-${exercise.id}`}>
-                              {exercise.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
+                  render={({ field }) => {
+                    const selectedExercise = exercises?.find((e) => e.id === field.value);
+                    const weeklyAverage = weeklyAverageData?.average;
+                    const isAverageSteps = selectedExercise?.name === '每周平均步数';
+                    
+                    return (
+                      <FormItem>
+                        <FormLabel>运动类型</FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value}>
+                          <FormControl>
+                            <SelectTrigger data-testid="select-exercise">
+                              <SelectValue placeholder="选择运动类型" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {exercises?.map((exercise) => (
+                              <SelectItem key={exercise.id} value={exercise.id} data-testid={`select-option-${exercise.id}`}>
+                                {exercise.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        {field.value && weeklyAverage !== null && weeklyAverage !== undefined && (
+                          <FormDescription className="text-primary font-medium">
+                            历史周平均: {isAverageSteps ? `${(weeklyAverage / 7).toFixed(0)} 步/天 (${weeklyAverage.toFixed(0)} 步/周)` : `${weeklyAverage.toFixed(1)} ${selectedExercise?.unit || ''}`}
+                          </FormDescription>
+                        )}
+                        <FormMessage />
+                      </FormItem>
+                    );
+                  }}
                 />
                 <FormField
                   control={form.control}

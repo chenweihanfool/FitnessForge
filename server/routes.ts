@@ -185,6 +185,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // 获取特定运动类型的周平均值
+  app.get("/api/stats/exercise-average/:exerciseId", async (req, res) => {
+    try {
+      const average = await storage.getExerciseWeeklyAverage(req.params.exerciseId);
+      res.json({ average });
+    } catch (error) {
+      res.status(500).json({ error: "获取运动周平均值失败" });
+    }
+  });
+
   // ==================== CSV 导入导出 API ====================
 
   // CSV 导入

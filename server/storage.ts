@@ -48,6 +48,7 @@ export interface IStorage {
       baselineValue: number;
     }>;
   }>;
+  getExerciseWeeklyAverage(exerciseId: string): Promise<number | null>;
 }
 
 export class MemStorage implements IStorage {
@@ -370,6 +371,36 @@ export class MemStorage implements IStorage {
       topWeekCardioValue,
       topWeekActivityValue,
     };
+  }
+
+  async getExerciseWeeklyAverage(exerciseId: string): Promise<number | null> {
+    // 获取该运动类型的所有记录
+    const exerciseEntries = Array.from(this.workoutEntries.values())
+      .filter(entry => entry.exerciseId === exerciseId);
+
+    if (exerciseEntries.length === 0) {
+      return null;
+    }
+
+    // 按周分组计算
+    const weeklyTotals = new Map<string, number>();
+
+    for (const entry of exerciseEntries) {
+      const entryDate = new Date(entry.date);
+      const weekStart = this.getWeekStart(entryDate);
+      const weekKey = weekStart.toISOString();
+
+      weeklyTotals.set(
+        weekKey,
+        (weeklyTotals.get(weekKey) || 0) + entry.value
+      );
+    }
+
+    // 计算平均值
+    const totalWeeks = weeklyTotals.size;
+    const sumOfWeeklyTotals = Array.from(weeklyTotals.values()).reduce((sum, val) => sum + val, 0);
+    
+    return sumOfWeeklyTotals / totalWeeks;
   }
 
   // 辅助方法：获取周一
@@ -733,6 +764,38 @@ export class DbStorage implements IStorage {
       topWeekCardioValue,
       topWeekActivityValue,
     };
+  }
+
+  async getExerciseWeeklyAverage(exerciseId: string): Promise<number | null> {
+    // 从数据库获取该运动类型的所有记录
+    const entries = await this.db
+      .select()
+      .from(workoutEntries)
+      .where(eq(workoutEntries.exerciseId, exerciseId));
+
+    if (entries.length === 0) {
+      return null;
+    }
+
+    // 按周分组计算
+    const weeklyTotals = new Map<string, number>();
+
+    for (const entry of entries) {
+      const entryDate = new Date(entry.date);
+      const weekStart = this.getWeekStart(entryDate);
+      const weekKey = weekStart.toISOString();
+
+      weeklyTotals.set(
+        weekKey,
+        (weeklyTotals.get(weekKey) || 0) + entry.value
+      );
+    }
+
+    // 计算平均值
+    const totalWeeks = weeklyTotals.size;
+    const sumOfWeeklyTotals = Array.from(weeklyTotals.values()).reduce((sum, val) => sum + val, 0);
+    
+    return sumOfWeeklyTotals / totalWeeks;
   }
 
   // 辅助方法：获取周一
