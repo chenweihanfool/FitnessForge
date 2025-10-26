@@ -128,6 +128,35 @@ Preferred communication style: Simple, everyday language.
 
 ## Recent Changes
 
+### 2025-10-26: Trend Chart Regression Line and ISO Week Format
+
+**趋势回归线功能**:
+- Added linear regression calculation using least squares method
+- Trend line displays as dashed line (strokeDasharray="5 5") on trend chart
+- Switched from AreaChart to ComposedChart to support mixed Area + Line visualization
+- Edge case handling: n=0, n=1, and denominator=0 cases properly handled
+
+**ISO周日期格式优化**:
+- Date labels on X-axis changed from "MM/dd" to "YYYY年 第N周" format
+- Uses `getISOWeekYear` instead of `getYear` for accurate ISO week-year calculation
+- Example: "2024年 第36周" instead of "09/02"
+
+**Tooltip增强**:
+- Now displays both baseline value (基准值) and trend value (趋势值)
+- Trend value shown in distinct color (chart-2)
+- All values formatted to 1 decimal place
+
+**Technical Implementation**:
+- `calculateLinearRegression` function implements y = mx + b
+- Handles edge cases: returns zero slope for single data points
+- Guards against division by zero
+- Code cleanup: removed unused imports (format, LineChart, AreaChart)
+
+**Test Coverage**:
+- E2E test verifies regression line rendering (dashed path element)
+- Tooltip content validation (date, baseline, trend values)
+- All numeric values validated as non-NaN
+
 ### 2025-10-26: Click-to-View Weekly Baseline Details
 
 **本周基准值计算详情功能**:
