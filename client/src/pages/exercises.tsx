@@ -39,7 +39,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 
-const CATEGORIES = ["力量", "有氧", "柔韧性", "核心", "平衡", "其他"];
+const CATEGORIES = ["力量", "有氧", "柔韧性", "核心", "平衡", "活动量", "其他"];
 
 export default function Exercises() {
   const [isCreateOpen, setIsCreateOpen] = useState(false);

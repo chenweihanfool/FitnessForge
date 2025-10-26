@@ -153,6 +153,41 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // 获取本周分类统计
+  app.get("/api/stats/category-breakdown", async (req, res) => {
+    try {
+      const details = await storage.getCurrentWeekDetails();
+      const exercises = await storage.getExercises();
+      
+      // 创建运动名称到分类的映射
+      const exerciseMap = new Map(exercises.map(e => [e.name, e.category || "未分类"]));
+      
+      // 按分类分组统计
+      const categoryStats = new Map<string, number>();
+      for (const detail of details.details) {
+        const category = exerciseMap.get(detail.exerciseName) || "未分类";
+        categoryStats.set(
+          category,
+          (categoryStats.get(category) || 0) + detail.baselineValue
+        );
+      }
+      
+      // 计算百分比
+      const total = details.totalBaselineValue;
+      const breakdown = Array.from(categoryStats.entries())
+        .map(([category, value]) => ({
+          category,
+          value,
+          percentage: total > 0 ? (value / total) * 100 : 0,
+        }))
+        .sort((a, b) => b.value - a.value); // 按基准值降序排序
+      
+      res.json(breakdown);
+    } catch (error) {
+      res.status(500).json({ error: "获取分类统计失败" });
+    }
+  });
+
   // ==================== CSV 导入导出 API ====================
 
   // CSV 导入

@@ -39,6 +39,12 @@ type WeekDetails = {
   }>;
 };
 
+type CategoryBreakdown = {
+  category: string;
+  value: number;
+  percentage: number;
+};
+
 export default function Dashboard() {
   const [showDetailsDialog, setShowDetailsDialog] = useState(false);
 
@@ -53,6 +59,10 @@ export default function Dashboard() {
   const { data: weekDetails } = useQuery<WeekDetails>({
     queryKey: ["/api/stats/current-week-details"],
     enabled: showDetailsDialog,
+  });
+
+  const { data: categoryBreakdown, isLoading: categoryLoading } = useQuery<CategoryBreakdown[]>({
+    queryKey: ["/api/stats/category-breakdown"],
   });
 
   if (rankingLoading || trendLoading) {
@@ -148,7 +158,7 @@ export default function Dashboard() {
           )}
         </div>
         
-        <div>
+        <div className="space-y-6">
           {rankingData && rankingData.totalWeeks > 0 ? (
             <RankingCard
               currentWeekValue={rankingData.currentWeek.totalBaselineValue}
@@ -167,6 +177,37 @@ export default function Dashboard() {
                 <div className="flex h-[200px] items-center justify-center text-muted-foreground">
                   暂无排名数据
                 </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {!categoryLoading && categoryBreakdown && categoryBreakdown.length > 0 && (
+            <Card data-testid="card-category-breakdown">
+              <CardHeader>
+                <CardTitle>分类统计</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {categoryBreakdown
+                  .filter(cat => ["力量", "有氧", "活动量"].includes(cat.category))
+                  .map((cat) => (
+                    <div key={cat.category} className="space-y-2" data-testid={`category-stat-${cat.category}`}>
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm font-medium">{cat.category}</span>
+                        <span className="text-sm font-bold" data-testid={`percentage-${cat.category}`}>
+                          {cat.percentage.toFixed(1)}%
+                        </span>
+                      </div>
+                      <div className="w-full bg-muted rounded-full h-2">
+                        <div
+                          className="bg-primary rounded-full h-2 transition-all"
+                          style={{ width: `${cat.percentage}%` }}
+                        />
+                      </div>
+                      <p className="text-xs text-muted-foreground" data-testid={`value-${cat.category}`}>
+                        基准值: {cat.value.toFixed(1)}
+                      </p>
+                    </div>
+                  ))}
               </CardContent>
             </Card>
           )}
