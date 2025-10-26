@@ -157,15 +157,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/stats/category-breakdown", async (req, res) => {
     try {
       const details = await storage.getCurrentWeekDetails();
-      const exercises = await storage.getExercises();
       
-      // 创建运动名称到分类的映射
-      const exerciseMap = new Map(exercises.map(e => [e.name, e.category || "未分类"]));
-      
-      // 按分类分组统计
+      // 按分类分组统计（使用exerciseCategory字段）
       const categoryStats = new Map<string, number>();
       for (const detail of details.details) {
-        const category = exerciseMap.get(detail.exerciseName) || "未分类";
+        const category = detail.exerciseCategory || "未分类";
         categoryStats.set(
           category,
           (categoryStats.get(category) || 0) + detail.baselineValue

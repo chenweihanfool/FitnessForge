@@ -30,8 +30,10 @@ type WeekDetails = {
   totalBaselineValue: number;
   entryCount: number;
   details: Array<{
+    exerciseId: string;
     exerciseName: string;
     exerciseUnit: string;
+    exerciseCategory: string | null;
     weightFactor: number;
     count: number;
     totalValue: number;
@@ -181,15 +183,50 @@ export default function Dashboard() {
             </Card>
           )}
 
-          {!categoryLoading && categoryBreakdown && categoryBreakdown.length > 0 && (
+          {!categoryLoading && categoryBreakdown && (
             <Card data-testid="card-category-breakdown">
               <CardHeader>
                 <CardTitle>分类统计</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                {categoryBreakdown
-                  .filter(cat => ["力量", "有氧", "活动量"].includes(cat.category))
-                  .map((cat) => (
+                {(() => {
+                  // 主要分类应始终显示（即使为0）
+                  const mainCategories = ["力量", "有氧", "活动量"];
+                  const categoryMap = new Map(categoryBreakdown.map(cat => [cat.category, cat]));
+                  
+                  // 合并所有分类：API返回的 + 缺失的主要分类（填充0值）
+                  const allCategories = new Map<string, CategoryBreakdown>();
+                  
+                  // 首先添加所有API返回的分类
+                  categoryBreakdown.forEach(cat => {
+                    allCategories.set(cat.category, cat);
+                  });
+                  
+                  // 然后为缺失的主要分类填充0值
+                  mainCategories.forEach(category => {
+                    if (!allCategories.has(category)) {
+                      allCategories.set(category, {
+                        category,
+                        value: 0,
+                        percentage: 0,
+                      });
+                    }
+                  });
+                  
+                  // 排序：主要分类优先，然后按基准值降序
+                  const sortedCategories = Array.from(allCategories.values()).sort((a, b) => {
+                    const aIsMain = mainCategories.includes(a.category);
+                    const bIsMain = mainCategories.includes(b.category);
+                    
+                    if (aIsMain && !bIsMain) return -1;
+                    if (!aIsMain && bIsMain) return 1;
+                    if (aIsMain && bIsMain) {
+                      return mainCategories.indexOf(a.category) - mainCategories.indexOf(b.category);
+                    }
+                    return b.value - a.value;
+                  });
+                  
+                  return sortedCategories.map((cat) => (
                     <div key={cat.category} className="space-y-2" data-testid={`category-stat-${cat.category}`}>
                       <div className="flex justify-between items-center">
                         <span className="text-sm font-medium">{cat.category}</span>
@@ -207,7 +244,8 @@ export default function Dashboard() {
                         基准值: {cat.value.toFixed(1)}
                       </p>
                     </div>
-                  ))}
+                  ));
+                })()}
               </CardContent>
             </Card>
           )}

@@ -38,8 +38,10 @@ export interface IStorage {
     totalBaselineValue: number;
     entryCount: number;
     details: Array<{
+      exerciseId: string;
       exerciseName: string;
       exerciseUnit: string;
+      exerciseCategory: string | null;
       weightFactor: number;
       count: number;
       totalValue: number;
@@ -209,8 +211,10 @@ export class MemStorage implements IStorage {
       });
 
     const exerciseStats = new Map<string, {
+      exerciseId: string;
       exerciseName: string;
       exerciseUnit: string;
+      exerciseCategory: string | null;
       weightFactor: number;
       count: number;
       totalValue: number;
@@ -228,8 +232,10 @@ export class MemStorage implements IStorage {
         existing.baselineValue += entry.value * exercise.weightFactor;
       } else {
         exerciseStats.set(entry.exerciseId, {
+          exerciseId: entry.exerciseId,
           exerciseName: exercise.name,
           exerciseUnit: exercise.unit,
+          exerciseCategory: exercise.category,
           weightFactor: exercise.weightFactor,
           count: 1,
           totalValue: entry.value,
@@ -515,8 +521,10 @@ export class DbStorage implements IStorage {
 
     const result = await this.db
       .select({
+        exerciseId: exercises.id,
         exerciseName: exercises.name,
         exerciseUnit: exercises.unit,
+        exerciseCategory: exercises.category,
         weightFactor: exercises.weightFactor,
         count: sql<number>`cast(count(${workoutEntries.id}) as int)`,
         totalValue: sql<number>`cast(sum(${workoutEntries.value}) as float)`,
@@ -530,7 +538,7 @@ export class DbStorage implements IStorage {
           lte(workoutEntries.date, weekEnd)
         )
       )
-      .groupBy(exercises.id, exercises.name, exercises.unit, exercises.weightFactor);
+      .groupBy(exercises.id, exercises.name, exercises.unit, exercises.category, exercises.weightFactor);
 
     const details = result.sort((a, b) => b.baselineValue - a.baselineValue);
 
