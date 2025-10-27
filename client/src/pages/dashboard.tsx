@@ -49,6 +49,7 @@ type CategoryBreakdown = {
 
 export default function Dashboard() {
   const [showDetailsDialog, setShowDetailsDialog] = useState(false);
+  const [showWeekRecordsDialog, setShowWeekRecordsDialog] = useState(false);
 
   const { data: rankingData, isLoading: rankingLoading } = useQuery<RankingData>({
     queryKey: ["/api/stats/ranking"],
@@ -60,7 +61,7 @@ export default function Dashboard() {
 
   const { data: weekDetails } = useQuery<WeekDetails>({
     queryKey: ["/api/stats/current-week-details"],
-    enabled: showDetailsDialog,
+    enabled: showDetailsDialog || showWeekRecordsDialog,
   });
 
   const { data: categoryBreakdown, isLoading: categoryLoading } = useQuery<CategoryBreakdown[]>({
@@ -125,6 +126,8 @@ export default function Dashboard() {
           subtitle="运动记录次数"
           icon={Calendar}
           testId="card-entry-count"
+          clickable={true}
+          onClick={() => setShowWeekRecordsDialog(true)}
         />
         <StatsCard
           title="历史最佳"
@@ -372,6 +375,213 @@ export default function Dashboard() {
                   variant="outline" 
                   onClick={() => setShowDetailsDialog(false)}
                   data-testid="button-close-details"
+                >
+                  关闭
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-center justify-center h-48">
+              <p className="text-muted-foreground">加载中...</p>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showWeekRecordsDialog} onOpenChange={setShowWeekRecordsDialog}>
+        <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>本周运动记录细节</DialogTitle>
+            <DialogDescription>
+              查看本周的运动表现和分类占比
+            </DialogDescription>
+          </DialogHeader>
+          
+          {weekDetails && categoryBreakdown && rankingData ? (
+            <div className="space-y-6">
+              {/* 运动记录表格 */}
+              <div>
+                <h3 className="font-semibold mb-3">运动记录明细</h3>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>运动项目</TableHead>
+                      <TableHead className="text-right">记录数</TableHead>
+                      <TableHead className="text-right">总数值</TableHead>
+                      <TableHead className="text-right">基准值</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {weekDetails.details.map((detail, index) => (
+                      <TableRow key={index}>
+                        <TableCell className="font-medium">
+                          {detail.exerciseName}
+                          <span className="text-xs text-muted-foreground ml-2">
+                            ({detail.exerciseUnit})
+                          </span>
+                        </TableCell>
+                        <TableCell className="text-right">{detail.count}</TableCell>
+                        <TableCell className="text-right">{detail.totalValue.toFixed(1)}</TableCell>
+                        <TableCell className="text-right font-semibold">
+                          {detail.baselineValue.toFixed(1)}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                    <TableRow className="font-bold bg-muted/50">
+                      <TableCell>合计</TableCell>
+                      <TableCell className="text-right">{weekDetails.entryCount}</TableCell>
+                      <TableCell></TableCell>
+                      <TableCell className="text-right">{weekDetails.totalBaselineValue.toFixed(1)}</TableCell>
+                    </TableRow>
+                  </TableBody>
+                </Table>
+              </div>
+
+              {/* 分类占比 */}
+              <div>
+                <h3 className="font-semibold mb-3">分类占比</h3>
+                <div className="space-y-4">
+                  {(() => {
+                    const mainCategories = ["力量", "有氧", "活动量"];
+                    const categoryMap = new Map(categoryBreakdown.map(cat => [cat.category, cat]));
+                    
+                    return mainCategories.map((category) => {
+                      const data = categoryMap.get(category) || { category, value: 0, percentage: 0 };
+                      return (
+                        <div key={category} className="space-y-2">
+                          <div className="flex justify-between items-center">
+                            <span className="text-sm font-medium">{category}</span>
+                            <span className="text-sm font-bold">
+                              {data.percentage.toFixed(1)}%
+                            </span>
+                          </div>
+                          <div className="w-full bg-muted rounded-full h-3">
+                            <div
+                              className="bg-primary rounded-full h-3 transition-all"
+                              style={{ width: `${data.percentage}%` }}
+                            />
+                          </div>
+                          <p className="text-xs text-muted-foreground">
+                            基准值: {data.value.toFixed(1)}
+                          </p>
+                        </div>
+                      );
+                    });
+                  })()}
+                </div>
+              </div>
+
+              {/* 与生涯平均值对比 */}
+              <div>
+                <h3 className="font-semibold mb-3">与生涯平均值对比</h3>
+                <div className="space-y-4">
+                  {(() => {
+                    const currentTotal = rankingData.currentWeek.totalBaselineValue;
+                    const careerAvg = rankingData.averageWeeklyValue;
+                    const diff = currentTotal - careerAvg;
+                    const diffPercent = careerAvg > 0 ? (diff / careerAvg) * 100 : 0;
+                    
+                    const currentStrength = rankingData.currentWeek.strengthValue;
+                    const currentCardio = rankingData.currentWeek.cardioValue;
+                    const currentActivity = rankingData.currentWeek.activityValue;
+                    
+                    // 计算生涯平均值（从历史周数据估算）
+                    const avgStrength = trendData && trendData.length > 0 
+                      ? trendData.reduce((sum, w) => sum + w.strengthValue, 0) / trendData.length
+                      : 0;
+                    const avgCardio = trendData && trendData.length > 0
+                      ? trendData.reduce((sum, w) => sum + w.cardioValue, 0) / trendData.length
+                      : 0;
+                    const avgActivity = trendData && trendData.length > 0
+                      ? trendData.reduce((sum, w) => sum + w.activityValue, 0) / trendData.length
+                      : 0;
+                    
+                    const strengthDiff = avgStrength > 0 ? ((currentStrength - avgStrength) / avgStrength) * 100 : 0;
+                    const cardioDiff = avgCardio > 0 ? ((currentCardio - avgCardio) / avgCardio) * 100 : 0;
+                    const activityDiff = avgActivity > 0 ? ((currentActivity - avgActivity) / avgActivity) * 100 : 0;
+                    
+                    const renderProgressBar = (label: string, current: number, avg: number, diffPercent: number) => {
+                      const isPositive = diffPercent >= 0;
+                      const barPercent = Math.min(Math.abs(diffPercent), 100);
+                      
+                      return (
+                        <div className="space-y-2">
+                          <div className="flex justify-between items-center">
+                            <span className="text-sm font-medium">{label}</span>
+                            <div className="text-sm">
+                              <span className="font-bold">{current.toFixed(1)}</span>
+                              <span className="text-muted-foreground mx-1">/</span>
+                              <span className="text-muted-foreground">平均 {avg.toFixed(1)}</span>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <div className="flex-1 bg-muted rounded-full h-2 overflow-hidden">
+                              <div
+                                className={`h-2 transition-all ${isPositive ? 'bg-green-500' : 'bg-orange-500'}`}
+                                style={{ width: `${barPercent}%` }}
+                              />
+                            </div>
+                            <span className={`text-xs font-semibold min-w-[60px] text-right ${isPositive ? 'text-green-600 dark:text-green-400' : 'text-orange-600 dark:text-orange-400'}`}>
+                              {isPositive ? '+' : ''}{diffPercent.toFixed(1)}%
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    };
+                    
+                    return (
+                      <>
+                        {renderProgressBar("总基准值", currentTotal, careerAvg, diffPercent)}
+                        {renderProgressBar("力量", currentStrength, avgStrength, strengthDiff)}
+                        {renderProgressBar("有氧", currentCardio, avgCardio, cardioDiff)}
+                        {renderProgressBar("活动量", currentActivity, avgActivity, activityDiff)}
+                      </>
+                    );
+                  })()}
+                </div>
+              </div>
+
+              {/* 评语 */}
+              <div className="rounded-lg bg-primary/10 p-4 border border-primary/20">
+                <div className="flex items-start gap-3">
+                  <Activity className="h-5 w-5 text-primary mt-0.5" />
+                  <div>
+                    <h3 className="font-semibold text-primary mb-1">本周评价</h3>
+                    <p className="text-sm">
+                      {(() => {
+                        const currentTotal = rankingData.currentWeek.totalBaselineValue;
+                        const careerAvg = rankingData.averageWeeklyValue;
+                        const diff = currentTotal - careerAvg;
+                        const diffPercent = careerAvg > 0 ? (diff / careerAvg) * 100 : 0;
+                        const rank = rankingData.rank;
+                        const totalWeeks = rankingData.totalWeeks;
+                        
+                        if (rank === 1) {
+                          return "太棒了！本周创造了新的个人纪录，继续保持这种状态！";
+                        } else if (diffPercent >= 20) {
+                          return "表现出色！本周表现远超平均水平，再接再厉！";
+                        } else if (diffPercent >= 10) {
+                          return "做得很好！本周表现优于平均水平，继续努力！";
+                        } else if (diffPercent >= 0) {
+                          return "不错！本周表现达到平均水平，保持稳定！";
+                        } else if (diffPercent >= -10) {
+                          return "稍微低于平均水平，再加把劲，相信你能做得更好！";
+                        } else if (diffPercent >= -20) {
+                          return "本周表现略显不足，加油努力，下周一定能更进一步！";
+                        } else {
+                          return "本周状态欠佳，休息调整后再出发，期待你的回归！";
+                        }
+                      })()}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex justify-end">
+                <Button 
+                  variant="outline" 
+                  onClick={() => setShowWeekRecordsDialog(false)}
+                  data-testid="button-close-week-records"
                 >
                   关闭
                 </Button>
