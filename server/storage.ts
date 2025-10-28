@@ -69,6 +69,27 @@ export interface IStorage {
       reason: string;
     }>;
   }>;
+  getWeekDetails(weekStart: string): Promise<{
+    weekStart: string;
+    weekEnd: string;
+    year: number;
+    weekNumber: number;
+    totalBaselineValue: number;
+    entryCount: number;
+    details: Array<{
+      exerciseId: string;
+      exerciseName: string;
+      exerciseUnit: string;
+      exerciseCategory: string | null;
+      weightFactor: number;
+      count: number;
+      totalValue: number;
+      baselineValue: number;
+      weeklyAverage: number | null;
+      difference: number | null;
+      differencePercentage: number | null;
+    }>;
+  }>;
 }
 
 export class MemStorage implements IStorage {
@@ -519,6 +540,86 @@ export class MemStorage implements IStorage {
     };
   }
 
+  async getWeekDetails(weekStartStr: string) {
+    const weekStart = new Date(weekStartStr);
+    const weekEnd = this.getWeekEnd(weekStart);
+
+    const entries = Array.from(this.workoutEntries.values())
+      .filter(entry => {
+        const entryDate = new Date(entry.date);
+        return entryDate >= weekStart && entryDate <= weekEnd;
+      });
+
+    const exerciseStats = new Map<string, {
+      exerciseId: string;
+      exerciseName: string;
+      exerciseUnit: string;
+      exerciseCategory: string | null;
+      weightFactor: number;
+      count: number;
+      totalValue: number;
+      baselineValue: number;
+    }>();
+
+    for (const entry of entries) {
+      const exercise = this.exercises.get(entry.exerciseId);
+      if (!exercise) continue;
+
+      const existing = exerciseStats.get(entry.exerciseId);
+      if (existing) {
+        existing.count++;
+        existing.totalValue += entry.value;
+        existing.baselineValue += entry.value * exercise.weightFactor;
+      } else {
+        exerciseStats.set(entry.exerciseId, {
+          exerciseId: entry.exerciseId,
+          exerciseName: exercise.name,
+          exerciseUnit: exercise.unit,
+          exerciseCategory: exercise.category,
+          weightFactor: exercise.weightFactor,
+          count: 1,
+          totalValue: entry.value,
+          baselineValue: entry.value * exercise.weightFactor,
+        });
+      }
+    }
+
+    const detailsWithAverage = [];
+    for (const stat of Array.from(exerciseStats.values())) {
+      const weeklyAverage = await this.getExerciseWeeklyAverage(stat.exerciseId);
+      
+      let difference = null;
+      let differencePercentage = null;
+      
+      if (weeklyAverage !== null && weeklyAverage > 0) {
+        difference = stat.totalValue - weeklyAverage;
+        differencePercentage = (difference / weeklyAverage) * 100;
+      }
+
+      detailsWithAverage.push({
+        ...stat,
+        weeklyAverage,
+        difference,
+        differencePercentage,
+      });
+    }
+
+    const details = detailsWithAverage.sort((a, b) => b.baselineValue - a.baselineValue);
+    const totalBaselineValue = details.reduce((sum, d) => sum + d.baselineValue, 0);
+    const year = this.getISOYear(weekStart);
+    const weekNumber = this.getWeekNumber(weekStart);
+
+    return {
+      weekStart: weekStart.toISOString(),
+      weekEnd: weekEnd.toISOString(),
+      year,
+      weekNumber,
+      totalBaselineValue,
+      entryCount: entries.length,
+      details,
+    };
+  }
+
   // 辅助方法：获取周一
   private getWeekStart(date: Date): Date {
     const result = new Date(date);
@@ -536,6 +637,24 @@ export class MemStorage implements IStorage {
     result.setDate(result.getDate() + 6);
     result.setHours(23, 59, 59, 999);
     return result;
+  }
+
+  // 辅助方法：计算ISO周数
+  private getWeekNumber(date: Date): number {
+    const tempDate = new Date(date.getTime());
+    tempDate.setHours(0, 0, 0, 0);
+    tempDate.setDate(tempDate.getDate() + 3 - (tempDate.getDay() + 6) % 7);
+    const week1 = new Date(tempDate.getFullYear(), 0, 4);
+    return 1 + Math.round(((tempDate.getTime() - week1.getTime()) / 86400000 - 3 + (week1.getDay() + 6) % 7) / 7);
+  }
+
+  // 辅助方法：计算ISO年份
+  private getISOYear(date: Date): number {
+    const tempDate = new Date(date.getTime());
+    tempDate.setHours(0, 0, 0, 0);
+    // 调整到周四（周一+3天）
+    tempDate.setDate(tempDate.getDate() + 3 - (tempDate.getDay() + 6) % 7);
+    return tempDate.getFullYear();
   }
 }
 
@@ -1010,6 +1129,81 @@ export class DbStorage implements IStorage {
     };
   }
 
+  async getWeekDetails(weekStartStr: string) {
+    const weekStart = new Date(weekStartStr);
+    const weekEnd = this.getWeekEnd(weekStart);
+
+    const result = await this.db
+      .select({
+        exerciseId: exercises.id,
+        exerciseName: exercises.name,
+        exerciseUnit: exercises.unit,
+        exerciseCategory: exercises.category,
+        weightFactor: exercises.weightFactor,
+        count: sql<number>`cast(count(${workoutEntries.id}) as int)`,
+        totalValue: sql<number>`cast(sum(${workoutEntries.value}) as float)`,
+        baselineValue: sql<number>`cast(sum(${workoutEntries.value} * ${exercises.weightFactor}) as float)`,
+      })
+      .from(workoutEntries)
+      .innerJoin(exercises, eq(workoutEntries.exerciseId, exercises.id))
+      .where(
+        and(
+          gte(workoutEntries.date, weekStart),
+          lte(workoutEntries.date, weekEnd)
+        )
+      )
+      .groupBy(exercises.id, exercises.name, exercises.unit, exercises.category, exercises.weightFactor);
+
+    const detailsWithAverage = [];
+    for (const stat of result) {
+      const weeklyAverage = await this.getExerciseWeeklyAverage(stat.exerciseId);
+      
+      let difference = null;
+      let differencePercentage = null;
+      
+      if (weeklyAverage !== null && weeklyAverage > 0) {
+        difference = stat.totalValue - weeklyAverage;
+        differencePercentage = (difference / weeklyAverage) * 100;
+      }
+
+      detailsWithAverage.push({
+        ...stat,
+        weeklyAverage,
+        difference,
+        differencePercentage,
+      });
+    }
+
+    const details = detailsWithAverage.sort((a, b) => b.baselineValue - a.baselineValue);
+    const totalBaselineValue = details.reduce((sum, d) => sum + d.baselineValue, 0);
+
+    const entryCountResult = await this.db
+      .select({
+        count: sql<number>`cast(count(*) as int)`,
+      })
+      .from(workoutEntries)
+      .where(
+        and(
+          gte(workoutEntries.date, weekStart),
+          lte(workoutEntries.date, weekEnd)
+        )
+      );
+
+    const entryCount = entryCountResult[0]?.count || 0;
+    const year = this.getISOYear(weekStart);
+    const weekNumber = this.getWeekNumber(weekStart);
+
+    return {
+      weekStart: weekStart.toISOString(),
+      weekEnd: weekEnd.toISOString(),
+      year,
+      weekNumber,
+      totalBaselineValue,
+      entryCount,
+      details,
+    };
+  }
+
   // 辅助方法：获取周一
   private getWeekStart(date: Date): Date {
     const result = new Date(date);
@@ -1027,6 +1221,24 @@ export class DbStorage implements IStorage {
     result.setDate(result.getDate() + 6);
     result.setHours(23, 59, 59, 999);
     return result;
+  }
+
+  // 辅助方法：计算ISO周数
+  private getWeekNumber(date: Date): number {
+    const tempDate = new Date(date.getTime());
+    tempDate.setHours(0, 0, 0, 0);
+    tempDate.setDate(tempDate.getDate() + 3 - (tempDate.getDay() + 6) % 7);
+    const week1 = new Date(tempDate.getFullYear(), 0, 4);
+    return 1 + Math.round(((tempDate.getTime() - week1.getTime()) / 86400000 - 3 + (week1.getDay() + 6) % 7) / 7);
+  }
+
+  // 辅助方法：计算ISO年份
+  private getISOYear(date: Date): number {
+    const tempDate = new Date(date.getTime());
+    tempDate.setHours(0, 0, 0, 0);
+    // 调整到周四（周一+3天）
+    tempDate.setDate(tempDate.getDate() + 3 - (tempDate.getDay() + 6) % 7);
+    return tempDate.getFullYear();
   }
 }
 
