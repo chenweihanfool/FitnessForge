@@ -195,6 +195,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // 获取本周各运动类型进度和推荐
+  app.get("/api/stats/weekly-progress", async (req, res) => {
+    try {
+      const progress = await storage.getWeeklyProgress();
+      res.json(progress);
+    } catch (error) {
+      res.status(500).json({ error: "获取本周进度失败" });
+    }
+  });
+
   // ==================== CSV 导入导出 API ====================
 
   // CSV 导入

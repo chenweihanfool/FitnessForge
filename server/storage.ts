@@ -49,6 +49,26 @@ export interface IStorage {
     }>;
   }>;
   getExerciseWeeklyAverage(exerciseId: string): Promise<number | null>;
+  getWeeklyProgress(): Promise<{
+    weekStart: string;
+    weekEnd: string;
+    exercises: Array<{
+      exerciseId: string;
+      exerciseName: string;
+      exerciseUnit: string;
+      exerciseCategory: string | null;
+      currentWeekValue: number;
+      weeklyAverage: number | null;
+      difference: number | null;
+      differencePercentage: number | null;
+    }>;
+    recommendations: Array<{
+      exerciseId: string;
+      exerciseName: string;
+      exerciseUnit: string;
+      reason: string;
+    }>;
+  }>;
 }
 
 export class MemStorage implements IStorage {
@@ -401,6 +421,102 @@ export class MemStorage implements IStorage {
     const sumOfWeeklyTotals = Array.from(weeklyTotals.values()).reduce((sum, val) => sum + val, 0);
     
     return sumOfWeeklyTotals / totalWeeks;
+  }
+
+  async getWeeklyProgress() {
+    const allExercises = await this.getExercises();
+    const weekDetails = await this.getCurrentWeekDetails();
+    
+    const exercisesProgress = [];
+    
+    for (const exercise of allExercises) {
+      const weekDetail = weekDetails.details.find(d => d.exerciseId === exercise.id);
+      const currentWeekValue = weekDetail?.totalValue || 0;
+      const weeklyAverage = await this.getExerciseWeeklyAverage(exercise.id);
+      
+      let difference = null;
+      let differencePercentage = null;
+      
+      if (weeklyAverage !== null && weeklyAverage > 0) {
+        difference = currentWeekValue - weeklyAverage;
+        differencePercentage = (difference / weeklyAverage) * 100;
+      }
+      
+      exercisesProgress.push({
+        exerciseId: exercise.id,
+        exerciseName: exercise.name,
+        exerciseUnit: exercise.unit,
+        exerciseCategory: exercise.category,
+        currentWeekValue,
+        weeklyAverage,
+        difference,
+        differencePercentage,
+      });
+    }
+    
+    // 推荐逻辑：
+    // 1. 优先推荐本周还没有做过的运动
+    // 2. 其次推荐本周累积值距离历史平均值差距最大的（负方向）
+    const recommendations = [];
+    
+    // 找出本周还没做过的运动
+    const notDoneYet = exercisesProgress.filter(e => e.currentWeekValue === 0 && e.weeklyAverage !== null && e.weeklyAverage > 0);
+    if (notDoneYet.length > 0) {
+      // 按历史周平均值排序，推荐平均值最高的
+      notDoneYet.sort((a, b) => (b.weeklyAverage || 0) - (a.weeklyAverage || 0));
+      recommendations.push({
+        exerciseId: notDoneYet[0].exerciseId,
+        exerciseName: notDoneYet[0].exerciseName,
+        exerciseUnit: notDoneYet[0].exerciseUnit,
+        reason: "本周尚未训练，建议开始",
+      });
+    }
+    
+    // 找出差距最大的（负方向，即做得比平均少很多的）
+    const belowAverage = exercisesProgress.filter(e => 
+      e.differencePercentage !== null && 
+      e.differencePercentage < -10 && 
+      e.currentWeekValue > 0
+    );
+    if (belowAverage.length > 0) {
+      // 按差距百分比排序，差距最大的排前面
+      belowAverage.sort((a, b) => (a.differencePercentage || 0) - (b.differencePercentage || 0));
+      
+      // 避免重复推荐
+      if (!recommendations.find(r => r.exerciseId === belowAverage[0].exerciseId)) {
+        recommendations.push({
+          exerciseId: belowAverage[0].exerciseId,
+          exerciseName: belowAverage[0].exerciseName,
+          exerciseUnit: belowAverage[0].exerciseUnit,
+          reason: `低于平均值${Math.abs(belowAverage[0].differencePercentage!).toFixed(0)}%，需加强`,
+        });
+      }
+    }
+    
+    // 如果以上都没有，找出做得比平均少的
+    if (recommendations.length === 0) {
+      const slightlyBelow = exercisesProgress.filter(e => 
+        e.differencePercentage !== null && 
+        e.differencePercentage < 0 &&
+        e.currentWeekValue > 0
+      );
+      if (slightlyBelow.length > 0) {
+        slightlyBelow.sort((a, b) => (a.differencePercentage || 0) - (b.differencePercentage || 0));
+        recommendations.push({
+          exerciseId: slightlyBelow[0].exerciseId,
+          exerciseName: slightlyBelow[0].exerciseName,
+          exerciseUnit: slightlyBelow[0].exerciseUnit,
+          reason: "可以加强训练",
+        });
+      }
+    }
+    
+    return {
+      weekStart: weekDetails.weekStart,
+      weekEnd: weekDetails.weekEnd,
+      exercises: exercisesProgress,
+      recommendations,
+    };
   }
 
   // 辅助方法：获取周一
@@ -796,6 +912,102 @@ export class DbStorage implements IStorage {
     const sumOfWeeklyTotals = Array.from(weeklyTotals.values()).reduce((sum, val) => sum + val, 0);
     
     return sumOfWeeklyTotals / totalWeeks;
+  }
+
+  async getWeeklyProgress() {
+    const allExercises = await this.getExercises();
+    const weekDetails = await this.getCurrentWeekDetails();
+    
+    const exercisesProgress = [];
+    
+    for (const exercise of allExercises) {
+      const weekDetail = weekDetails.details.find(d => d.exerciseId === exercise.id);
+      const currentWeekValue = weekDetail?.totalValue || 0;
+      const weeklyAverage = await this.getExerciseWeeklyAverage(exercise.id);
+      
+      let difference = null;
+      let differencePercentage = null;
+      
+      if (weeklyAverage !== null && weeklyAverage > 0) {
+        difference = currentWeekValue - weeklyAverage;
+        differencePercentage = (difference / weeklyAverage) * 100;
+      }
+      
+      exercisesProgress.push({
+        exerciseId: exercise.id,
+        exerciseName: exercise.name,
+        exerciseUnit: exercise.unit,
+        exerciseCategory: exercise.category,
+        currentWeekValue,
+        weeklyAverage,
+        difference,
+        differencePercentage,
+      });
+    }
+    
+    // 推荐逻辑：
+    // 1. 优先推荐本周还没有做过的运动
+    // 2. 其次推荐本周累积值距离历史平均值差距最大的（负方向）
+    const recommendations = [];
+    
+    // 找出本周还没做过的运动
+    const notDoneYet = exercisesProgress.filter(e => e.currentWeekValue === 0 && e.weeklyAverage !== null && e.weeklyAverage > 0);
+    if (notDoneYet.length > 0) {
+      // 按历史周平均值排序，推荐平均值最高的
+      notDoneYet.sort((a, b) => (b.weeklyAverage || 0) - (a.weeklyAverage || 0));
+      recommendations.push({
+        exerciseId: notDoneYet[0].exerciseId,
+        exerciseName: notDoneYet[0].exerciseName,
+        exerciseUnit: notDoneYet[0].exerciseUnit,
+        reason: "本周尚未训练，建议开始",
+      });
+    }
+    
+    // 找出差距最大的（负方向，即做得比平均少很多的）
+    const belowAverage = exercisesProgress.filter(e => 
+      e.differencePercentage !== null && 
+      e.differencePercentage < -10 && 
+      e.currentWeekValue > 0
+    );
+    if (belowAverage.length > 0) {
+      // 按差距百分比排序，差距最大的排前面
+      belowAverage.sort((a, b) => (a.differencePercentage || 0) - (b.differencePercentage || 0));
+      
+      // 避免重复推荐
+      if (!recommendations.find(r => r.exerciseId === belowAverage[0].exerciseId)) {
+        recommendations.push({
+          exerciseId: belowAverage[0].exerciseId,
+          exerciseName: belowAverage[0].exerciseName,
+          exerciseUnit: belowAverage[0].exerciseUnit,
+          reason: `低于平均值${Math.abs(belowAverage[0].differencePercentage!).toFixed(0)}%，需加强`,
+        });
+      }
+    }
+    
+    // 如果以上都没有，找出做得比平均少的
+    if (recommendations.length === 0) {
+      const slightlyBelow = exercisesProgress.filter(e => 
+        e.differencePercentage !== null && 
+        e.differencePercentage < 0 &&
+        e.currentWeekValue > 0
+      );
+      if (slightlyBelow.length > 0) {
+        slightlyBelow.sort((a, b) => (a.differencePercentage || 0) - (b.differencePercentage || 0));
+        recommendations.push({
+          exerciseId: slightlyBelow[0].exerciseId,
+          exerciseName: slightlyBelow[0].exerciseName,
+          exerciseUnit: slightlyBelow[0].exerciseUnit,
+          reason: "可以加强训练",
+        });
+      }
+    }
+    
+    return {
+      weekStart: weekDetails.weekStart,
+      weekEnd: weekDetails.weekEnd,
+      exercises: exercisesProgress,
+      recommendations,
+    };
   }
 
   // 辅助方法：获取周一
