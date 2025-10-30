@@ -141,7 +141,7 @@ export default function Entries() {
     resolver: zodResolver(insertWorkoutEntrySchema),
     defaultValues: {
       exerciseId: "",
-      value: 0,
+      value: "" as any,
       date: getTaipeiTime(),
       notes: "",
     },

@@ -478,10 +478,16 @@ export class MemStorage implements IStorage {
     // 推荐逻辑：
     // 1. 优先推荐本周还没有做过的运动
     // 2. 其次推荐本周累积值距离历史平均值差距最大的（负方向）
+    // 注意：排除"每周平均步数"，因为它是特殊的统计项目
     const recommendations = [];
     
-    // 找出本周还没做过的运动
-    const notDoneYet = exercisesProgress.filter(e => e.currentWeekValue === 0 && e.weeklyAverage !== null && e.weeklyAverage > 0);
+    // 找出本周还没做过的运动（排除"每周平均步数"）
+    const notDoneYet = exercisesProgress.filter(e => 
+      e.currentWeekValue === 0 && 
+      e.weeklyAverage !== null && 
+      e.weeklyAverage > 0 &&
+      e.exerciseName !== '每周平均步数'
+    );
     if (notDoneYet.length > 0) {
       // 按历史周平均值排序，推荐平均值最高的
       notDoneYet.sort((a, b) => (b.weeklyAverage || 0) - (a.weeklyAverage || 0));
@@ -493,11 +499,12 @@ export class MemStorage implements IStorage {
       });
     }
     
-    // 找出差距最大的（负方向，即做得比平均少很多的）
+    // 找出差距最大的（负方向，即做得比平均少很多的）（排除"每周平均步数"）
     const belowAverage = exercisesProgress.filter(e => 
       e.differencePercentage !== null && 
       e.differencePercentage < -10 && 
-      e.currentWeekValue > 0
+      e.currentWeekValue > 0 &&
+      e.exerciseName !== '每周平均步数'
     );
     if (belowAverage.length > 0) {
       // 按差距百分比排序，差距最大的排前面
@@ -514,12 +521,13 @@ export class MemStorage implements IStorage {
       }
     }
     
-    // 如果以上都没有，找出做得比平均少的
+    // 如果以上都没有，找出做得比平均少的（排除"每周平均步数"）
     if (recommendations.length === 0) {
       const slightlyBelow = exercisesProgress.filter(e => 
         e.differencePercentage !== null && 
         e.differencePercentage < 0 &&
-        e.currentWeekValue > 0
+        e.currentWeekValue > 0 &&
+        e.exerciseName !== '每周平均步数'
       );
       if (slightlyBelow.length > 0) {
         slightlyBelow.sort((a, b) => (a.differencePercentage || 0) - (b.differencePercentage || 0));
@@ -1067,10 +1075,16 @@ export class DbStorage implements IStorage {
     // 推荐逻辑：
     // 1. 优先推荐本周还没有做过的运动
     // 2. 其次推荐本周累积值距离历史平均值差距最大的（负方向）
+    // 注意：排除"每周平均步数"，因为它是特殊的统计项目
     const recommendations = [];
     
-    // 找出本周还没做过的运动
-    const notDoneYet = exercisesProgress.filter(e => e.currentWeekValue === 0 && e.weeklyAverage !== null && e.weeklyAverage > 0);
+    // 找出本周还没做过的运动（排除"每周平均步数"）
+    const notDoneYet = exercisesProgress.filter(e => 
+      e.currentWeekValue === 0 && 
+      e.weeklyAverage !== null && 
+      e.weeklyAverage > 0 &&
+      e.exerciseName !== '每周平均步数'
+    );
     if (notDoneYet.length > 0) {
       // 按历史周平均值排序，推荐平均值最高的
       notDoneYet.sort((a, b) => (b.weeklyAverage || 0) - (a.weeklyAverage || 0));
@@ -1082,11 +1096,12 @@ export class DbStorage implements IStorage {
       });
     }
     
-    // 找出差距最大的（负方向，即做得比平均少很多的）
+    // 找出差距最大的（负方向，即做得比平均少很多的）（排除"每周平均步数"）
     const belowAverage = exercisesProgress.filter(e => 
       e.differencePercentage !== null && 
       e.differencePercentage < -10 && 
-      e.currentWeekValue > 0
+      e.currentWeekValue > 0 &&
+      e.exerciseName !== '每周平均步数'
     );
     if (belowAverage.length > 0) {
       // 按差距百分比排序，差距最大的排前面
@@ -1103,12 +1118,13 @@ export class DbStorage implements IStorage {
       }
     }
     
-    // 如果以上都没有，找出做得比平均少的
+    // 如果以上都没有，找出做得比平均少的（排除"每周平均步数"）
     if (recommendations.length === 0) {
       const slightlyBelow = exercisesProgress.filter(e => 
         e.differencePercentage !== null && 
         e.differencePercentage < 0 &&
-        e.currentWeekValue > 0
+        e.currentWeekValue > 0 &&
+        e.exerciseName !== '每周平均步数'
       );
       if (slightlyBelow.length > 0) {
         slightlyBelow.sort((a, b) => (a.differencePercentage || 0) - (b.differencePercentage || 0));
