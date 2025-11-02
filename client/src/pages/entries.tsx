@@ -29,7 +29,7 @@ import {
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Plus, Activity, Trash2, Calendar, TrendingUp, TrendingDown, Target } from "lucide-react";
+import { Plus, Activity, Trash2, Calendar, TrendingUp, TrendingDown, Target, Edit } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -55,7 +55,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { getTaipeiTime } from "@/lib/timezone";
+import { getTaipeiTime, toTaipeiTime } from "@/lib/timezone";
 import {
   Collapsible,
   CollapsibleContent,
@@ -85,6 +85,8 @@ interface WeeklyProgress {
 
 export default function Entries() {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [isEditOpen, setIsEditOpen] = useState(false);
+  const [editingEntry, setEditingEntry] = useState<WorkoutEntryWithExercise | null>(null);
   const [deletingEntry, setDeletingEntry] = useState<WorkoutEntryWithExercise | null>(null);
   const [showWeeklyProgress, setShowWeeklyProgress] = useState(true);
   const { toast } = useToast();
@@ -137,7 +139,37 @@ export default function Entries() {
     },
   });
 
+  const updateMutation = useMutation({
+    mutationFn: (data: { id: string; entry: InsertWorkoutEntry }) => 
+      apiRequest("PATCH", `/api/entries/${data.id}`, data.entry),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/entries"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/stats/ranking"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/stats/trends"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/stats/weekly-progress"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/stats/current-week-details"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/stats/category-breakdown"] });
+      setIsEditOpen(false);
+      setEditingEntry(null);
+      editForm.reset();
+      toast({
+        title: "成功",
+        description: "运动记录已更新",
+      });
+    },
+  });
+
   const form = useForm<InsertWorkoutEntry>({
+    resolver: zodResolver(insertWorkoutEntrySchema),
+    defaultValues: {
+      exerciseId: "",
+      value: "" as any,
+      date: getTaipeiTime(),
+      notes: "",
+    },
+  });
+
+  const editForm = useForm<InsertWorkoutEntry>({
     resolver: zodResolver(insertWorkoutEntrySchema),
     defaultValues: {
       exerciseId: "",
@@ -178,6 +210,40 @@ export default function Entries() {
     }
     
     createMutation.mutate(submissionData);
+  };
+
+  const onEditSubmit = (data: InsertWorkoutEntry) => {
+    if (!editingEntry) return;
+    
+    const submissionData = { ...data };
+    
+    // 检查是否是"每周平均步数"，如果是则自动乘以7
+    const selectedExercise = exercises?.find((e) => e.id === data.exerciseId);
+    if (selectedExercise?.name === '每周平均步数') {
+      submissionData.value = data.value * 7;
+    }
+    
+    if (submissionData.date) {
+      const dateStr = submissionData.date + ':00.000Z';
+      const taipeiAsUtc = new Date(dateStr);
+      const realUtc = new Date(taipeiAsUtc.getTime() - (8 * 60 * 60 * 1000));
+      submissionData.date = realUtc.toISOString();
+    }
+    
+    updateMutation.mutate({ id: editingEntry.id, entry: submissionData });
+  };
+
+  const handleEditEntry = (entry: WorkoutEntryWithExercise) => {
+    setEditingEntry(entry);
+    // 预填充表单数据
+    const taipeiDate = toTaipeiTime(entry.date);
+    editForm.reset({
+      exerciseId: entry.exerciseId,
+      value: entry.exercise.name === '每周平均步数' ? entry.value / 7 : entry.value,
+      date: taipeiDate,
+      notes: entry.notes || "",
+    });
+    setIsEditOpen(true);
   };
 
   const calculateBaselineValue = (value: number, exerciseId: string) => {
@@ -525,6 +591,14 @@ export default function Entries() {
                         <Button
                           variant="ghost"
                           size="icon"
+                          onClick={() => handleEditEntry(entry)}
+                          data-testid={`button-edit-entry-${entry.id}`}
+                        >
+                          <Edit className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
                           onClick={() => setDeletingEntry(entry)}
                           data-testid={`button-delete-entry-${entry.id}`}
                         >
@@ -548,6 +622,145 @@ export default function Entries() {
           </CardContent>
         </Card>
       )}
+
+      <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>编辑运动记录</DialogTitle>
+            <DialogDescription>修改运动数据和相关信息</DialogDescription>
+          </DialogHeader>
+
+          <Form {...editForm}>
+            <form onSubmit={editForm.handleSubmit(onEditSubmit)} className="space-y-4">
+              <FormField
+                control={editForm.control}
+                name="exerciseId"
+                render={({ field }) => {
+                  const selectedExercise = exercises?.find((e) => e.id === field.value);
+                  const isAverageSteps = selectedExercise?.name === '每周平均步数';
+                  
+                  return (
+                    <FormItem>
+                      <FormLabel>运动类型</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <FormControl>
+                          <SelectTrigger data-testid="select-exercise">
+                            <SelectValue placeholder="选择运动类型" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {exercises?.map((exercise) => (
+                            <SelectItem key={exercise.id} value={exercise.id} data-testid={`select-option-${exercise.id}`}>
+                              {exercise.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  );
+                }}
+              />
+              <FormField
+                control={editForm.control}
+                name="value"
+                render={({ field }) => {
+                  const selectedExercise = exercises?.find((e) => e.id === editForm.watch("exerciseId"));
+                  const isAverageSteps = selectedExercise?.name === '每周平均步数';
+                  
+                  return (
+                    <FormItem>
+                      <FormLabel>
+                        {isAverageSteps ? '每日平均步数' : '数据值'}
+                      </FormLabel>
+                      <FormControl>
+                        <Input
+                          type="number"
+                          step="0.1"
+                          placeholder={isAverageSteps ? "输入每日平均步数" : "输入数据值"}
+                          {...field}
+                          onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
+                          data-testid="input-entry-value"
+                        />
+                      </FormControl>
+                      {field.value > 0 && editForm.watch("exerciseId") && (
+                        <FormDescription>
+                          {isAverageSteps ? (
+                            <>
+                              每周总步数: {(field.value * 7).toFixed(0)} 步 | 
+                              基准值: {calculateBaselineValue(field.value * 7, editForm.watch("exerciseId")).toFixed(2)}
+                            </>
+                          ) : (
+                            <>
+                              基准值: {calculateBaselineValue(field.value, editForm.watch("exerciseId")).toFixed(2)}
+                            </>
+                          )}
+                        </FormDescription>
+                      )}
+                      {isAverageSteps && (
+                        <FormDescription className="text-xs text-muted-foreground">
+                          系统将自动乘以7计算每周总步数
+                        </FormDescription>
+                      )}
+                      <FormMessage />
+                    </FormItem>
+                  );
+                }}
+              />
+              <FormField
+                control={editForm.control}
+                name="date"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>日期时间（台北时间 UTC+8）</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="datetime-local"
+                        {...field}
+                        data-testid="input-entry-date"
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      请输入台北时间，系统将自动转换为UTC存储
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={editForm.control}
+                name="notes"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>备注（可选）</FormLabel>
+                    <FormControl>
+                      <Textarea
+                        placeholder="记录感受、进展等..."
+                        {...field}
+                        data-testid="input-entry-notes"
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <div className="flex justify-end gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setIsEditOpen(false)}
+                  data-testid="button-cancel-entry"
+                >
+                  取消
+                </Button>
+                <Button type="submit" disabled={updateMutation.isPending} data-testid="button-submit-entry">
+                  {updateMutation.isPending ? "保存中..." : "保存修改"}
+                </Button>
+              </div>
+            </form>
+          </Form>
+        </DialogContent>
+      </Dialog>
 
       <AlertDialog open={!!deletingEntry} onOpenChange={(open) => !open && setDeletingEntry(null)}>
         <AlertDialogContent>
