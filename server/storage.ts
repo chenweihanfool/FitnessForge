@@ -26,6 +26,7 @@ export interface IStorage {
   getWorkoutEntries(): Promise<WorkoutEntryWithExercise[]>;
   getWorkoutEntry(id: string): Promise<WorkoutEntryWithExercise | undefined>;
   createWorkoutEntry(entry: InsertWorkoutEntry): Promise<WorkoutEntry>;
+  updateWorkoutEntry(id: string, entry: InsertWorkoutEntry): Promise<WorkoutEntry | undefined>;
   deleteWorkoutEntry(id: string): Promise<boolean>;
 
   // 统计和分析
@@ -178,6 +179,24 @@ export class MemStorage implements IStorage {
 
     this.workoutEntries.set(id, entry);
     return entry;
+  }
+
+  async updateWorkoutEntry(id: string, insertEntry: InsertWorkoutEntry): Promise<WorkoutEntry | undefined> {
+    const existing = this.workoutEntries.get(id);
+    if (!existing) return undefined;
+
+    const date = insertEntry.date ? new Date(insertEntry.date) : existing.date;
+    
+    const updated: WorkoutEntry = {
+      id,
+      exerciseId: insertEntry.exerciseId,
+      value: insertEntry.value,
+      date,
+      notes: insertEntry.notes || null,
+    };
+
+    this.workoutEntries.set(id, updated);
+    return updated;
   }
 
   async deleteWorkoutEntry(id: string): Promise<boolean> {
@@ -765,6 +784,23 @@ export class DbStorage implements IStorage {
       .returning();
 
     return result[0];
+  }
+
+  async updateWorkoutEntry(id: string, insertEntry: InsertWorkoutEntry): Promise<WorkoutEntry | undefined> {
+    const date = insertEntry.date ? new Date(insertEntry.date) : undefined;
+    
+    const result = await this.db
+      .update(workoutEntries)
+      .set({
+        exerciseId: insertEntry.exerciseId,
+        value: insertEntry.value,
+        ...(date && { date }),
+        notes: insertEntry.notes ?? null,
+      })
+      .where(eq(workoutEntries.id, id))
+      .returning();
+
+    return result.length > 0 ? result[0] : undefined;
   }
 
   async deleteWorkoutEntry(id: string): Promise<boolean> {

@@ -109,6 +109,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // 更新运动记录
+  app.patch("/api/entries/:id", async (req, res) => {
+    try {
+      const validatedData = insertWorkoutEntrySchema.parse(req.body);
+      const entry = await storage.updateWorkoutEntry(req.params.id, validatedData);
+      if (!entry) {
+        return res.status(404).json({ error: "记录不存在" });
+      }
+      res.json(entry);
+    } catch (error) {
+      console.error("更新记录失败:", error);
+      res.status(400).json({ error: "更新记录失败，请检查输入数据", details: error instanceof Error ? error.message : String(error) });
+    }
+  });
+
   // 删除运动记录
   app.delete("/api/entries/:id", async (req, res) => {
     try {
