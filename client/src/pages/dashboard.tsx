@@ -1,10 +1,12 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { StatsCard } from "@/components/stats-card";
-import { RankingCard } from "@/components/ranking-card";
+import { RankingMetricCard } from "@/components/ranking-metric-card";
+import { RankingDetailDialog } from "@/components/ranking-detail-dialog";
 import { TrendChart } from "@/components/trend-chart";
-import { Activity, TrendingUp, Calendar, Award, X, TrendingDown } from "lucide-react";
-import { RankingData, WeeklyStats } from "@shared/schema";
+import { Activity, TrendingUp, Calendar, Award, X, TrendingDown, Dumbbell, Heart, Footprints } from "lucide-react";
+import { RankingData, WeeklyStats, RankingDetailResponse } from "@shared/schema";
+import { queryClient } from "@/lib/queryClient";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -73,6 +75,7 @@ export default function Dashboard() {
   const [showDetailsDialog, setShowDetailsDialog] = useState(false);
   const [showWeekRecordsDialog, setShowWeekRecordsDialog] = useState(false);
   const [showBestWeekDialog, setShowBestWeekDialog] = useState(false);
+  const [rankingDetailMetric, setRankingDetailMetric] = useState<'total' | 'strength' | 'cardio' | 'activity' | null>(null);
 
   const { data: rankingData, isLoading: rankingLoading } = useQuery<RankingData>({
     queryKey: ["/api/stats/ranking"],
@@ -127,6 +130,17 @@ export default function Dashboard() {
     ? ((currentWeekValue - previousWeekValue) / previousWeekValue) * 100
     : 0;
 
+  const prefetchRankingDetail = (metric: 'total' | 'strength' | 'cardio' | 'activity') => {
+    queryClient.prefetchQuery({
+      queryKey: ['/api/stats/ranking-detail', metric],
+      queryFn: async () => {
+        const response = await fetch(`/api/stats/ranking-detail?metric=${metric}`);
+        if (!response.ok) throw new Error('Failed to fetch ranking detail');
+        return response.json() as Promise<RankingDetailResponse>;
+      },
+    });
+  };
+
   return (
     <div className="space-y-6" data-testid="page-dashboard">
       <div>
@@ -166,61 +180,61 @@ export default function Dashboard() {
           clickable={!!rankingData?.bestWeek}
           onClick={() => rankingData?.bestWeek && setShowBestWeekDialog(true)}
         />
-        <StatsCard
-          title="总分排名"
-          value={rankingData ? `${rankingData.rank}/${rankingData.totalWeeks}` : "暂无"}
-          subtitle={
-            rankingData && rankingData.rank > 1
-              ? `距第一名差距: ${(rankingData.topWeekTotalValue - rankingData.currentWeek.totalBaselineValue).toFixed(1)}`
-              : rankingData && rankingData.rank === 1
-              ? "当前第一名"
-              : "历史周排名"
-          }
-          icon={Award}
-          testId="card-rank"
-        />
       </div>
 
-      <div className="grid gap-4 md:grid-cols-3">
-        <StatsCard
-          title="力量排名"
-          value={rankingData && rankingData.totalWeeks > 0 ? `${rankingData.strengthRank}/${rankingData.totalWeeks}` : "暂无"}
-          subtitle={
-            rankingData && rankingData.strengthRank > 1
-              ? `本周: ${rankingData.currentWeek.strengthValue.toFixed(1)} | 距第一: ${(rankingData.topWeekStrengthValue - rankingData.currentWeek.strengthValue).toFixed(1)}`
-              : rankingData && rankingData.strengthRank === 1
-              ? `本周: ${rankingData.currentWeek.strengthValue.toFixed(1)} | 当前第一名`
-              : `本周: ${rankingData?.currentWeek?.strengthValue?.toFixed(1) ?? "0"}`
-          }
-          icon={Award}
-          testId="card-strength-rank"
-        />
-        <StatsCard
-          title="有氧排名"
-          value={rankingData && rankingData.totalWeeks > 0 ? `${rankingData.cardioRank}/${rankingData.totalWeeks}` : "暂无"}
-          subtitle={
-            rankingData && rankingData.cardioRank > 1
-              ? `本周: ${rankingData.currentWeek.cardioValue.toFixed(1)} | 距第一: ${(rankingData.topWeekCardioValue - rankingData.currentWeek.cardioValue).toFixed(1)}`
-              : rankingData && rankingData.cardioRank === 1
-              ? `本周: ${rankingData.currentWeek.cardioValue.toFixed(1)} | 当前第一名`
-              : `本周: ${rankingData?.currentWeek?.cardioValue?.toFixed(1) ?? "0"}`
-          }
-          icon={Award}
-          testId="card-cardio-rank"
-        />
-        <StatsCard
-          title="活动量排名"
-          value={rankingData && rankingData.totalWeeks > 0 ? `${rankingData.activityRank}/${rankingData.totalWeeks}` : "暂无"}
-          subtitle={
-            rankingData && rankingData.activityRank > 1
-              ? `本周: ${rankingData.currentWeek.activityValue.toFixed(1)} | 距第一: ${(rankingData.topWeekActivityValue - rankingData.currentWeek.activityValue).toFixed(1)}`
-              : rankingData && rankingData.activityRank === 1
-              ? `本周: ${rankingData.currentWeek.activityValue.toFixed(1)} | 当前第一名`
-              : `本周: ${rankingData?.currentWeek?.activityValue?.toFixed(1) ?? "0"}`
-          }
-          icon={Award}
-          testId="card-activity-rank"
-        />
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        {rankingData && rankingData.totalWeeks > 0 && (
+          <>
+            <RankingMetricCard
+              title="总分排名"
+              icon={Award}
+              rank={rankingData.rank}
+              totalWeeks={rankingData.totalWeeks}
+              currentValue={rankingData.currentWeek.totalBaselineValue}
+              averageValue={rankingData.averageWeeklyValue}
+              topValue={rankingData.topWeekTotalValue}
+              onClick={() => setRankingDetailMetric('total')}
+              onMouseEnter={() => prefetchRankingDetail('total')}
+              testId="card-total-rank"
+            />
+            <RankingMetricCard
+              title="力量排名"
+              icon={Dumbbell}
+              rank={rankingData.strengthRank}
+              totalWeeks={rankingData.totalWeeks}
+              currentValue={rankingData.currentWeek.strengthValue}
+              averageValue={rankingData.averageStrengthValue}
+              topValue={rankingData.topWeekStrengthValue}
+              onClick={() => setRankingDetailMetric('strength')}
+              onMouseEnter={() => prefetchRankingDetail('strength')}
+              testId="card-strength-rank"
+            />
+            <RankingMetricCard
+              title="有氧排名"
+              icon={Heart}
+              rank={rankingData.cardioRank}
+              totalWeeks={rankingData.totalWeeks}
+              currentValue={rankingData.currentWeek.cardioValue}
+              averageValue={rankingData.averageCardioValue}
+              topValue={rankingData.topWeekCardioValue}
+              onClick={() => setRankingDetailMetric('cardio')}
+              onMouseEnter={() => prefetchRankingDetail('cardio')}
+              testId="card-cardio-rank"
+            />
+            <RankingMetricCard
+              title="活动量排名"
+              icon={Footprints}
+              rank={rankingData.activityRank}
+              totalWeeks={rankingData.totalWeeks}
+              currentValue={rankingData.currentWeek.activityValue}
+              averageValue={rankingData.averageActivityValue}
+              topValue={rankingData.topWeekActivityValue}
+              onClick={() => setRankingDetailMetric('activity')}
+              onMouseEnter={() => prefetchRankingDetail('activity')}
+              testId="card-activity-rank"
+            />
+          </>
+        )}
       </div>
 
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
@@ -242,28 +256,6 @@ export default function Dashboard() {
         </div>
         
         <div className="space-y-6">
-          {rankingData && rankingData.totalWeeks > 0 ? (
-            <RankingCard
-              currentWeekValue={rankingData.currentWeek.totalBaselineValue}
-              bestWeekValue={rankingData.bestWeek?.totalBaselineValue || null}
-              worstWeekValue={rankingData.worstWeek?.totalBaselineValue || null}
-              averageValue={rankingData.averageWeeklyValue}
-              rank={rankingData.rank}
-              totalWeeks={rankingData.totalWeeks}
-            />
-          ) : (
-            <Card>
-              <CardHeader>
-                <CardTitle>本周排名</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="flex h-[200px] items-center justify-center text-muted-foreground">
-                  暂无排名数据
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
           {!categoryLoading && categoryBreakdown && (
             <Card data-testid="card-category-breakdown">
               <CardHeader>
@@ -734,6 +726,15 @@ export default function Dashboard() {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* 排名详情对话框 */}
+      {rankingDetailMetric && (
+        <RankingDetailDialog
+          open={!!rankingDetailMetric}
+          onOpenChange={(open) => !open && setRankingDetailMetric(null)}
+          metric={rankingDetailMetric}
+        />
+      )}
     </div>
   );
 }
