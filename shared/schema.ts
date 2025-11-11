@@ -64,6 +64,9 @@ export type RankingData = {
   bestWeek: WeeklyStats | null;
   worstWeek: WeeklyStats | null;
   averageWeeklyValue: number;
+  averageStrengthValue: number; // 力量分类平均值
+  averageCardioValue: number; // 有氧分类平均值
+  averageActivityValue: number; // 活动量分类平均值
   rank: number; // 当前周在历史中的排名（1=最好）
   totalWeeks: number; // 总周数
   strengthRank: number; // 力量分类排名
@@ -73,4 +76,21 @@ export type RankingData = {
   topWeekStrengthValue: number; // 力量第一名的数值
   topWeekCardioValue: number; // 有氧第一名的数值
   topWeekActivityValue: number; // 活动量第一名的数值
+};
+
+// 排名快照类型（用于排名详情）
+export type RankingSnapshot = {
+  weekStart: string;
+  weekEnd: string;
+  year: number;
+  weekNumber: number;
+  rank: number;
+  value: number;
+};
+
+// 排名详情响应类型
+export type RankingDetailResponse = {
+  metric: 'total' | 'strength' | 'cardio' | 'activity';
+  current: RankingSnapshot;
+  surrounding: RankingSnapshot[];
 };

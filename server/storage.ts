@@ -6,6 +6,7 @@ import {
   type WorkoutEntryWithExercise,
   type WeeklyStats,
   type RankingData,
+  type RankingDetailResponse,
   exercises,
   workoutEntries,
 } from "@shared/schema";
@@ -33,6 +34,7 @@ export interface IStorage {
   getWeeklyStats(weekStart: Date, weekEnd: Date): Promise<WeeklyStats>;
   getAllWeeklyStats(): Promise<WeeklyStats[]>;
   getRankingData(): Promise<RankingData>;
+  getRankingDetail(metric: 'total' | 'strength' | 'cardio' | 'activity'): Promise<RankingDetailResponse>;
   getCurrentWeekDetails(): Promise<{
     weekStart: string;
     weekEnd: string;
@@ -356,6 +358,9 @@ export class MemStorage implements IStorage {
         bestWeek: null,
         worstWeek: null,
         averageWeeklyValue: 0,
+        averageStrengthValue: 0,
+        averageCardioValue: 0,
+        averageActivityValue: 0,
         rank: 0,
         totalWeeks: 0,
         strengthRank: 0,
@@ -384,9 +389,18 @@ export class MemStorage implements IStorage {
       }
     }
 
-    // 计算平均值
+    // 计算各指标平均值
     const totalValue = allWeeklyStats.reduce((sum, week) => sum + week.totalBaselineValue, 0);
     const averageWeeklyValue = totalValue / allWeeklyStats.length;
+    
+    const totalStrength = allWeeklyStats.reduce((sum, week) => sum + week.strengthValue, 0);
+    const averageStrengthValue = totalStrength / allWeeklyStats.length;
+    
+    const totalCardio = allWeeklyStats.reduce((sum, week) => sum + week.cardioValue, 0);
+    const averageCardioValue = totalCardio / allWeeklyStats.length;
+    
+    const totalActivity = allWeeklyStats.reduce((sum, week) => sum + week.activityValue, 0);
+    const averageActivityValue = totalActivity / allWeeklyStats.length;
 
     // 计算总排名（降序，值越大排名越高）
     const sorted = [...allWeeklyStats].sort((a, b) => b.totalBaselineValue - a.totalBaselineValue);
@@ -421,6 +435,9 @@ export class MemStorage implements IStorage {
       bestWeek,
       worstWeek,
       averageWeeklyValue,
+      averageStrengthValue,
+      averageCardioValue,
+      averageActivityValue,
       rank,
       totalWeeks: allWeeklyStats.length,
       strengthRank,
@@ -430,6 +447,102 @@ export class MemStorage implements IStorage {
       topWeekStrengthValue,
       topWeekCardioValue,
       topWeekActivityValue,
+    };
+  }
+
+  async getRankingDetail(metric: 'total' | 'strength' | 'cardio' | 'activity'): Promise<RankingDetailResponse> {
+    const allWeeklyStats = await this.getAllWeeklyStats();
+    
+    if (allWeeklyStats.length === 0) {
+      const now = new Date();
+      const weekStart = this.getWeekStart(now);
+      const weekEnd = this.getWeekEnd(now);
+      const thursday = new Date(weekStart);
+      thursday.setDate(thursday.getDate() + 3);
+      const year = this.getISOYear(thursday);
+      const weekNumber = this.getWeekNumber(weekStart);
+      
+      return {
+        metric,
+        current: {
+          weekStart: weekStart.toISOString(),
+          weekEnd: weekEnd.toISOString(),
+          year,
+          weekNumber,
+          rank: 0,
+          value: 0,
+        },
+        surrounding: [],
+      };
+    }
+
+    // 根据metric选择要排序的字段
+    const getValue = (week: WeeklyStats) => {
+      switch (metric) {
+        case 'total': return week.totalBaselineValue;
+        case 'strength': return week.strengthValue;
+        case 'cardio': return week.cardioValue;
+        case 'activity': return week.activityValue;
+      }
+    };
+
+    // 按指定metric降序排序
+    const sorted = [...allWeeklyStats].sort((a, b) => getValue(b) - getValue(a));
+    
+    // 当前周（最后一周）
+    const currentWeek = allWeeklyStats[allWeeklyStats.length - 1];
+    
+    // 找到当前周在排序后的索引
+    const currentIndex = sorted.findIndex(w => 
+      w.weekStart === currentWeek.weekStart && w.weekEnd === currentWeek.weekEnd
+    );
+    
+    // 计算当前周的排名
+    const currentRank = currentIndex + 1;
+    
+    // 获取当前周的ISO周信息
+    const currentWeekStart = new Date(currentWeek.weekStart);
+    const currentThursday = new Date(currentWeekStart);
+    currentThursday.setDate(currentThursday.getDate() + 3);
+    const currentYear = this.getISOYear(currentThursday);
+    const currentWeekNumber = this.getWeekNumber(currentWeekStart);
+    
+    // 计算要显示的范围：前2名到后2名
+    const startIdx = Math.max(0, currentIndex - 2);
+    const endIdx = Math.min(sorted.length, currentIndex + 3);
+    const surroundingWeeks = sorted.slice(startIdx, endIdx);
+    
+    // 构建结果
+    const current = {
+      weekStart: currentWeek.weekStart,
+      weekEnd: currentWeek.weekEnd,
+      year: currentYear,
+      weekNumber: currentWeekNumber,
+      rank: currentRank,
+      value: getValue(currentWeek),
+    };
+    
+    const surrounding = surroundingWeeks.map((week, idx) => {
+      const weekStart = new Date(week.weekStart);
+      const thursday = new Date(weekStart);
+      thursday.setDate(thursday.getDate() + 3);
+      const year = this.getISOYear(thursday);
+      const weekNumber = this.getWeekNumber(weekStart);
+      
+      return {
+        weekStart: week.weekStart,
+        weekEnd: week.weekEnd,
+        year,
+        weekNumber,
+        rank: startIdx + idx + 1,
+        value: getValue(week),
+      };
+    });
+    
+    return {
+      metric,
+      current,
+      surrounding,
     };
   }
 
@@ -968,6 +1081,9 @@ export class DbStorage implements IStorage {
         bestWeek: null,
         worstWeek: null,
         averageWeeklyValue: 0,
+        averageStrengthValue: 0,
+        averageCardioValue: 0,
+        averageActivityValue: 0,
         rank: 0,
         totalWeeks: 0,
         strengthRank: 0,
@@ -996,9 +1112,18 @@ export class DbStorage implements IStorage {
       }
     }
 
-    // 计算平均值
+    // 计算各指标平均值
     const totalValue = allWeeklyStats.reduce((sum, week) => sum + week.totalBaselineValue, 0);
     const averageWeeklyValue = totalValue / allWeeklyStats.length;
+    
+    const totalStrength = allWeeklyStats.reduce((sum, week) => sum + week.strengthValue, 0);
+    const averageStrengthValue = totalStrength / allWeeklyStats.length;
+    
+    const totalCardio = allWeeklyStats.reduce((sum, week) => sum + week.cardioValue, 0);
+    const averageCardioValue = totalCardio / allWeeklyStats.length;
+    
+    const totalActivity = allWeeklyStats.reduce((sum, week) => sum + week.activityValue, 0);
+    const averageActivityValue = totalActivity / allWeeklyStats.length;
 
     // 计算总排名（降序，值越大排名越高）
     const sorted = [...allWeeklyStats].sort((a, b) => b.totalBaselineValue - a.totalBaselineValue);
@@ -1033,6 +1158,9 @@ export class DbStorage implements IStorage {
       bestWeek,
       worstWeek,
       averageWeeklyValue,
+      averageStrengthValue,
+      averageCardioValue,
+      averageActivityValue,
       rank,
       totalWeeks: allWeeklyStats.length,
       strengthRank,
@@ -1042,6 +1170,102 @@ export class DbStorage implements IStorage {
       topWeekStrengthValue,
       topWeekCardioValue,
       topWeekActivityValue,
+    };
+  }
+
+  async getRankingDetail(metric: 'total' | 'strength' | 'cardio' | 'activity'): Promise<RankingDetailResponse> {
+    const allWeeklyStats = await this.getAllWeeklyStats();
+    
+    if (allWeeklyStats.length === 0) {
+      const now = new Date();
+      const weekStart = this.getWeekStart(now);
+      const weekEnd = this.getWeekEnd(now);
+      const thursday = new Date(weekStart);
+      thursday.setDate(thursday.getDate() + 3);
+      const year = this.getISOYear(thursday);
+      const weekNumber = this.getWeekNumber(weekStart);
+      
+      return {
+        metric,
+        current: {
+          weekStart: weekStart.toISOString(),
+          weekEnd: weekEnd.toISOString(),
+          year,
+          weekNumber,
+          rank: 0,
+          value: 0,
+        },
+        surrounding: [],
+      };
+    }
+
+    // 根据metric选择要排序的字段
+    const getValue = (week: WeeklyStats) => {
+      switch (metric) {
+        case 'total': return week.totalBaselineValue;
+        case 'strength': return week.strengthValue;
+        case 'cardio': return week.cardioValue;
+        case 'activity': return week.activityValue;
+      }
+    };
+
+    // 按指定metric降序排序
+    const sorted = [...allWeeklyStats].sort((a, b) => getValue(b) - getValue(a));
+    
+    // 当前周（最后一周）
+    const currentWeek = allWeeklyStats[allWeeklyStats.length - 1];
+    
+    // 找到当前周在排序后的索引
+    const currentIndex = sorted.findIndex(w => 
+      w.weekStart === currentWeek.weekStart && w.weekEnd === currentWeek.weekEnd
+    );
+    
+    // 计算当前周的排名
+    const currentRank = currentIndex + 1;
+    
+    // 获取当前周的ISO周信息
+    const currentWeekStart = new Date(currentWeek.weekStart);
+    const currentThursday = new Date(currentWeekStart);
+    currentThursday.setDate(currentThursday.getDate() + 3);
+    const currentYear = this.getISOYear(currentThursday);
+    const currentWeekNumber = this.getWeekNumber(currentWeekStart);
+    
+    // 计算要显示的范围：前2名到后2名
+    const startIdx = Math.max(0, currentIndex - 2);
+    const endIdx = Math.min(sorted.length, currentIndex + 3);
+    const surroundingWeeks = sorted.slice(startIdx, endIdx);
+    
+    // 构建结果
+    const current = {
+      weekStart: currentWeek.weekStart,
+      weekEnd: currentWeek.weekEnd,
+      year: currentYear,
+      weekNumber: currentWeekNumber,
+      rank: currentRank,
+      value: getValue(currentWeek),
+    };
+    
+    const surrounding = surroundingWeeks.map((week, idx) => {
+      const weekStart = new Date(week.weekStart);
+      const thursday = new Date(weekStart);
+      thursday.setDate(thursday.getDate() + 3);
+      const year = this.getISOYear(thursday);
+      const weekNumber = this.getWeekNumber(weekStart);
+      
+      return {
+        weekStart: week.weekStart,
+        weekEnd: week.weekEnd,
+        year,
+        weekNumber,
+        rank: startIdx + idx + 1,
+        value: getValue(week),
+      };
+    });
+    
+    return {
+      metric,
+      current,
+      surrounding,
     };
   }
 

@@ -149,6 +149,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // 获取排名详情（前后2名）
+  app.get("/api/stats/ranking-detail", async (req, res) => {
+    try {
+      const metric = req.query.metric as string;
+      if (!metric || !['total', 'strength', 'cardio', 'activity'].includes(metric)) {
+        return res.status(400).json({ error: "无效的metric参数，必须是total、strength、cardio或activity之一" });
+      }
+      const detail = await storage.getRankingDetail(metric as 'total' | 'strength' | 'cardio' | 'activity');
+      res.json(detail);
+    } catch (error) {
+      res.status(500).json({ error: "获取排名详情失败" });
+    }
+  });
+
   // 获取所有周趋势数据
   app.get("/api/stats/trends", async (req, res) => {
     try {
