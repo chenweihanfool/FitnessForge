@@ -98,6 +98,8 @@ export default function Exercises() {
       unit: "",
       weightFactor: 1,
       category: "none",
+      splitCategory: "none",
+      splitRatio: 0,
     },
   });
 
@@ -108,6 +110,8 @@ export default function Exercises() {
       unit: "",
       weightFactor: 1,
       category: "none",
+      splitCategory: "none",
+      splitRatio: 0,
     },
   });
 
@@ -115,6 +119,8 @@ export default function Exercises() {
     const submitData = {
       ...data,
       category: data.category === "none" ? undefined : data.category,
+      splitCategory: data.splitCategory === "none" ? undefined : data.splitCategory,
+      splitRatio: data.splitCategory === "none" ? 0 : data.splitRatio,
     };
     createMutation.mutate(submitData);
   };
@@ -124,6 +130,8 @@ export default function Exercises() {
       const submitData = {
         ...data,
         category: data.category === "none" ? undefined : data.category,
+        splitCategory: data.splitCategory === "none" ? undefined : data.splitCategory,
+        splitRatio: data.splitCategory === "none" ? 0 : data.splitRatio,
       };
       updateMutation.mutate({ id: editingExercise.id, data: submitData });
     }
@@ -136,6 +144,8 @@ export default function Exercises() {
       unit: exercise.unit,
       weightFactor: exercise.weightFactor,
       category: exercise.category || "none",
+      splitCategory: exercise.splitCategory || "none",
+      splitRatio: exercise.splitRatio || 0,
     });
   };
 
@@ -224,7 +234,7 @@ export default function Exercises() {
                   name="category"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>分类（可选）</FormLabel>
+                      <FormLabel>主要分类（可选）</FormLabel>
                       <Select onValueChange={field.onChange} value={field.value}>
                         <FormControl>
                           <SelectTrigger data-testid="select-exercise-category">
@@ -244,6 +254,61 @@ export default function Exercises() {
                     </FormItem>
                   )}
                 />
+                <FormField
+                  control={form.control}
+                  name="splitCategory"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>次要分类（可选）</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <FormControl>
+                          <SelectTrigger data-testid="select-exercise-split-category">
+                            <SelectValue placeholder="选择次要分类" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="none" data-testid="split-category-option-none">无次要分类</SelectItem>
+                          {CATEGORIES.map((cat) => (
+                            <SelectItem key={cat} value={cat} data-testid={`split-category-option-${cat}`}>
+                              {cat}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormDescription>
+                        混合运动可设置次要分类（如"跑步機負重"可同时算有氧和力量）
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                {form.watch("splitCategory") !== "none" && (
+                  <FormField
+                    control={form.control}
+                    name="splitRatio"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>次要分类分配比例</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            step="0.1"
+                            min="0"
+                            max="1"
+                            placeholder="0.5"
+                            {...field}
+                            onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
+                            data-testid="input-exercise-split-ratio"
+                          />
+                        </FormControl>
+                        <FormDescription>
+                          分配给次要分类的比例（0-1），如0.5表示50%分给次要分类，50%分给主要分类
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                )}
                 <div className="flex justify-end gap-2">
                   <Button
                     type="button"
@@ -425,7 +490,7 @@ export default function Exercises() {
                 name="category"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>分类（可选）</FormLabel>
+                    <FormLabel>主要分类（可选）</FormLabel>
                     <Select onValueChange={field.onChange} value={field.value}>
                       <FormControl>
                         <SelectTrigger data-testid="select-edit-category">
@@ -445,6 +510,60 @@ export default function Exercises() {
                   </FormItem>
                 )}
               />
+              <FormField
+                control={editForm.control}
+                name="splitCategory"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>次要分类（可选）</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger data-testid="select-edit-split-category">
+                          <SelectValue placeholder="选择次要分类" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="none" data-testid="edit-split-category-option-none">无次要分类</SelectItem>
+                        {CATEGORIES.map((cat) => (
+                          <SelectItem key={cat} value={cat} data-testid={`edit-split-category-option-${cat}`}>
+                            {cat}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormDescription>
+                      混合运动可设置次要分类（如"跑步機負重"可同时算有氧和力量）
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              {editForm.watch("splitCategory") !== "none" && (
+                <FormField
+                  control={editForm.control}
+                  name="splitRatio"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>次要分类分配比例</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="number"
+                          step="0.1"
+                          min="0"
+                          max="1"
+                          {...field}
+                          onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
+                          data-testid="input-edit-split-ratio"
+                        />
+                      </FormControl>
+                      <FormDescription>
+                        分配给次要分类的比例（0-1），如0.5表示50%分给次要分类，50%分给主要分类
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              )}
               <div className="flex justify-end gap-2">
                 <Button
                   type="button"
