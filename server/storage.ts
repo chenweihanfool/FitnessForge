@@ -859,6 +859,8 @@ export class DbStorage implements IStorage {
       unit: insertExercise.unit,
       weightFactor: insertExercise.weightFactor,
       category: insertExercise.category ?? null,
+      splitCategory: insertExercise.splitCategory ?? null,
+      splitRatio: insertExercise.splitRatio ?? 0,
     }).returning();
     return result[0];
   }
@@ -871,6 +873,8 @@ export class DbStorage implements IStorage {
         unit: insertExercise.unit,
         weightFactor: insertExercise.weightFactor,
         category: insertExercise.category ?? null,
+        splitCategory: insertExercise.splitCategory ?? null,
+        splitRatio: insertExercise.splitRatio ?? 0,
       })
       .where(eq(exercises.id, id))
       .returning();
