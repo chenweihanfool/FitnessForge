@@ -9,6 +9,8 @@ export const exercises = pgTable("exercises", {
   unit: text("unit").notNull(), // 单位，如 "次"、"公斤"、"分钟"等
   weightFactor: real("weight_factor").notNull().default(1), // 重量转换系数，用于标准化计算
   category: text("category"), // 运动分类，如 "力量"、"有氧"、"柔韧性"等
+  splitCategory: text("split_category"), // 次要分类，用于混合运动（如"跑步機負重"需要分配部分基准值到力量）
+  splitRatio: real("split_ratio").default(0), // 分配给次要分类的比例（0-1），默认0表示不分配
 });
 
 // 定义camelCase的insert schema
@@ -17,6 +19,8 @@ export const insertExerciseSchema = z.object({
   unit: z.string().min(1),
   weightFactor: z.number().default(1),
   category: z.string().optional(),
+  splitCategory: z.string().optional(),
+  splitRatio: z.number().min(0).max(1).default(0),
 });
 
 // 运动记录表
