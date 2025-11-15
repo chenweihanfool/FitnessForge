@@ -186,26 +186,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // 获取本周分类统计
   app.get("/api/stats/category-breakdown", async (req, res) => {
     try {
-      const details = await storage.getCurrentWeekDetails();
+      const rankingData = await storage.getRankingData();
+      const weekStart = new Date(rankingData.currentWeek.weekStart);
+      const weekEnd = new Date(rankingData.currentWeek.weekEnd);
+      const weeklyStats = await storage.getWeeklyStats(weekStart, weekEnd);
       
-      // 按分类分组统计（使用exerciseCategory字段）
-      const categoryStats = new Map<string, number>();
-      for (const detail of details.details) {
-        const category = detail.exerciseCategory || "未分类";
-        categoryStats.set(
-          category,
-          (categoryStats.get(category) || 0) + detail.baselineValue
-        );
-      }
-      
-      // 计算百分比
-      const total = details.totalBaselineValue;
-      const breakdown = Array.from(categoryStats.entries())
-        .map(([category, value]) => ({
-          category,
-          value,
-          percentage: total > 0 ? (value / total) * 100 : 0,
-        }))
+      // 使用getWeeklyStats返回的分类值（已应用split ratio逻辑）
+      const breakdown = [
+        {
+          category: "力量",
+          value: weeklyStats.strengthValue,
+          percentage: weeklyStats.totalBaselineValue > 0 
+            ? (weeklyStats.strengthValue / weeklyStats.totalBaselineValue) * 100 
+            : 0,
+        },
+        {
+          category: "有氧",
+          value: weeklyStats.cardioValue,
+          percentage: weeklyStats.totalBaselineValue > 0 
+            ? (weeklyStats.cardioValue / weeklyStats.totalBaselineValue) * 100 
+            : 0,
+        },
+        {
+          category: "活动量",
+          value: weeklyStats.activityValue,
+          percentage: weeklyStats.totalBaselineValue > 0 
+            ? (weeklyStats.activityValue / weeklyStats.totalBaselineValue) * 100 
+            : 0,
+        },
+      ]
+        .filter(item => item.value > 0) // 只返回有值的分类
         .sort((a, b) => b.value - a.value); // 按基准值降序排序
       
       res.json(breakdown);
@@ -306,6 +316,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               name: exerciseName,
               unit,
               weightFactor: isNaN(weightFactor) ? 1 : weightFactor,
+              splitRatio: 0,
             });
             exerciseId = newExercise.id;
             exercisesCount++;
