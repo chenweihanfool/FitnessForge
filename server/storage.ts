@@ -224,12 +224,29 @@ export class MemStorage implements IStorage {
         const baseline = entry.value * exercise.weightFactor;
         totalBaselineValue += baseline;
 
+        // 检查是否有分配比例（混合运动类型）
+        const hasSplit = exercise.splitCategory && exercise.splitRatio && exercise.splitRatio > 0;
+        const primaryRatio = hasSplit ? 1 - (exercise.splitRatio || 0) : 1;
+        const secondaryRatio = hasSplit ? (exercise.splitRatio || 0) : 0;
+
+        // 分配到主分类
         if (exercise.category === '力量') {
-          strengthValue += baseline;
+          strengthValue += baseline * primaryRatio;
         } else if (exercise.category === '有氧') {
-          cardioValue += baseline;
+          cardioValue += baseline * primaryRatio;
         } else if (exercise.category === '活动量') {
-          activityValue += baseline;
+          activityValue += baseline * primaryRatio;
+        }
+
+        // 分配到次分类（如果有）
+        if (hasSplit) {
+          if (exercise.splitCategory === '力量') {
+            strengthValue += baseline * secondaryRatio;
+          } else if (exercise.splitCategory === '有氧') {
+            cardioValue += baseline * secondaryRatio;
+          } else if (exercise.splitCategory === '活动量') {
+            activityValue += baseline * secondaryRatio;
+          }
         }
       }
     }
@@ -959,12 +976,29 @@ export class DbStorage implements IStorage {
         totalBaselineValue += baseline;
         entryCount++;
 
+        // 检查是否有分配比例（混合运动类型）
+        const hasSplit = entry.exercise.splitCategory && entry.exercise.splitRatio && entry.exercise.splitRatio > 0;
+        const primaryRatio = hasSplit ? 1 - (entry.exercise.splitRatio || 0) : 1;
+        const secondaryRatio = hasSplit ? (entry.exercise.splitRatio || 0) : 0;
+
+        // 分配到主分类
         if (entry.exercise.category === '力量') {
-          strengthValue += baseline;
+          strengthValue += baseline * primaryRatio;
         } else if (entry.exercise.category === '有氧') {
-          cardioValue += baseline;
+          cardioValue += baseline * primaryRatio;
         } else if (entry.exercise.category === '活动量') {
-          activityValue += baseline;
+          activityValue += baseline * primaryRatio;
+        }
+
+        // 分配到次分类（如果有）
+        if (hasSplit) {
+          if (entry.exercise.splitCategory === '力量') {
+            strengthValue += baseline * secondaryRatio;
+          } else if (entry.exercise.splitCategory === '有氧') {
+            cardioValue += baseline * secondaryRatio;
+          } else if (entry.exercise.splitCategory === '活动量') {
+            activityValue += baseline * secondaryRatio;
+          }
         }
       }
     }
