@@ -473,6 +473,7 @@ export class MemStorage implements IStorage {
           value: 0,
         },
         surrounding: [],
+        careerAverage: 0,
       };
     }
 
@@ -485,6 +486,10 @@ export class MemStorage implements IStorage {
         case 'activity': return week.activityValue;
       }
     };
+
+    // 计算生涯平均值（基于所有历史周数据）
+    const totalValue = allWeeklyStats.reduce((sum, week) => sum + getValue(week), 0);
+    const careerAverage = totalValue / allWeeklyStats.length;
 
     // 按指定metric降序排序
     const sorted = [...allWeeklyStats].sort((a, b) => getValue(b) - getValue(a));
@@ -543,6 +548,7 @@ export class MemStorage implements IStorage {
       metric,
       current,
       surrounding,
+      careerAverage,
     };
   }
 
@@ -1196,6 +1202,7 @@ export class DbStorage implements IStorage {
           value: 0,
         },
         surrounding: [],
+        careerAverage: 0,
       };
     }
 
@@ -1208,6 +1215,10 @@ export class DbStorage implements IStorage {
         case 'activity': return week.activityValue;
       }
     };
+
+    // 计算生涯平均值（基于所有历史周数据）
+    const totalValue = allWeeklyStats.reduce((sum, week) => sum + getValue(week), 0);
+    const careerAverage = totalValue / allWeeklyStats.length;
 
     // 按指定metric降序排序
     const sorted = [...allWeeklyStats].sort((a, b) => getValue(b) - getValue(a));
@@ -1266,6 +1277,7 @@ export class DbStorage implements IStorage {
       metric,
       current,
       surrounding,
+      careerAverage,
     };
   }
 

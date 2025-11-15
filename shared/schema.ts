@@ -93,4 +93,5 @@ export type RankingDetailResponse = {
   metric: 'total' | 'strength' | 'cardio' | 'activity';
   current: RankingSnapshot;
   surrounding: RankingSnapshot[];
+  careerAverage: number; // 生涯平均值（基于所有历史周数据）
 };

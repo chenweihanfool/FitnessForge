@@ -65,42 +65,39 @@ export function RankingDetailDialog({ open, onOpenChange, metric }: RankingDetai
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {(() => {
-                  const average = data.surrounding.reduce((sum, s) => sum + s.value, 0) / data.surrounding.length;
-                  return data.surrounding.map((snapshot) => {
-                    const isCurrentWeek = snapshot.weekStart === data.current.weekStart;
-                    const deltaToAverage = snapshot.value - average;
-                    const deltaPercent = average > 0 ? (deltaToAverage / average) * 100 : 0;
+                {data.surrounding.map((snapshot) => {
+                  const isCurrentWeek = snapshot.weekStart === data.current.weekStart;
+                  const deltaToAverage = snapshot.value - data.careerAverage;
+                  const deltaPercent = data.careerAverage > 0 ? (deltaToAverage / data.careerAverage) * 100 : 0;
                   
-                    return (
-                      <TableRow 
-                        key={snapshot.weekStart}
-                        className={isCurrentWeek ? "bg-muted" : ""}
-                        data-testid={isCurrentWeek ? "row-current-week" : undefined}
-                      >
-                        <TableCell className="font-medium">
-                          {isCurrentWeek ? (
-                            <Badge className="bg-chart-3 text-white">第 {snapshot.rank} 名</Badge>
-                          ) : (
-                            <span>第 {snapshot.rank} 名</span>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          {snapshot.year}年 第{snapshot.weekNumber}周
-                          {isCurrentWeek && <span className="ml-2 text-xs text-muted-foreground">(本周)</span>}
-                        </TableCell>
-                        <TableCell className="text-right font-semibold">
-                          {snapshot.value.toFixed(1)}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <Badge variant={deltaToAverage >= 0 ? "default" : "destructive"}>
-                            {deltaToAverage >= 0 ? '+' : ''}{deltaToAverage.toFixed(1)} ({deltaPercent >= 0 ? '+' : ''}{deltaPercent.toFixed(0)}%)
-                          </Badge>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  });
-                })()}
+                  return (
+                    <TableRow 
+                      key={snapshot.weekStart}
+                      className={isCurrentWeek ? "bg-muted" : ""}
+                      data-testid={isCurrentWeek ? "row-current-week" : undefined}
+                    >
+                      <TableCell className="font-medium">
+                        {isCurrentWeek ? (
+                          <Badge className="bg-chart-3 text-white">第 {snapshot.rank} 名</Badge>
+                        ) : (
+                          <span>第 {snapshot.rank} 名</span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {snapshot.year}年 第{snapshot.weekNumber}周
+                        {isCurrentWeek && <span className="ml-2 text-xs text-muted-foreground">(本周)</span>}
+                      </TableCell>
+                      <TableCell className="text-right font-semibold">
+                        {snapshot.value.toFixed(1)}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Badge variant={deltaToAverage >= 0 ? "default" : "destructive"}>
+                          {deltaToAverage >= 0 ? '+' : ''}{deltaToAverage.toFixed(1)} ({deltaPercent >= 0 ? '+' : ''}{deltaPercent.toFixed(0)}%)
+                        </Badge>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
           </div>
