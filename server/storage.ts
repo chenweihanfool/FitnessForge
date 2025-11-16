@@ -98,10 +98,48 @@ export interface IStorage {
 export class MemStorage implements IStorage {
   private exercises: Map<string, Exercise>;
   private workoutEntries: Map<string, WorkoutEntry>;
+  
+  // UTC+8时区偏移（毫秒）
+  private readonly TAIPEI_OFFSET = 8 * 60 * 60 * 1000;
 
   constructor() {
     this.exercises = new Map();
     this.workoutEntries = new Map();
+  }
+  
+  // 辅助方法：获取台北时区的年月日时分秒
+  private getTaipeiComponents(utcDate: Date): {
+    year: number;
+    month: number;
+    day: number;
+    hour: number;
+    minute: number;
+    second: number;
+    ms: number;
+    dayOfWeek: number;
+  } {
+    // 将UTC时间戳加8小时得到台北时间戳
+    const taipeiTimestamp = utcDate.getTime() + this.TAIPEI_OFFSET;
+    const taipeiDate = new Date(taipeiTimestamp);
+    
+    return {
+      year: taipeiDate.getUTCFullYear(),
+      month: taipeiDate.getUTCMonth(),
+      day: taipeiDate.getUTCDate(),
+      hour: taipeiDate.getUTCHours(),
+      minute: taipeiDate.getUTCMinutes(),
+      second: taipeiDate.getUTCSeconds(),
+      ms: taipeiDate.getUTCMilliseconds(),
+      dayOfWeek: taipeiDate.getUTCDay(), // 0=周日, 1=周一...
+    };
+  }
+
+  // 辅助方法：从台北时区组件创建UTC Date
+  private createUTCFromTaipei(year: number, month: number, day: number, hour = 0, minute = 0, second = 0, ms = 0): Date {
+    // 创建台北时间的UTC表示
+    const taipeiDate = new Date(Date.UTC(year, month, day, hour, minute, second, ms));
+    // 减去8小时偏移得到真正的UTC时间
+    return new Date(taipeiDate.getTime() - this.TAIPEI_OFFSET);
   }
 
   // 运动类型方法
@@ -795,52 +833,109 @@ export class MemStorage implements IStorage {
     };
   }
 
-  // 辅助方法：获取周一
+  // 辅助方法：获取周一（基于UTC+8时区）
   private getWeekStart(date: Date): Date {
-    const result = new Date(date);
-    const day = result.getDay();
-    const diff = day === 0 ? -6 : 1 - day; // 周日是0，需要-6天；其他日子到周一
-    result.setDate(result.getDate() + diff);
-    result.setHours(0, 0, 0, 0);
-    return result;
+    // 获取台北时区的日期组件
+    const taipei = this.getTaipeiComponents(date);
+    const diff = taipei.dayOfWeek === 0 ? -6 : 1 - taipei.dayOfWeek; // 周日是0，需要-6天；其他日子到周一
+    
+    // 直接从台北时区的date计算周一的毫秒时间戳
+    // 方法：在当前日期基础上加/减天数得到周一，然后设为00:00:00
+    const taipeiMondayTimestamp = date.getTime() + this.TAIPEI_OFFSET + diff * 24 * 60 * 60 * 1000;
+    const taipeiMonday = new Date(taipeiMondayTimestamp);
+    
+    // 获取周一在台北时区的年月日
+    const mondayYear = taipeiMonday.getUTCFullYear();
+    const mondayMonth = taipeiMonday.getUTCMonth();
+    const mondayDay = taipeiMonday.getUTCDate();
+    
+    // 返回周一00:00:00（台北时间）对应的UTC时间
+    return this.createUTCFromTaipei(mondayYear, mondayMonth, mondayDay, 0, 0, 0, 0);
   }
 
-  // 辅助方法：获取周日
+  // 辅助方法：获取周日（基于UTC+8时区）
   private getWeekEnd(date: Date): Date {
     const weekStart = this.getWeekStart(date);
-    const result = new Date(weekStart);
-    result.setDate(result.getDate() + 6);
-    result.setHours(23, 59, 59, 999);
-    return result;
+    
+    // 周日是周一+6天
+    const taipeiSundayTimestamp = weekStart.getTime() + this.TAIPEI_OFFSET + 6 * 24 * 60 * 60 * 1000;
+    const taipeiSunday = new Date(taipeiSundayTimestamp);
+    
+    // 获取周日在台北时区的年月日
+    const sundayYear = taipeiSunday.getUTCFullYear();
+    const sundayMonth = taipeiSunday.getUTCMonth();
+    const sundayDay = taipeiSunday.getUTCDate();
+    
+    // 返回周日23:59:59.999（台北时间）对应的UTC时间
+    return this.createUTCFromTaipei(sundayYear, sundayMonth, sundayDay, 23, 59, 59, 999);
   }
 
-  // 辅助方法：计算ISO周数
+  // 辅助方法：计算ISO周数（基于UTC+8时区）
   private getWeekNumber(date: Date): number {
-    const tempDate = new Date(date.getTime());
-    tempDate.setHours(0, 0, 0, 0);
-    tempDate.setDate(tempDate.getDate() + 3 - (tempDate.getDay() + 6) % 7);
-    const week1 = new Date(tempDate.getFullYear(), 0, 4);
-    return 1 + Math.round(((tempDate.getTime() - week1.getTime()) / 86400000 - 3 + (week1.getDay() + 6) % 7) / 7);
+    const taipei = this.getTaipeiComponents(date);
+    // ISO周数计算：找到包含当年第一个周四的那一周
+    const tempDate = new Date(Date.UTC(taipei.year, taipei.month, taipei.day));
+    tempDate.setUTCDate(tempDate.getUTCDate() + 3 - (tempDate.getUTCDay() + 6) % 7);
+    const week1 = new Date(Date.UTC(tempDate.getUTCFullYear(), 0, 4));
+    return 1 + Math.round(((tempDate.getTime() - week1.getTime()) / 86400000 - 3 + (week1.getUTCDay() + 6) % 7) / 7);
   }
 
-  // 辅助方法：计算ISO年份
+  // 辅助方法：计算ISO年份（基于UTC+8时区）
   private getISOYear(date: Date): number {
-    const tempDate = new Date(date.getTime());
-    tempDate.setHours(0, 0, 0, 0);
+    const taipei = this.getTaipeiComponents(date);
+    const tempDate = new Date(Date.UTC(taipei.year, taipei.month, taipei.day));
     // 调整到周四（周一+3天）
-    tempDate.setDate(tempDate.getDate() + 3 - (tempDate.getDay() + 6) % 7);
-    return tempDate.getFullYear();
+    tempDate.setUTCDate(tempDate.getUTCDate() + 3 - (tempDate.getUTCDay() + 6) % 7);
+    return tempDate.getUTCFullYear();
   }
 }
 
 export class DbStorage implements IStorage {
   private db;
+  
+  // UTC+8时区偏移（毫秒）
+  private readonly TAIPEI_OFFSET = 8 * 60 * 60 * 1000;
 
   constructor() {
     const pool = new Pool({
       connectionString: process.env.DATABASE_URL,
     });
     this.db = drizzle(pool);
+  }
+  
+  // 辅助方法：获取台北时区的年月日时分秒
+  private getTaipeiComponents(utcDate: Date): {
+    year: number;
+    month: number;
+    day: number;
+    hour: number;
+    minute: number;
+    second: number;
+    ms: number;
+    dayOfWeek: number;
+  } {
+    // 将UTC时间戳加8小时得到台北时间戳
+    const taipeiTimestamp = utcDate.getTime() + this.TAIPEI_OFFSET;
+    const taipeiDate = new Date(taipeiTimestamp);
+    
+    return {
+      year: taipeiDate.getUTCFullYear(),
+      month: taipeiDate.getUTCMonth(),
+      day: taipeiDate.getUTCDate(),
+      hour: taipeiDate.getUTCHours(),
+      minute: taipeiDate.getUTCMinutes(),
+      second: taipeiDate.getUTCSeconds(),
+      ms: taipeiDate.getUTCMilliseconds(),
+      dayOfWeek: taipeiDate.getUTCDay(), // 0=周日, 1=周一...
+    };
+  }
+
+  // 辅助方法：从台北时区组件创建UTC Date
+  private createUTCFromTaipei(year: number, month: number, day: number, hour = 0, minute = 0, second = 0, ms = 0): Date {
+    // 创建台北时间的UTC表示
+    const taipeiDate = new Date(Date.UTC(year, month, day, hour, minute, second, ms));
+    // 减去8小时偏移得到真正的UTC时间
+    return new Date(taipeiDate.getTime() - this.TAIPEI_OFFSET);
   }
 
   // 运动类型方法
@@ -1542,41 +1637,60 @@ export class DbStorage implements IStorage {
     };
   }
 
-  // 辅助方法：获取周一
+  // 辅助方法：获取周一（基于UTC+8时区）
   private getWeekStart(date: Date): Date {
-    const result = new Date(date);
-    const day = result.getDay();
-    const diff = day === 0 ? -6 : 1 - day; // 周日是0，需要-6天；其他日子到周一
-    result.setDate(result.getDate() + diff);
-    result.setHours(0, 0, 0, 0);
-    return result;
+    // 获取台北时区的日期组件
+    const taipei = this.getTaipeiComponents(date);
+    const diff = taipei.dayOfWeek === 0 ? -6 : 1 - taipei.dayOfWeek; // 周日是0，需要-6天；其他日子到周一
+    
+    // 直接从台北时区的date计算周一的毫秒时间戳
+    // 方法：在当前日期基础上加/减天数得到周一，然后设为00:00:00
+    const taipeiMondayTimestamp = date.getTime() + this.TAIPEI_OFFSET + diff * 24 * 60 * 60 * 1000;
+    const taipeiMonday = new Date(taipeiMondayTimestamp);
+    
+    // 获取周一在台北时区的年月日
+    const mondayYear = taipeiMonday.getUTCFullYear();
+    const mondayMonth = taipeiMonday.getUTCMonth();
+    const mondayDay = taipeiMonday.getUTCDate();
+    
+    // 返回周一00:00:00（台北时间）对应的UTC时间
+    return this.createUTCFromTaipei(mondayYear, mondayMonth, mondayDay, 0, 0, 0, 0);
   }
 
-  // 辅助方法：获取周日
+  // 辅助方法：获取周日（基于UTC+8时区）
   private getWeekEnd(date: Date): Date {
     const weekStart = this.getWeekStart(date);
-    const result = new Date(weekStart);
-    result.setDate(result.getDate() + 6);
-    result.setHours(23, 59, 59, 999);
-    return result;
+    
+    // 周日是周一+6天
+    const taipeiSundayTimestamp = weekStart.getTime() + this.TAIPEI_OFFSET + 6 * 24 * 60 * 60 * 1000;
+    const taipeiSunday = new Date(taipeiSundayTimestamp);
+    
+    // 获取周日在台北时区的年月日
+    const sundayYear = taipeiSunday.getUTCFullYear();
+    const sundayMonth = taipeiSunday.getUTCMonth();
+    const sundayDay = taipeiSunday.getUTCDate();
+    
+    // 返回周日23:59:59.999（台北时间）对应的UTC时间
+    return this.createUTCFromTaipei(sundayYear, sundayMonth, sundayDay, 23, 59, 59, 999);
   }
 
-  // 辅助方法：计算ISO周数
+  // 辅助方法：计算ISO周数（基于UTC+8时区）
   private getWeekNumber(date: Date): number {
-    const tempDate = new Date(date.getTime());
-    tempDate.setHours(0, 0, 0, 0);
-    tempDate.setDate(tempDate.getDate() + 3 - (tempDate.getDay() + 6) % 7);
-    const week1 = new Date(tempDate.getFullYear(), 0, 4);
-    return 1 + Math.round(((tempDate.getTime() - week1.getTime()) / 86400000 - 3 + (week1.getDay() + 6) % 7) / 7);
+    const taipei = this.getTaipeiComponents(date);
+    // ISO周数计算：找到包含当年第一个周四的那一周
+    const tempDate = new Date(Date.UTC(taipei.year, taipei.month, taipei.day));
+    tempDate.setUTCDate(tempDate.getUTCDate() + 3 - (tempDate.getUTCDay() + 6) % 7);
+    const week1 = new Date(Date.UTC(tempDate.getUTCFullYear(), 0, 4));
+    return 1 + Math.round(((tempDate.getTime() - week1.getTime()) / 86400000 - 3 + (week1.getUTCDay() + 6) % 7) / 7);
   }
 
-  // 辅助方法：计算ISO年份
+  // 辅助方法：计算ISO年份（基于UTC+8时区）
   private getISOYear(date: Date): number {
-    const tempDate = new Date(date.getTime());
-    tempDate.setHours(0, 0, 0, 0);
+    const taipei = this.getTaipeiComponents(date);
+    const tempDate = new Date(Date.UTC(taipei.year, taipei.month, taipei.day));
     // 调整到周四（周一+3天）
-    tempDate.setDate(tempDate.getDate() + 3 - (tempDate.getDay() + 6) % 7);
-    return tempDate.getFullYear();
+    tempDate.setUTCDate(tempDate.getUTCDate() + 3 - (tempDate.getUTCDay() + 6) % 7);
+    return tempDate.getUTCFullYear();
   }
 }
 
