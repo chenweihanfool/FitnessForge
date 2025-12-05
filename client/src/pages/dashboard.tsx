@@ -1,10 +1,11 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useLocation } from "wouter";
 import { StatsCard } from "@/components/stats-card";
 import { RankingMetricCard } from "@/components/ranking-metric-card";
 import { RankingDetailDialog } from "@/components/ranking-detail-dialog";
 import { TrendChart } from "@/components/trend-chart";
-import { Activity, TrendingUp, Calendar, Award, X, TrendingDown, Dumbbell, Heart, Footprints } from "lucide-react";
+import { Activity, TrendingUp, Calendar, Award, X, TrendingDown, Dumbbell, Heart, Footprints, Plus } from "lucide-react";
 import { RankingData, WeeklyStats, RankingDetailResponse } from "@shared/schema";
 import { queryClient } from "@/lib/queryClient";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -93,10 +94,15 @@ type WeeklyProgress = {
 };
 
 export default function Dashboard() {
+  const [, setLocation] = useLocation();
   const [showDetailsDialog, setShowDetailsDialog] = useState(false);
   const [showWeekRecordsDialog, setShowWeekRecordsDialog] = useState(false);
   const [showBestWeekDialog, setShowBestWeekDialog] = useState(false);
   const [rankingDetailMetric, setRankingDetailMetric] = useState<'total' | 'strength' | 'cardio' | 'activity' | null>(null);
+  
+  const handleAddEntry = (exerciseId: string) => {
+    setLocation(`/entries?addExercise=${exerciseId}`);
+  };
 
   const { data: rankingData, isLoading: rankingLoading } = useQuery<RankingData>({
     queryKey: ["/api/stats/ranking"],
@@ -172,6 +178,76 @@ export default function Dashboard() {
         <h1 className="text-3xl font-bold">仪表板</h1>
         <p className="text-muted-foreground mt-2">查看您的运动数据和进展</p>
       </div>
+
+      {/* 本周训练进度 - 置顶显示 */}
+      {!weeklyProgressLoading && weeklyProgress && weeklyProgress.exercises.filter(e => e.weeklyAverage !== null && e.weeklyAverage > 0).length > 0 && (
+        <Card data-testid="card-weekly-progress">
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2">
+              <Activity className="h-5 w-5" />
+              本周训练进度
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              {weeklyProgress.exercises
+                .filter((e) => e.weeklyAverage !== null && e.weeklyAverage > 0)
+                .map((ex) => {
+                  const percentage = ex.differencePercentage || 0;
+                  const isAbove = percentage >= 0;
+                  const displayPercentage = Math.abs(percentage);
+                  const progressValue = Math.min(displayPercentage, 100);
+
+                  return (
+                    <div
+                      key={ex.exerciseId}
+                      className="space-y-2 p-3 rounded-lg bg-muted/50 hover-elevate cursor-pointer group"
+                      data-testid={`progress-${ex.exerciseId}`}
+                      onClick={() => handleAddEntry(ex.exerciseId)}
+                    >
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="font-medium truncate">{ex.exerciseName}</span>
+                        <div className="flex items-center gap-1 shrink-0 ml-2">
+                          <Plus className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+                          {isAbove ? (
+                            <TrendingUp className="h-4 w-4 text-green-500" />
+                          ) : (
+                            <TrendingDown className="h-4 w-4 text-orange-500" />
+                          )}
+                          <span
+                            className={
+                              isAbove ? "text-green-600 dark:text-green-400 font-semibold" : "text-orange-600 dark:text-orange-400 font-semibold"
+                            }
+                          >
+                            {isAbove ? "+" : ""}
+                            {percentage.toFixed(0)}%
+                          </span>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                        <span>
+                          本周: {ex.currentWeekValue.toFixed(1)} {ex.exerciseUnit}
+                        </span>
+                        <span>|</span>
+                        <span>
+                          平均: {ex.weeklyAverage?.toFixed(1)} {ex.exerciseUnit}
+                        </span>
+                      </div>
+                      <div className="h-1.5 w-full overflow-hidden rounded-full bg-secondary">
+                        <div
+                          className={`h-full transition-all ${
+                            isAbove ? "bg-green-500" : "bg-orange-500"
+                          }`}
+                          style={{ width: `${progressValue}%` }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <StatsCard
@@ -344,71 +420,6 @@ export default function Dashboard() {
           )}
         </div>
       </div>
-
-      {/* 本周训练进度 */}
-      {!weeklyProgressLoading && weeklyProgress && weeklyProgress.exercises.filter(e => e.weeklyAverage !== null && e.weeklyAverage > 0).length > 0 && (
-        <Card data-testid="card-weekly-progress">
-          <CardHeader>
-            <CardTitle>本周训练进度</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {weeklyProgress.exercises
-                .filter((e) => e.weeklyAverage !== null && e.weeklyAverage > 0)
-                .map((ex) => {
-                  const percentage = ex.differencePercentage || 0;
-                  const isAbove = percentage >= 0;
-                  const displayPercentage = Math.abs(percentage);
-                  const progressValue = Math.min(displayPercentage, 100);
-
-                  return (
-                    <div
-                      key={ex.exerciseId}
-                      className="space-y-2 p-3 rounded-lg bg-muted/50"
-                      data-testid={`progress-${ex.exerciseId}`}
-                    >
-                      <div className="flex items-center justify-between text-sm">
-                        <span className="font-medium truncate">{ex.exerciseName}</span>
-                        <div className="flex items-center gap-1 shrink-0 ml-2">
-                          {isAbove ? (
-                            <TrendingUp className="h-4 w-4 text-green-500" />
-                          ) : (
-                            <TrendingDown className="h-4 w-4 text-orange-500" />
-                          )}
-                          <span
-                            className={
-                              isAbove ? "text-green-600 dark:text-green-400 font-semibold" : "text-orange-600 dark:text-orange-400 font-semibold"
-                            }
-                          >
-                            {isAbove ? "+" : ""}
-                            {percentage.toFixed(0)}%
-                          </span>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                        <span>
-                          本周: {ex.currentWeekValue.toFixed(1)} {ex.exerciseUnit}
-                        </span>
-                        <span>|</span>
-                        <span>
-                          平均: {ex.weeklyAverage?.toFixed(1)} {ex.exerciseUnit}
-                        </span>
-                      </div>
-                      <div className="h-1.5 w-full overflow-hidden rounded-full bg-secondary">
-                        <div
-                          className={`h-full transition-all ${
-                            isAbove ? "bg-green-500" : "bg-orange-500"
-                          }`}
-                          style={{ width: `${progressValue}%` }}
-                        />
-                      </div>
-                    </div>
-                  );
-                })}
-            </div>
-          </CardContent>
-        </Card>
-      )}
 
       <Dialog open={showDetailsDialog} onOpenChange={setShowDetailsDialog}>
         <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">

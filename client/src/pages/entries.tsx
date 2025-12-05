@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { useLocation, useSearch } from "wouter";
 import { Exercise, WorkoutEntryWithExercise, InsertWorkoutEntry, insertWorkoutEntrySchema } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -84,6 +85,8 @@ interface WeeklyProgress {
 }
 
 export default function Entries() {
+  const [, setLocation] = useLocation();
+  const searchString = useSearch();
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [editingEntry, setEditingEntry] = useState<WorkoutEntryWithExercise | null>(null);
@@ -178,6 +181,23 @@ export default function Entries() {
       notes: "",
     },
   });
+
+  // 处理从dashboard点击运动卡片跳转过来的情况
+  useEffect(() => {
+    const params = new URLSearchParams(searchString);
+    const addExerciseId = params.get('addExercise');
+    
+    if (addExerciseId && exercises) {
+      // 验证该运动类型存在
+      const exerciseExists = exercises.some(e => e.id === addExerciseId);
+      if (exerciseExists) {
+        form.setValue('exerciseId', addExerciseId);
+        setIsCreateOpen(true);
+        // 清除URL参数，避免刷新页面时重复触发
+        setLocation('/entries', { replace: true });
+      }
+    }
+  }, [searchString, exercises, form, setLocation]);
 
   const selectedExerciseId = form.watch("exerciseId");
   
