@@ -71,6 +71,27 @@ type CategoryBreakdown = {
   percentage: number;
 };
 
+type WeeklyProgress = {
+  weekStart: string;
+  weekEnd: string;
+  exercises: Array<{
+    exerciseId: string;
+    exerciseName: string;
+    exerciseUnit: string;
+    exerciseCategory: string | null;
+    currentWeekValue: number;
+    weeklyAverage: number | null;
+    difference: number | null;
+    differencePercentage: number | null;
+  }>;
+  recommendations: Array<{
+    exerciseId: string;
+    exerciseName: string;
+    exerciseUnit: string;
+    reason: string;
+  }>;
+};
+
 export default function Dashboard() {
   const [showDetailsDialog, setShowDetailsDialog] = useState(false);
   const [showWeekRecordsDialog, setShowWeekRecordsDialog] = useState(false);
@@ -92,6 +113,10 @@ export default function Dashboard() {
 
   const { data: categoryBreakdown, isLoading: categoryLoading } = useQuery<CategoryBreakdown[]>({
     queryKey: ["/api/stats/category-breakdown"],
+  });
+
+  const { data: weeklyProgress, isLoading: weeklyProgressLoading } = useQuery<WeeklyProgress>({
+    queryKey: ["/api/stats/weekly-progress"],
   });
 
   const { data: bestWeekDetails, isLoading: bestWeekLoading } = useQuery<BestWeekDetails>({
@@ -263,19 +288,15 @@ export default function Dashboard() {
               </CardHeader>
               <CardContent className="space-y-4">
                 {(() => {
-                  // 主要分类应始终显示（即使为0）
                   const mainCategories = ["力量", "有氧", "活动量"];
                   const categoryMap = new Map(categoryBreakdown.map(cat => [cat.category, cat]));
                   
-                  // 合并所有分类：API返回的 + 缺失的主要分类（填充0值）
                   const allCategories = new Map<string, CategoryBreakdown>();
                   
-                  // 首先添加所有API返回的分类
                   categoryBreakdown.forEach(cat => {
                     allCategories.set(cat.category, cat);
                   });
                   
-                  // 然后为缺失的主要分类填充0值
                   mainCategories.forEach(category => {
                     if (!allCategories.has(category)) {
                       allCategories.set(category, {
@@ -286,7 +307,6 @@ export default function Dashboard() {
                     }
                   });
                   
-                  // 排序：主要分类优先，然后按基准值降序
                   const sortedCategories = Array.from(allCategories.values()).sort((a, b) => {
                     const aIsMain = mainCategories.includes(a.category);
                     const bIsMain = mainCategories.includes(b.category);
@@ -324,6 +344,71 @@ export default function Dashboard() {
           )}
         </div>
       </div>
+
+      {/* 本周训练进度 */}
+      {!weeklyProgressLoading && weeklyProgress && weeklyProgress.exercises.filter(e => e.weeklyAverage !== null && e.weeklyAverage > 0).length > 0 && (
+        <Card data-testid="card-weekly-progress">
+          <CardHeader>
+            <CardTitle>本周训练进度</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {weeklyProgress.exercises
+                .filter((e) => e.weeklyAverage !== null && e.weeklyAverage > 0)
+                .map((ex) => {
+                  const percentage = ex.differencePercentage || 0;
+                  const isAbove = percentage >= 0;
+                  const displayPercentage = Math.abs(percentage);
+                  const progressValue = Math.min(displayPercentage, 100);
+
+                  return (
+                    <div
+                      key={ex.exerciseId}
+                      className="space-y-2 p-3 rounded-lg bg-muted/50"
+                      data-testid={`progress-${ex.exerciseId}`}
+                    >
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="font-medium truncate">{ex.exerciseName}</span>
+                        <div className="flex items-center gap-1 shrink-0 ml-2">
+                          {isAbove ? (
+                            <TrendingUp className="h-4 w-4 text-green-500" />
+                          ) : (
+                            <TrendingDown className="h-4 w-4 text-orange-500" />
+                          )}
+                          <span
+                            className={
+                              isAbove ? "text-green-600 dark:text-green-400 font-semibold" : "text-orange-600 dark:text-orange-400 font-semibold"
+                            }
+                          >
+                            {isAbove ? "+" : ""}
+                            {percentage.toFixed(0)}%
+                          </span>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                        <span>
+                          本周: {ex.currentWeekValue.toFixed(1)} {ex.exerciseUnit}
+                        </span>
+                        <span>|</span>
+                        <span>
+                          平均: {ex.weeklyAverage?.toFixed(1)} {ex.exerciseUnit}
+                        </span>
+                      </div>
+                      <div className="h-1.5 w-full overflow-hidden rounded-full bg-secondary">
+                        <div
+                          className={`h-full transition-all ${
+                            isAbove ? "bg-green-500" : "bg-orange-500"
+                          }`}
+                          style={{ width: `${progressValue}%` }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <Dialog open={showDetailsDialog} onOpenChange={setShowDetailsDialog}>
         <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">

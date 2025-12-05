@@ -29,7 +29,7 @@ import {
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Plus, Activity, Trash2, Calendar, TrendingUp, TrendingDown, Target, Edit } from "lucide-react";
+import { Plus, Activity, Trash2, Calendar, Target, Edit } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -272,7 +272,7 @@ export default function Entries() {
               <DialogDescription>记录您的运动数据和相关信息</DialogDescription>
             </DialogHeader>
 
-            {weeklyProgress && (
+            {weeklyProgress && weeklyProgress.recommendations.length > 0 && (
               <Collapsible open={showWeeklyProgress} onOpenChange={setShowWeeklyProgress}>
                 <CollapsibleTrigger asChild>
                   <Button
@@ -283,109 +283,42 @@ export default function Entries() {
                   >
                     <span className="flex items-center gap-2">
                       <Target className="h-4 w-4" />
-                      本周训练进度与推荐
+                      推荐训练
                     </span>
                     <span className="text-xs text-muted-foreground">
                       {showWeeklyProgress ? "收起" : "展开"}
                     </span>
                   </Button>
                 </CollapsibleTrigger>
-                <CollapsibleContent className="mt-4 space-y-4">
-                  {/* 推荐运动 */}
-                  {weeklyProgress.recommendations.length > 0 && (
-                    <Card className="bg-primary/5 border-primary/20">
-                      <CardHeader className="pb-3">
-                        <CardTitle className="text-sm flex items-center gap-2">
-                          <Target className="h-4 w-4 text-primary" />
-                          推荐训练
-                        </CardTitle>
-                      </CardHeader>
-                      <CardContent className="space-y-2">
-                        {weeklyProgress.recommendations.map((rec) => (
-                          <div
-                            key={rec.exerciseId}
-                            className="flex items-center justify-between gap-2 p-2 rounded-md bg-background/50"
-                            data-testid={`recommendation-${rec.exerciseId}`}
-                          >
-                            <div className="flex-1">
-                              <div className="font-medium text-sm">{rec.exerciseName}</div>
-                              <div className="text-xs text-muted-foreground">{rec.reason}</div>
-                            </div>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={() => form.setValue("exerciseId", rec.exerciseId)}
-                              data-testid={`button-select-${rec.exerciseId}`}
-                            >
-                              选择
-                            </Button>
-                          </div>
-                        ))}
-                      </CardContent>
-                    </Card>
-                  )}
-
-                  {/* 各运动类型进度 */}
-                  <Card>
+                <CollapsibleContent className="mt-4">
+                  <Card className="bg-primary/5 border-primary/20">
                     <CardHeader className="pb-3">
-                      <CardTitle className="text-sm">本周训练进度</CardTitle>
-                      <CardDescription className="text-xs">
-                        与历史周平均值对比
-                      </CardDescription>
+                      <CardTitle className="text-sm flex items-center gap-2">
+                        <Target className="h-4 w-4 text-primary" />
+                        推荐训练
+                      </CardTitle>
                     </CardHeader>
-                    <CardContent className="space-y-3">
-                      {weeklyProgress.exercises
-                        .filter((e) => e.weeklyAverage !== null && e.weeklyAverage > 0)
-                        .map((ex) => {
-                          const percentage = ex.differencePercentage || 0;
-                          const isAbove = percentage >= 0;
-                          const displayPercentage = Math.abs(percentage);
-                          const progressValue = Math.min(displayPercentage, 100);
-
-                          return (
-                            <div
-                              key={ex.exerciseId}
-                              className="space-y-1"
-                              data-testid={`progress-${ex.exerciseId}`}
-                            >
-                              <div className="flex items-center justify-between text-xs">
-                                <span className="font-medium">{ex.exerciseName}</span>
-                                <div className="flex items-center gap-1">
-                                  {isAbove ? (
-                                    <TrendingUp className="h-3 w-3 text-green-500" />
-                                  ) : (
-                                    <TrendingDown className="h-3 w-3 text-orange-500" />
-                                  )}
-                                  <span
-                                    className={
-                                      isAbove ? "text-green-500" : "text-orange-500"
-                                    }
-                                  >
-                                    {isAbove ? "+" : ""}
-                                    {percentage.toFixed(0)}%
-                                  </span>
-                                </div>
-                              </div>
-                              <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                                <span>
-                                  本周: {ex.currentWeekValue.toFixed(1)} {ex.exerciseUnit}
-                                </span>
-                                <span>|</span>
-                                <span>
-                                  平均: {ex.weeklyAverage?.toFixed(1)} {ex.exerciseUnit}
-                                </span>
-                              </div>
-                              <div className="h-1.5 w-full overflow-hidden rounded-full bg-secondary">
-                                <div
-                                  className={`h-full transition-all ${
-                                    isAbove ? "bg-green-500" : "bg-orange-500"
-                                  }`}
-                                  style={{ width: `${progressValue}%` }}
-                                />
-                              </div>
-                            </div>
-                          );
-                        })}
+                    <CardContent className="space-y-2">
+                      {weeklyProgress.recommendations.map((rec) => (
+                        <div
+                          key={rec.exerciseId}
+                          className="flex items-center justify-between gap-2 p-2 rounded-md bg-background/50"
+                          data-testid={`recommendation-${rec.exerciseId}`}
+                        >
+                          <div className="flex-1">
+                            <div className="font-medium text-sm">{rec.exerciseName}</div>
+                            <div className="text-xs text-muted-foreground">{rec.reason}</div>
+                          </div>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => form.setValue("exerciseId", rec.exerciseId)}
+                            data-testid={`button-select-${rec.exerciseId}`}
+                          >
+                            选择
+                          </Button>
+                        </div>
+                      ))}
                     </CardContent>
                   </Card>
                 </CollapsibleContent>
@@ -401,6 +334,7 @@ export default function Entries() {
                     const selectedExercise = exercises?.find((e) => e.id === field.value);
                     const weeklyAverage = weeklyAverageData?.average;
                     const isAverageSteps = selectedExercise?.name === '每周平均步数';
+                    const currentWeekProgress = weeklyProgress?.exercises.find(e => e.exerciseId === field.value);
                     
                     return (
                       <FormItem>
@@ -419,10 +353,29 @@ export default function Entries() {
                             ))}
                           </SelectContent>
                         </Select>
-                        {field.value && weeklyAverage !== null && weeklyAverage !== undefined && (
-                          <FormDescription className="text-primary font-medium">
-                            历史周平均: {isAverageSteps ? `${(weeklyAverage / 7).toFixed(0)} 步/天 (${weeklyAverage.toFixed(0)} 步/周)` : `${weeklyAverage.toFixed(1)} ${selectedExercise?.unit || ''}`}
-                          </FormDescription>
+                        {field.value && (currentWeekProgress || weeklyAverage !== null && weeklyAverage !== undefined) && (
+                          <div className="space-y-1.5 mt-2 p-2 rounded-md bg-muted/50" data-testid="exercise-progress-info">
+                            {currentWeekProgress && (
+                              <FormDescription className="text-sm">
+                                <span className="font-medium">本周进度: </span>
+                                {isAverageSteps 
+                                  ? `${(currentWeekProgress.currentWeekValue / 7).toFixed(0)} 步/天 (${currentWeekProgress.currentWeekValue.toFixed(0)} 步/周)`
+                                  : `${currentWeekProgress.currentWeekValue.toFixed(1)} ${selectedExercise?.unit || ''}`
+                                }
+                                {currentWeekProgress.differencePercentage !== null && currentWeekProgress.weeklyAverage !== null && currentWeekProgress.weeklyAverage > 0 && (
+                                  <span className={`ml-2 font-semibold ${currentWeekProgress.differencePercentage >= 0 ? 'text-green-600 dark:text-green-400' : 'text-orange-600 dark:text-orange-400'}`}>
+                                    ({currentWeekProgress.differencePercentage >= 0 ? '+' : ''}{currentWeekProgress.differencePercentage.toFixed(0)}%)
+                                  </span>
+                                )}
+                              </FormDescription>
+                            )}
+                            {weeklyAverage !== null && weeklyAverage !== undefined && (
+                              <FormDescription className="text-sm text-muted-foreground">
+                                <span className="font-medium">历史周平均: </span>
+                                {isAverageSteps ? `${(weeklyAverage / 7).toFixed(0)} 步/天 (${weeklyAverage.toFixed(0)} 步/周)` : `${weeklyAverage.toFixed(1)} ${selectedExercise?.unit || ''}`}
+                              </FormDescription>
+                            )}
+                          </div>
                         )}
                         <FormMessage />
                       </FormItem>
