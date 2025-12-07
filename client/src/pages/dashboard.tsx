@@ -211,6 +211,12 @@ export default function Dashboard() {
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
               {weeklyProgress.exercises
                 .filter((e) => e.weeklyAverage !== null && e.weeklyAverage > 0)
+                .sort((a, b) => {
+                  // 按距上次锻炼天数降序排列，null值排最后
+                  const daysA = a.daysSinceLastWorkout ?? -1;
+                  const daysB = b.daysSinceLastWorkout ?? -1;
+                  return daysB - daysA;
+                })
                 .map((ex) => {
                   const percentage = ex.differencePercentage || 0;
                   const isAbove = percentage >= 0;
