@@ -12,7 +12,7 @@ import {
 } from "@shared/schema";
 import { randomUUID } from "crypto";
 import { drizzle } from "drizzle-orm/node-postgres";
-import { eq, and, gte, lte, desc, sql, sum, count } from "drizzle-orm";
+import { eq, and, gte, lte, lt, desc, sql, sum, count } from "drizzle-orm";
 import { Pool } from "pg";
 
 export interface IStorage {
@@ -85,6 +85,19 @@ export interface IStorage {
       entryCount: number;
     }>;
     weekTotal: number;
+  }>;
+  getEntriesByDate(date: string): Promise<{
+    date: string;
+    entries: Array<{
+      id: string;
+      exerciseName: string;
+      exerciseUnit: string;
+      exerciseCategory: string | null;
+      value: number;
+      baselineValue: number;
+      weightFactor: number;
+    }>;
+    totalBaselineValue: number;
   }>;
   getWeekDetails(weekStart: string): Promise<{
     weekStart: string;
@@ -854,6 +867,53 @@ export class MemStorage implements IStorage {
       weekEnd: weekEnd.toISOString(),
       dailyData,
       weekTotal,
+    };
+  }
+
+  async getEntriesByDate(dateStr: string) {
+    const dayStart = new Date(dateStr);
+    const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000);
+    
+    const entries = Array.from(this.workoutEntries.values())
+      .filter(entry => {
+        const entryDate = new Date(entry.date);
+        return entryDate >= dayStart && entryDate < dayEnd;
+      });
+    
+    const result: Array<{
+      id: string;
+      exerciseName: string;
+      exerciseUnit: string;
+      exerciseCategory: string | null;
+      value: number;
+      baselineValue: number;
+      weightFactor: number;
+    }> = [];
+    
+    let totalBaselineValue = 0;
+    
+    for (const entry of entries) {
+      const exercise = this.exercises.get(entry.exerciseId);
+      if (!exercise) continue;
+      
+      const baselineValue = entry.value * exercise.weightFactor;
+      totalBaselineValue += baselineValue;
+      
+      result.push({
+        id: entry.id,
+        exerciseName: exercise.name,
+        exerciseUnit: exercise.unit,
+        exerciseCategory: exercise.category,
+        value: entry.value,
+        baselineValue,
+        weightFactor: exercise.weightFactor,
+      });
+    }
+    
+    return {
+      date: dateStr,
+      entries: result,
+      totalBaselineValue,
     };
   }
 
@@ -1762,6 +1822,50 @@ export class DbStorage implements IStorage {
       weekEnd: weekEnd.toISOString(),
       dailyData,
       weekTotal,
+    };
+  }
+
+  async getEntriesByDate(dateStr: string) {
+    const dayStart = new Date(dateStr);
+    const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000);
+    
+    const entries = await this.db
+      .select({
+        id: workoutEntries.id,
+        exerciseName: exercises.name,
+        exerciseUnit: exercises.unit,
+        exerciseCategory: exercises.category,
+        value: workoutEntries.value,
+        weightFactor: exercises.weightFactor,
+      })
+      .from(workoutEntries)
+      .innerJoin(exercises, eq(workoutEntries.exerciseId, exercises.id))
+      .where(
+        and(
+          gte(workoutEntries.date, dayStart),
+          lt(workoutEntries.date, dayEnd)
+        )
+      );
+    
+    let totalBaselineValue = 0;
+    const result = entries.map(entry => {
+      const baselineValue = entry.value * entry.weightFactor;
+      totalBaselineValue += baselineValue;
+      return {
+        id: entry.id,
+        exerciseName: entry.exerciseName,
+        exerciseUnit: entry.exerciseUnit,
+        exerciseCategory: entry.exerciseCategory,
+        value: entry.value,
+        baselineValue,
+        weightFactor: entry.weightFactor,
+      };
+    });
+    
+    return {
+      date: dateStr,
+      entries: result,
+      totalBaselineValue,
     };
   }
 

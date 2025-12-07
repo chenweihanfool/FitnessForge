@@ -108,12 +108,28 @@ type DailyContributions = {
   weekTotal: number;
 };
 
+type DayEntriesData = {
+  date: string;
+  entries: Array<{
+    id: string;
+    exerciseName: string;
+    exerciseUnit: string;
+    exerciseCategory: string | null;
+    value: number;
+    baselineValue: number;
+    weightFactor: number;
+  }>;
+  totalBaselineValue: number;
+};
+
 export default function Dashboard() {
   const [, setLocation] = useLocation();
   const [showDetailsDialog, setShowDetailsDialog] = useState(false);
   const [showWeekRecordsDialog, setShowWeekRecordsDialog] = useState(false);
   const [showBestWeekDialog, setShowBestWeekDialog] = useState(false);
   const [rankingDetailMetric, setRankingDetailMetric] = useState<'total' | 'strength' | 'cardio' | 'activity' | null>(null);
+  const [selectedDayDate, setSelectedDayDate] = useState<string | null>(null);
+  const [selectedDayName, setSelectedDayName] = useState<string>("");
   
   const handleAddEntry = (exerciseId: string) => {
     setLocation(`/entries?addExercise=${exerciseId}`);
@@ -147,6 +163,16 @@ export default function Dashboard() {
 
   const { data: dailyContributions, isLoading: dailyContributionsLoading } = useQuery<DailyContributions>({
     queryKey: ["/api/stats/daily-contributions"],
+  });
+
+  const { data: dayEntriesData, isLoading: dayEntriesLoading } = useQuery<DayEntriesData>({
+    queryKey: ["/api/stats/entries-by-date", selectedDayDate],
+    queryFn: async () => {
+      const response = await fetch(`/api/stats/entries-by-date?date=${encodeURIComponent(selectedDayDate!)}`);
+      if (!response.ok) throw new Error('Failed to fetch day entries');
+      return response.json();
+    },
+    enabled: !!selectedDayDate,
   });
 
   if (rankingLoading || trendLoading) {
@@ -463,19 +489,25 @@ export default function Dashboard() {
               <CardContent>
                 <div className="grid grid-cols-7 gap-1">
                   {dailyContributions.dailyData.map((day) => {
-                    // 根据贡献度计算背景颜色深度
                     const maxPercentage = Math.max(...dailyContributions.dailyData.map(d => d.percentage));
                     const intensity = maxPercentage > 0 ? day.percentage / maxPercentage : 0;
+                    const hasEntries = day.entryCount > 0;
                     
                     return (
                       <div
                         key={day.date}
-                        className="flex flex-col items-center gap-1"
+                        className={`flex flex-col items-center gap-1 ${hasEntries ? 'cursor-pointer' : ''}`}
                         data-testid={`heatmap-day-${day.dayOfWeek}`}
+                        onClick={() => {
+                          if (hasEntries) {
+                            setSelectedDayDate(day.date);
+                            setSelectedDayName(day.dayName);
+                          }
+                        }}
                       >
                         <span className="text-xs text-muted-foreground">{day.dayName}</span>
                         <div
-                          className="w-8 h-8 rounded-md flex items-center justify-center text-xs font-medium transition-colors"
+                          className={`w-8 h-8 rounded-md flex items-center justify-center text-xs font-medium transition-colors ${hasEntries ? 'hover-elevate' : ''}`}
                           style={{
                             backgroundColor: day.baselineValue > 0
                               ? `hsl(var(--primary) / ${0.2 + intensity * 0.8})`
@@ -903,6 +935,68 @@ export default function Dashboard() {
               <p className="text-muted-foreground">加载中...</p>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* 每日锻炼记录详情对话框 */}
+      <Dialog open={!!selectedDayDate} onOpenChange={(open) => !open && setSelectedDayDate(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>{selectedDayName}锻炼记录</DialogTitle>
+            <DialogDescription>
+              当日共 {dayEntriesData?.entries.length || 0} 条记录
+            </DialogDescription>
+          </DialogHeader>
+          
+          {dayEntriesLoading ? (
+            <div className="flex items-center justify-center h-24">
+              <p className="text-muted-foreground">加载中...</p>
+            </div>
+          ) : dayEntriesData && dayEntriesData.entries.length > 0 ? (
+            <div className="space-y-3">
+              {dayEntriesData.entries.map((entry) => (
+                <div 
+                  key={entry.id} 
+                  className="flex items-center justify-between p-3 rounded-lg bg-muted/50"
+                  data-testid={`day-entry-${entry.id}`}
+                >
+                  <div className="flex flex-col gap-0.5">
+                    <span className="font-medium">{entry.exerciseName}</span>
+                    <span className="text-xs text-muted-foreground">
+                      {entry.exerciseCategory || "未分类"}
+                    </span>
+                  </div>
+                  <div className="flex flex-col items-end gap-0.5">
+                    <span className="font-semibold">
+                      {entry.value} {entry.exerciseUnit}
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      基准值: {entry.baselineValue.toFixed(1)}
+                    </span>
+                  </div>
+                </div>
+              ))}
+              
+              <div className="pt-3 border-t">
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-muted-foreground">当日总计</span>
+                  <span className="font-bold">{dayEntriesData.totalBaselineValue.toFixed(1)} 基准值</span>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <p className="text-center text-muted-foreground py-4">暂无锻炼记录</p>
+          )}
+          
+          <div className="flex justify-end">
+            <Button 
+              variant="outline" 
+              onClick={() => setSelectedDayDate(null)}
+              data-testid="button-close-day-entries"
+            >
+              关闭
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
 

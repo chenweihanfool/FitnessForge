@@ -254,6 +254,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // 获取指定日期的锻炼记录
+  app.get("/api/stats/entries-by-date", async (req, res) => {
+    try {
+      const { date } = req.query;
+      if (!date || typeof date !== 'string') {
+        return res.status(400).json({ error: "缺少日期参数" });
+      }
+      const entries = await storage.getEntriesByDate(date);
+      res.json(entries);
+    } catch (error) {
+      res.status(500).json({ error: "获取当日锻炼记录失败" });
+    }
+  });
+
   // 获取指定周的详细数据
   app.get("/api/stats/week-details", async (req, res) => {
     try {
