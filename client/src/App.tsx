@@ -7,7 +7,7 @@ import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
-import { Plus } from "lucide-react";
+import { Plus, Home } from "lucide-react";
 import Dashboard from "@/pages/dashboard";
 import Exercises from "@/pages/exercises";
 import Entries from "@/pages/entries";
@@ -42,7 +42,14 @@ export default function App() {
             <AppSidebar />
             <div className="flex flex-col flex-1 overflow-hidden">
               <header className="flex h-14 items-center justify-between gap-4 border-b bg-secondary px-4 lg:px-6 shrink-0">
-                <SidebarTrigger data-testid="button-sidebar-toggle" />
+                <div className="flex items-center gap-2">
+                  <SidebarTrigger data-testid="button-sidebar-toggle" />
+                  <Button size="icon" variant="ghost" data-testid="button-home" asChild>
+                    <Link href="/">
+                      <Home className="h-4 w-4" />
+                    </Link>
+                  </Button>
+                </div>
                 <div className="flex items-center gap-2">
                   <Button size="icon" variant="default" data-testid="button-quick-add" asChild>
                     <Link href="/entries">

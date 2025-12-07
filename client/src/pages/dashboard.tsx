@@ -84,6 +84,7 @@ type WeeklyProgress = {
     weeklyAverage: number | null;
     difference: number | null;
     differencePercentage: number | null;
+    daysSinceLastWorkout: number | null;
   }>;
   recommendations: Array<{
     exerciseId: string;
@@ -91,6 +92,20 @@ type WeeklyProgress = {
     exerciseUnit: string;
     reason: string;
   }>;
+};
+
+type DailyContributions = {
+  weekStart: string;
+  weekEnd: string;
+  dailyData: Array<{
+    date: string;
+    dayOfWeek: number;
+    dayName: string;
+    baselineValue: number;
+    percentage: number;
+    entryCount: number;
+  }>;
+  weekTotal: number;
 };
 
 export default function Dashboard() {
@@ -128,6 +143,10 @@ export default function Dashboard() {
   const { data: bestWeekDetails, isLoading: bestWeekLoading } = useQuery<BestWeekDetails>({
     queryKey: [`/api/stats/week-details?weekStart=${rankingData?.bestWeek?.weekStart}`],
     enabled: showBestWeekDialog && !!rankingData?.bestWeek?.weekStart,
+  });
+
+  const { data: dailyContributions, isLoading: dailyContributionsLoading } = useQuery<DailyContributions>({
+    queryKey: ["/api/stats/daily-contributions"],
   });
 
   if (rankingLoading || trendLoading) {
@@ -224,14 +243,21 @@ export default function Dashboard() {
                           </span>
                         </div>
                       </div>
-                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                        <span>
-                          本周: {ex.currentWeekValue.toFixed(1)} {ex.exerciseUnit}
-                        </span>
-                        <span>|</span>
-                        <span>
-                          平均: {ex.weeklyAverage?.toFixed(1)} {ex.exerciseUnit}
-                        </span>
+                      <div className="flex items-center justify-between text-xs text-muted-foreground">
+                        <div className="flex items-center gap-2">
+                          <span>
+                            本周: {ex.currentWeekValue.toFixed(1)} {ex.exerciseUnit}
+                          </span>
+                          <span>|</span>
+                          <span>
+                            平均: {ex.weeklyAverage?.toFixed(1)} {ex.exerciseUnit}
+                          </span>
+                        </div>
+                        {ex.daysSinceLastWorkout !== null && (
+                          <span className={ex.daysSinceLastWorkout >= 7 ? "text-orange-500 font-medium" : ""}>
+                            {ex.daysSinceLastWorkout === 0 ? "今天" : `${ex.daysSinceLastWorkout}天前`}
+                          </span>
+                        )}
                       </div>
                       <div className="h-1.5 w-full overflow-hidden rounded-full bg-secondary">
                         <div
@@ -415,6 +441,57 @@ export default function Dashboard() {
                     </div>
                   ));
                 })()}
+              </CardContent>
+            </Card>
+          )}
+          
+          {/* 本周每日锻炼热点图 */}
+          {!dailyContributionsLoading && dailyContributions && (
+            <Card data-testid="card-daily-heatmap">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Calendar className="h-5 w-5" />
+                  本周每日贡献
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-7 gap-1">
+                  {dailyContributions.dailyData.map((day) => {
+                    // 根据贡献度计算背景颜色深度
+                    const maxPercentage = Math.max(...dailyContributions.dailyData.map(d => d.percentage));
+                    const intensity = maxPercentage > 0 ? day.percentage / maxPercentage : 0;
+                    
+                    return (
+                      <div
+                        key={day.date}
+                        className="flex flex-col items-center gap-1"
+                        data-testid={`heatmap-day-${day.dayOfWeek}`}
+                      >
+                        <span className="text-xs text-muted-foreground">{day.dayName}</span>
+                        <div
+                          className="w-8 h-8 rounded-md flex items-center justify-center text-xs font-medium transition-colors"
+                          style={{
+                            backgroundColor: day.baselineValue > 0
+                              ? `hsl(var(--primary) / ${0.2 + intensity * 0.8})`
+                              : 'hsl(var(--muted))',
+                            color: intensity > 0.5 ? 'hsl(var(--primary-foreground))' : 'hsl(var(--foreground))',
+                          }}
+                          title={`${day.dayName}: ${day.baselineValue.toFixed(1)} (${day.percentage.toFixed(1)}%)`}
+                        >
+                          {day.entryCount > 0 ? day.entryCount : ""}
+                        </div>
+                        <span className="text-xs text-muted-foreground">
+                          {day.percentage > 0 ? `${day.percentage.toFixed(0)}%` : "-"}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+                {dailyContributions.weekTotal > 0 && (
+                  <div className="mt-4 pt-3 border-t text-sm text-muted-foreground text-center">
+                    本周总计: {dailyContributions.weekTotal.toFixed(1)} 基准值
+                  </div>
+                )}
               </CardContent>
             </Card>
           )}

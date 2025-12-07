@@ -64,6 +64,7 @@ export interface IStorage {
       weeklyAverage: number | null;
       difference: number | null;
       differencePercentage: number | null;
+      daysSinceLastWorkout: number | null;
     }>;
     recommendations: Array<{
       exerciseId: string;
@@ -71,6 +72,19 @@ export interface IStorage {
       exerciseUnit: string;
       reason: string;
     }>;
+  }>;
+  getDailyContributions(): Promise<{
+    weekStart: string;
+    weekEnd: string;
+    dailyData: Array<{
+      date: string;
+      dayOfWeek: number;
+      dayName: string;
+      baselineValue: number;
+      percentage: number;
+      entryCount: number;
+    }>;
+    weekTotal: number;
   }>;
   getWeekDetails(weekStart: string): Promise<{
     weekStart: string;
@@ -652,6 +666,7 @@ export class MemStorage implements IStorage {
   async getWeeklyProgress() {
     const allExercises = await this.getExercises();
     const weekDetails = await this.getCurrentWeekDetails();
+    const now = new Date();
     
     const exercisesProgress = [];
     
@@ -668,6 +683,23 @@ export class MemStorage implements IStorage {
         differencePercentage = (difference / weeklyAverage) * 100;
       }
       
+      // 计算距离上次锻炼的天数
+      const exerciseEntries = Array.from(this.workoutEntries.values())
+        .filter(entry => entry.exerciseId === exercise.id)
+        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      
+      let daysSinceLastWorkout: number | null = null;
+      if (exerciseEntries.length > 0) {
+        const lastWorkoutDate = new Date(exerciseEntries[0].date);
+        const nowTaipei = this.getTaipeiComponents(now);
+        const lastTaipei = this.getTaipeiComponents(lastWorkoutDate);
+        
+        // getTaipeiComponents返回的month已经是0基索引，直接使用
+        const nowDateOnly = new Date(nowTaipei.year, nowTaipei.month, nowTaipei.day);
+        const lastDateOnly = new Date(lastTaipei.year, lastTaipei.month, lastTaipei.day);
+        daysSinceLastWorkout = Math.floor((nowDateOnly.getTime() - lastDateOnly.getTime()) / (24 * 60 * 60 * 1000));
+      }
+      
       exercisesProgress.push({
         exerciseId: exercise.id,
         exerciseName: exercise.name,
@@ -677,6 +709,7 @@ export class MemStorage implements IStorage {
         weeklyAverage,
         difference,
         differencePercentage,
+        daysSinceLastWorkout,
       });
     }
     
@@ -750,6 +783,77 @@ export class MemStorage implements IStorage {
       weekEnd: weekDetails.weekEnd,
       exercises: exercisesProgress,
       recommendations,
+    };
+  }
+
+  async getDailyContributions() {
+    const now = new Date();
+    const weekStart = this.getWeekStart(now);
+    const weekEnd = this.getWeekEnd(weekStart);
+    
+    const dayNames = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+    const dailyData: Array<{
+      date: string;
+      dayOfWeek: number;
+      dayName: string;
+      baselineValue: number;
+      percentage: number;
+      entryCount: number;
+    }> = [];
+    
+    let weekTotal = 0;
+    const dailyTotals: { date: Date; baselineValue: number; entryCount: number }[] = [];
+    
+    // 遍历本周每一天
+    for (let i = 0; i < 7; i++) {
+      const dayStart = new Date(weekStart.getTime() + i * 24 * 60 * 60 * 1000);
+      const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000 - 1);
+      
+      // 获取当天的所有记录
+      const dayEntries = Array.from(this.workoutEntries.values()).filter(entry => {
+        const entryDate = new Date(entry.date);
+        return entryDate >= dayStart && entryDate <= dayEnd;
+      });
+      
+      // 计算当天的基准值
+      let dayBaselineValue = 0;
+      for (const entry of dayEntries) {
+        const exercise = this.exercises.get(entry.exerciseId);
+        if (exercise) {
+          dayBaselineValue += entry.value * exercise.weightFactor;
+        }
+      }
+      
+      dailyTotals.push({
+        date: dayStart,
+        baselineValue: dayBaselineValue,
+        entryCount: dayEntries.length,
+      });
+      
+      weekTotal += dayBaselineValue;
+    }
+    
+    // 计算百分比
+    for (let i = 0; i < 7; i++) {
+      const dayStart = new Date(weekStart.getTime() + i * 24 * 60 * 60 * 1000);
+      const taipeiComponents = this.getTaipeiComponents(dayStart);
+      const dayOfWeek = taipeiComponents.dayOfWeek;
+      
+      dailyData.push({
+        date: dayStart.toISOString(),
+        dayOfWeek,
+        dayName: dayNames[dayOfWeek],
+        baselineValue: dailyTotals[i].baselineValue,
+        percentage: weekTotal > 0 ? (dailyTotals[i].baselineValue / weekTotal) * 100 : 0,
+        entryCount: dailyTotals[i].entryCount,
+      });
+    }
+    
+    return {
+      weekStart: weekStart.toISOString(),
+      weekEnd: weekEnd.toISOString(),
+      dailyData,
+      weekTotal,
     };
   }
 
@@ -1461,6 +1565,7 @@ export class DbStorage implements IStorage {
   async getWeeklyProgress() {
     const allExercises = await this.getExercises();
     const weekDetails = await this.getCurrentWeekDetails();
+    const now = new Date();
     
     const exercisesProgress = [];
     
@@ -1477,6 +1582,26 @@ export class DbStorage implements IStorage {
         differencePercentage = (difference / weeklyAverage) * 100;
       }
       
+      // 计算距离上次锻炼的天数
+      const exerciseEntries = await this.db
+        .select()
+        .from(workoutEntries)
+        .where(eq(workoutEntries.exerciseId, exercise.id))
+        .orderBy(desc(workoutEntries.date))
+        .limit(1);
+      
+      let daysSinceLastWorkout: number | null = null;
+      if (exerciseEntries.length > 0) {
+        const lastWorkoutDate = new Date(exerciseEntries[0].date);
+        const nowTaipei = this.getTaipeiComponents(now);
+        const lastTaipei = this.getTaipeiComponents(lastWorkoutDate);
+        
+        // getTaipeiComponents返回的month已经是0基索引，直接使用
+        const nowDateOnly = new Date(nowTaipei.year, nowTaipei.month, nowTaipei.day);
+        const lastDateOnly = new Date(lastTaipei.year, lastTaipei.month, lastTaipei.day);
+        daysSinceLastWorkout = Math.floor((nowDateOnly.getTime() - lastDateOnly.getTime()) / (24 * 60 * 60 * 1000));
+      }
+      
       exercisesProgress.push({
         exerciseId: exercise.id,
         exerciseName: exercise.name,
@@ -1486,6 +1611,7 @@ export class DbStorage implements IStorage {
         weeklyAverage,
         difference,
         differencePercentage,
+        daysSinceLastWorkout,
       });
     }
     
@@ -1559,6 +1685,83 @@ export class DbStorage implements IStorage {
       weekEnd: weekDetails.weekEnd,
       exercises: exercisesProgress,
       recommendations,
+    };
+  }
+
+  async getDailyContributions() {
+    const now = new Date();
+    const weekStart = this.getWeekStart(now);
+    const weekEnd = this.getWeekEnd(weekStart);
+    
+    const dayNames = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+    const dailyData: Array<{
+      date: string;
+      dayOfWeek: number;
+      dayName: string;
+      baselineValue: number;
+      percentage: number;
+      entryCount: number;
+    }> = [];
+    
+    let weekTotal = 0;
+    const dailyTotals: { date: Date; baselineValue: number; entryCount: number }[] = [];
+    
+    // 遍历本周每一天
+    for (let i = 0; i < 7; i++) {
+      const dayStart = new Date(weekStart.getTime() + i * 24 * 60 * 60 * 1000);
+      const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000 - 1);
+      
+      // 从数据库获取当天的记录
+      const dayEntries = await this.db
+        .select({
+          value: workoutEntries.value,
+          weightFactor: exercises.weightFactor,
+        })
+        .from(workoutEntries)
+        .innerJoin(exercises, eq(workoutEntries.exerciseId, exercises.id))
+        .where(
+          and(
+            gte(workoutEntries.date, dayStart),
+            lte(workoutEntries.date, dayEnd)
+          )
+        );
+      
+      // 计算当天的基准值
+      let dayBaselineValue = 0;
+      for (const entry of dayEntries) {
+        dayBaselineValue += entry.value * entry.weightFactor;
+      }
+      
+      dailyTotals.push({
+        date: dayStart,
+        baselineValue: dayBaselineValue,
+        entryCount: dayEntries.length,
+      });
+      
+      weekTotal += dayBaselineValue;
+    }
+    
+    // 计算百分比
+    for (let i = 0; i < 7; i++) {
+      const dayStart = new Date(weekStart.getTime() + i * 24 * 60 * 60 * 1000);
+      const taipeiComponents = this.getTaipeiComponents(dayStart);
+      const dayOfWeek = taipeiComponents.dayOfWeek;
+      
+      dailyData.push({
+        date: dayStart.toISOString(),
+        dayOfWeek,
+        dayName: dayNames[dayOfWeek],
+        baselineValue: dailyTotals[i].baselineValue,
+        percentage: weekTotal > 0 ? (dailyTotals[i].baselineValue / weekTotal) * 100 : 0,
+        entryCount: dailyTotals[i].entryCount,
+      });
+    }
+    
+    return {
+      weekStart: weekStart.toISOString(),
+      weekEnd: weekEnd.toISOString(),
+      dailyData,
+      weekTotal,
     };
   }
 

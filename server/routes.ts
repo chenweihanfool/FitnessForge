@@ -244,6 +244,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // 获取本周每日贡献度热点图数据
+  app.get("/api/stats/daily-contributions", async (req, res) => {
+    try {
+      const contributions = await storage.getDailyContributions();
+      res.json(contributions);
+    } catch (error) {
+      res.status(500).json({ error: "获取每日贡献度失败" });
+    }
+  });
+
   // 获取指定周的详细数据
   app.get("/api/stats/week-details", async (req, res) => {
     try {
