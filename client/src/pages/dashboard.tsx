@@ -238,8 +238,9 @@ export default function Dashboard() {
     
     const totalWeeks = rankingData.totalWeeks || 1;
     const rank = rankingData.rank || totalWeeks;
-    const percentile = ((totalWeeks - rank + 1) / totalWeeks) * 100;
-    const inTop60 = percentile >= 40; // 前60%意味着百分位 >= 40%
+    // 排名55/67 = 前82%，排名1/67 = 前1.5%
+    const percentile = (rank / totalWeeks) * 100;
+    const inTop60 = percentile <= 60; // 前60%意味着排名在前60%位置
     
     return {
       allAbove: strengthAbove && cardioAbove && activityAbove,
