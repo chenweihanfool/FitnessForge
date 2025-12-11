@@ -5,7 +5,7 @@ import { StatsCard } from "@/components/stats-card";
 import { RankingMetricCard } from "@/components/ranking-metric-card";
 import { RankingDetailDialog } from "@/components/ranking-detail-dialog";
 import { TrendChart } from "@/components/trend-chart";
-import { Activity, TrendingUp, Calendar, Award, X, TrendingDown, Dumbbell, Heart, Footprints, Plus } from "lucide-react";
+import { Activity, TrendingUp, Calendar, Award, X, TrendingDown, Dumbbell, Heart, Footprints, Plus, Check, Minus } from "lucide-react";
 import { RankingData, WeeklyStats, RankingDetailResponse } from "@shared/schema";
 import { queryClient } from "@/lib/queryClient";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -217,12 +217,179 @@ export default function Dashboard() {
     });
   };
 
+  // 计算阶段性目标状态
+  const milestones = (() => {
+    if (!rankingData || !categoryBreakdown) return null;
+    
+    const currentStrength = categoryBreakdown.find(c => c.category === "力量")?.value || 0;
+    const currentCardio = categoryBreakdown.find(c => c.category === "有氧")?.value || 0;
+    const currentActivity = categoryBreakdown.find(c => c.category === "活动量")?.value || 0;
+    const currentTotal = rankingData.currentWeek?.totalBaselineValue || 0;
+    
+    const avgStrength = rankingData.averageStrengthValue || 0;
+    const avgCardio = rankingData.averageCardioValue || 0;
+    const avgActivity = rankingData.averageActivityValue || 0;
+    const avgTotal = rankingData.averageWeeklyValue || 0;
+    
+    const strengthAbove = currentStrength >= avgStrength && avgStrength > 0;
+    const cardioAbove = currentCardio >= avgCardio && avgCardio > 0;
+    const activityAbove = currentActivity >= avgActivity && avgActivity > 0;
+    const totalAbove = currentTotal >= avgTotal && avgTotal > 0;
+    
+    const totalWeeks = rankingData.totalWeeks || 1;
+    const rank = rankingData.rank || totalWeeks;
+    const percentile = ((totalWeeks - rank + 1) / totalWeeks) * 100;
+    const inTop60 = percentile >= 40; // 前60%意味着百分位 >= 40%
+    
+    return {
+      allAbove: strengthAbove && cardioAbove && activityAbove,
+      threeAbove: strengthAbove && cardioAbove && activityAbove,
+      totalAbove,
+      inTop60,
+      strengthAbove,
+      cardioAbove,
+      activityAbove,
+      percentile,
+    };
+  })();
+
+  // 确定达成的最高阶段
+  const getHighestMilestone = () => {
+    if (!milestones) return 0;
+    if (milestones.allAbove) return 4;
+    if (milestones.threeAbove) return 3;
+    if (milestones.totalAbove) return 2;
+    if (milestones.inTop60) return 1;
+    return 0;
+  };
+
+  const highestMilestone = getHighestMilestone();
+
   return (
     <div className="space-y-6" data-testid="page-dashboard">
       <div>
         <h1 className="text-3xl font-bold">仪表板</h1>
         <p className="text-muted-foreground mt-2">查看您的运动数据和进展</p>
       </div>
+
+      {/* 本周评语 - 阶段性目标 */}
+      {rankingData && milestones && (
+        <Card data-testid="card-weekly-assessment">
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2">
+              <Award className="h-5 w-5" />
+              本周评语
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              {/* 当前状态总结 */}
+              <div className="text-center py-2">
+                {highestMilestone === 4 ? (
+                  <p className="text-lg font-bold text-green-600 dark:text-green-400">
+                    全面超越！所有项目均超过历史平均
+                  </p>
+                ) : highestMilestone === 3 ? (
+                  <p className="text-lg font-bold text-green-600 dark:text-green-400">
+                    三项达标！力量、有氧、活动量均超过平均
+                  </p>
+                ) : highestMilestone === 2 ? (
+                  <p className="text-lg font-bold text-blue-600 dark:text-blue-400">
+                    总分达标！继续努力提升各项指标
+                  </p>
+                ) : highestMilestone === 1 ? (
+                  <p className="text-lg font-bold text-orange-600 dark:text-orange-400">
+                    进入前60%！离平均水平还有一步之遥
+                  </p>
+                ) : (
+                  <p className="text-lg font-bold text-muted-foreground">
+                    继续加油！向前60%目标迈进
+                  </p>
+                )}
+              </div>
+
+              {/* 4个阶段性目标 */}
+              <div className="grid grid-cols-2 gap-3">
+                {/* 目标4: 所有项目超过平均 */}
+                <div 
+                  className={`p-3 rounded-lg border ${milestones.allAbove ? 'bg-green-50 dark:bg-green-950/30 border-green-200 dark:border-green-800' : 'bg-muted/30 border-muted'}`}
+                  data-testid="milestone-all-above"
+                >
+                  <div className="flex items-center gap-2 mb-1">
+                    <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${milestones.allAbove ? 'bg-green-500 text-white' : 'bg-muted text-muted-foreground'}`}>
+                      4
+                    </div>
+                    <span className={`text-sm font-medium ${milestones.allAbove ? 'text-green-700 dark:text-green-300' : 'text-muted-foreground'}`}>
+                      全项超越
+                    </span>
+                  </div>
+                  <p className="text-xs text-muted-foreground ml-8">所有项目皆超过平均</p>
+                </div>
+
+                {/* 目标3: 力量/有氧/活动量超过平均 */}
+                <div 
+                  className={`p-3 rounded-lg border ${milestones.threeAbove ? 'bg-green-50 dark:bg-green-950/30 border-green-200 dark:border-green-800' : 'bg-muted/30 border-muted'}`}
+                  data-testid="milestone-three-above"
+                >
+                  <div className="flex items-center gap-2 mb-1">
+                    <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${milestones.threeAbove ? 'bg-green-500 text-white' : 'bg-muted text-muted-foreground'}`}>
+                      3
+                    </div>
+                    <span className={`text-sm font-medium ${milestones.threeAbove ? 'text-green-700 dark:text-green-300' : 'text-muted-foreground'}`}>
+                      三项达标
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground ml-8">
+                    <span className="flex items-center gap-0.5">
+                      力量{milestones.strengthAbove ? <Check className="h-3 w-3 text-green-500" /> : <Minus className="h-3 w-3" />}
+                    </span>
+                    <span className="flex items-center gap-0.5">
+                      有氧{milestones.cardioAbove ? <Check className="h-3 w-3 text-green-500" /> : <Minus className="h-3 w-3" />}
+                    </span>
+                    <span className="flex items-center gap-0.5">
+                      活动量{milestones.activityAbove ? <Check className="h-3 w-3 text-green-500" /> : <Minus className="h-3 w-3" />}
+                    </span>
+                  </div>
+                </div>
+
+                {/* 目标2: 总分超过平均 */}
+                <div 
+                  className={`p-3 rounded-lg border ${milestones.totalAbove ? 'bg-blue-50 dark:bg-blue-950/30 border-blue-200 dark:border-blue-800' : 'bg-muted/30 border-muted'}`}
+                  data-testid="milestone-total-above"
+                >
+                  <div className="flex items-center gap-2 mb-1">
+                    <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${milestones.totalAbove ? 'bg-blue-500 text-white' : 'bg-muted text-muted-foreground'}`}>
+                      2
+                    </div>
+                    <span className={`text-sm font-medium ${milestones.totalAbove ? 'text-blue-700 dark:text-blue-300' : 'text-muted-foreground'}`}>
+                      总分达标
+                    </span>
+                  </div>
+                  <p className="text-xs text-muted-foreground ml-8">总分超过历史平均</p>
+                </div>
+
+                {/* 目标1: 总分在前60% */}
+                <div 
+                  className={`p-3 rounded-lg border ${milestones.inTop60 ? 'bg-orange-50 dark:bg-orange-950/30 border-orange-200 dark:border-orange-800' : 'bg-muted/30 border-muted'}`}
+                  data-testid="milestone-top-60"
+                >
+                  <div className="flex items-center gap-2 mb-1">
+                    <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${milestones.inTop60 ? 'bg-orange-500 text-white' : 'bg-muted text-muted-foreground'}`}>
+                      1
+                    </div>
+                    <span className={`text-sm font-medium ${milestones.inTop60 ? 'text-orange-700 dark:text-orange-300' : 'text-muted-foreground'}`}>
+                      前60%
+                    </span>
+                  </div>
+                  <p className="text-xs text-muted-foreground ml-8">
+                    当前: 前{milestones.percentile.toFixed(0)}%
+                  </p>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* 本周训练进度 - 置顶显示 */}
       {!weeklyProgressLoading && weeklyProgress && weeklyProgress.exercises.filter(e => e.weeklyAverage !== null && e.weeklyAverage > 0).length > 0 && (
