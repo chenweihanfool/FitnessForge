@@ -1118,7 +1118,7 @@ export default function Dashboard() {
 
       {/* 每日锻炼记录详情对话框 */}
       <Dialog open={!!selectedDayDate} onOpenChange={(open) => !open && setSelectedDayDate(null)}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-md max-h-[80vh] flex flex-col">
           <DialogHeader>
             <DialogTitle>{selectedDayName}锻炼记录</DialogTitle>
             <DialogDescription>
@@ -1131,7 +1131,7 @@ export default function Dashboard() {
               <p className="text-muted-foreground">加载中...</p>
             </div>
           ) : dayEntriesData && dayEntriesData.entries.length > 0 ? (
-            <div className="space-y-3">
+            <div className="space-y-3 overflow-y-auto flex-1 min-h-0">
               {dayEntriesData.entries.map((entry) => (
                 <div 
                   key={entry.id} 
