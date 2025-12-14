@@ -120,6 +120,7 @@ type DayEntriesData = {
     weightFactor: number;
   }>;
   totalBaselineValue: number;
+  dailyStepsBaseline: number;
 };
 
 export default function Dashboard() {
@@ -1154,10 +1155,33 @@ export default function Dashboard() {
                 </div>
               ))}
               
-              <div className="pt-3 border-t">
+              <div className="pt-3 border-t space-y-2">
+                {dayEntriesData.dailyStepsBaseline > 0 && (
+                  <div className="flex justify-between items-center text-sm">
+                    <span className="text-muted-foreground">每周平均步数(分配)</span>
+                    <span className="font-medium">{dayEntriesData.dailyStepsBaseline.toFixed(1)} 基准值</span>
+                  </div>
+                )}
                 <div className="flex justify-between items-center">
                   <span className="text-sm text-muted-foreground">当日总计</span>
-                  <span className="font-bold">{dayEntriesData.totalBaselineValue.toFixed(1)} 基准值</span>
+                  <span className="font-bold">
+                    {(dayEntriesData.totalBaselineValue - 
+                      (dayEntriesData.entries.find(e => e.exerciseName === '每周平均步数')?.baselineValue || 0) + 
+                      dayEntriesData.dailyStepsBaseline).toFixed(1)} 基准值
+                  </span>
+                </div>
+              </div>
+            </div>
+          ) : dayEntriesData && dayEntriesData.dailyStepsBaseline > 0 ? (
+            <div className="space-y-3">
+              <div className="pt-3 border-t space-y-2">
+                <div className="flex justify-between items-center text-sm">
+                  <span className="text-muted-foreground">每周平均步数(分配)</span>
+                  <span className="font-medium">{dayEntriesData.dailyStepsBaseline.toFixed(1)} 基准值</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-muted-foreground">当日总计</span>
+                  <span className="font-bold">{dayEntriesData.dailyStepsBaseline.toFixed(1)} 基准值</span>
                 </div>
               </div>
             </div>

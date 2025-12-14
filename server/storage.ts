@@ -98,6 +98,7 @@ export interface IStorage {
       weightFactor: number;
     }>;
     totalBaselineValue: number;
+    dailyStepsBaseline: number; // 每周平均步数分配到当日的基准值
   }>;
   getWeekDetails(weekStart: string): Promise<{
     weekStart: string;
@@ -889,11 +890,28 @@ export class MemStorage implements IStorage {
     const dayStart = new Date(dateStr);
     const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000);
     
-    const entries = Array.from(this.workoutEntries.values())
-      .filter(entry => {
-        const entryDate = new Date(entry.date);
-        return entryDate >= dayStart && entryDate < dayEnd;
-      });
+    // 计算本周每周平均步数的分配基准值
+    const weekStart = this.getWeekStart(dayStart);
+    const weekEnd = this.getWeekEnd(weekStart);
+    const weekEndTime = new Date(weekEnd.getTime() + 24 * 60 * 60 * 1000);
+    
+    let weeklyStepsBaselineTotal = 0;
+    const allEntries = Array.from(this.workoutEntries.values());
+    for (const entry of allEntries) {
+      const entryDate = new Date(entry.date);
+      if (entryDate >= weekStart && entryDate < weekEndTime) {
+        const exercise = this.exercises.get(entry.exerciseId);
+        if (exercise && exercise.name === '每周平均步数') {
+          weeklyStepsBaselineTotal += entry.value * exercise.weightFactor;
+        }
+      }
+    }
+    const dailyStepsBaseline = weeklyStepsBaselineTotal / 7;
+    
+    const entries = allEntries.filter(entry => {
+      const entryDate = new Date(entry.date);
+      return entryDate >= dayStart && entryDate < dayEnd;
+    });
     
     const result: Array<{
       id: string;
@@ -929,6 +947,7 @@ export class MemStorage implements IStorage {
       date: dateStr,
       entries: result,
       totalBaselineValue,
+      dailyStepsBaseline,
     };
   }
 
@@ -1870,6 +1889,32 @@ export class DbStorage implements IStorage {
     const dayStart = new Date(dateStr);
     const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000);
     
+    // 计算本周每周平均步数的分配基准值
+    const weekStart = this.getWeekStart(dayStart);
+    const weekEnd = this.getWeekEnd(weekStart);
+    const weekEndTime = new Date(weekEnd.getTime() + 24 * 60 * 60 * 1000);
+    
+    const weeklyStepsEntries = await this.db
+      .select({
+        value: workoutEntries.value,
+        weightFactor: exercises.weightFactor,
+      })
+      .from(workoutEntries)
+      .innerJoin(exercises, eq(workoutEntries.exerciseId, exercises.id))
+      .where(
+        and(
+          gte(workoutEntries.date, weekStart),
+          lt(workoutEntries.date, weekEndTime),
+          eq(exercises.name, '每周平均步数')
+        )
+      );
+    
+    let weeklyStepsBaselineTotal = 0;
+    for (const entry of weeklyStepsEntries) {
+      weeklyStepsBaselineTotal += entry.value * entry.weightFactor;
+    }
+    const dailyStepsBaseline = weeklyStepsBaselineTotal / 7;
+    
     const entries = await this.db
       .select({
         id: workoutEntries.id,
@@ -1907,6 +1952,7 @@ export class DbStorage implements IStorage {
       date: dateStr,
       entries: result,
       totalBaselineValue,
+      dailyStepsBaseline,
     };
   }
 
