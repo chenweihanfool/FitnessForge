@@ -242,8 +242,13 @@ export default function Dashboard() {
     const percentile = (rank / totalWeeks) * 100;
     const inTop60 = percentile <= 60; // 前60%意味着排名在前60%位置
     
+    // 全项超越：检查所有有历史平均值的运动项目是否都超过平均
+    const exercisesWithAverage = weeklyProgress?.exercises.filter(e => e.weeklyAverage !== null && e.weeklyAverage > 0) || [];
+    const allExercisesAbove = exercisesWithAverage.length > 0 && 
+      exercisesWithAverage.every(e => e.currentWeekValue >= (e.weeklyAverage || 0));
+    
     return {
-      allAbove: strengthAbove && cardioAbove && activityAbove,
+      allAbove: allExercisesAbove,
       threeAbove: strengthAbove && cardioAbove && activityAbove,
       totalAbove,
       inTop60,
@@ -251,6 +256,8 @@ export default function Dashboard() {
       cardioAbove,
       activityAbove,
       percentile,
+      exercisesAboveCount: exercisesWithAverage.filter(e => e.currentWeekValue >= (e.weeklyAverage || 0)).length,
+      exercisesTotalCount: exercisesWithAverage.length,
     };
   })();
 
@@ -324,7 +331,9 @@ export default function Dashboard() {
                       全项超越
                     </span>
                   </div>
-                  <p className="text-xs text-muted-foreground ml-8">所有项目皆超过平均</p>
+                  <p className="text-xs text-muted-foreground ml-8">
+                    {milestones.exercisesAboveCount}/{milestones.exercisesTotalCount} 项达标
+                  </p>
                 </div>
 
                 {/* 目标3: 力量/有氧/活动量超过平均 */}
