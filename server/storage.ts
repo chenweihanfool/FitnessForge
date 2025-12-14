@@ -817,6 +817,21 @@ export class MemStorage implements IStorage {
     let weekTotal = 0;
     const dailyTotals: { date: Date; baselineValue: number; entryCount: number }[] = [];
     
+    // 先计算本周"每周平均步数"的总基准值，用于平均分配到每天
+    let weeklyStepsBaselineTotal = 0;
+    const weekEndTime = new Date(weekEnd.getTime() + 24 * 60 * 60 * 1000);
+    const allEntries = Array.from(this.workoutEntries.values());
+    for (const entry of allEntries) {
+      const entryDate = new Date(entry.date);
+      if (entryDate >= weekStart && entryDate < weekEndTime) {
+        const exercise = this.exercises.get(entry.exerciseId);
+        if (exercise && exercise.name === '每周平均步数') {
+          weeklyStepsBaselineTotal += entry.value * exercise.weightFactor;
+        }
+      }
+    }
+    const dailyStepsBaseline = weeklyStepsBaselineTotal / 7;
+    
     // 遍历本周每一天
     for (let i = 0; i < 7; i++) {
       const dayStart = new Date(weekStart.getTime() + i * 24 * 60 * 60 * 1000);
@@ -828,11 +843,11 @@ export class MemStorage implements IStorage {
         return entryDate >= dayStart && entryDate <= dayEnd;
       });
       
-      // 计算当天的基准值
-      let dayBaselineValue = 0;
+      // 计算当天的基准值（排除"每周平均步数"，因为会平均分配）
+      let dayBaselineValue = dailyStepsBaseline; // 从平均步数基准值开始
       for (const entry of dayEntries) {
         const exercise = this.exercises.get(entry.exerciseId);
-        if (exercise) {
+        if (exercise && exercise.name !== '每周平均步数') {
           dayBaselineValue += entry.value * exercise.weightFactor;
         }
       }
@@ -1766,16 +1781,40 @@ export class DbStorage implements IStorage {
     let weekTotal = 0;
     const dailyTotals: { date: Date; baselineValue: number; entryCount: number }[] = [];
     
+    // 先计算本周"每周平均步数"的总基准值，用于平均分配到每天
+    const weekEndTime = new Date(weekEnd.getTime() + 24 * 60 * 60 * 1000);
+    const weeklyStepsEntries = await this.db
+      .select({
+        value: workoutEntries.value,
+        weightFactor: exercises.weightFactor,
+      })
+      .from(workoutEntries)
+      .innerJoin(exercises, eq(workoutEntries.exerciseId, exercises.id))
+      .where(
+        and(
+          gte(workoutEntries.date, weekStart),
+          lt(workoutEntries.date, weekEndTime),
+          eq(exercises.name, '每周平均步数')
+        )
+      );
+    
+    let weeklyStepsBaselineTotal = 0;
+    for (const entry of weeklyStepsEntries) {
+      weeklyStepsBaselineTotal += entry.value * entry.weightFactor;
+    }
+    const dailyStepsBaseline = weeklyStepsBaselineTotal / 7;
+    
     // 遍历本周每一天
     for (let i = 0; i < 7; i++) {
       const dayStart = new Date(weekStart.getTime() + i * 24 * 60 * 60 * 1000);
       const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000 - 1);
       
-      // 从数据库获取当天的记录
+      // 从数据库获取当天的记录（排除"每周平均步数"）
       const dayEntries = await this.db
         .select({
           value: workoutEntries.value,
           weightFactor: exercises.weightFactor,
+          exerciseName: exercises.name,
         })
         .from(workoutEntries)
         .innerJoin(exercises, eq(workoutEntries.exerciseId, exercises.id))
@@ -1786,10 +1825,12 @@ export class DbStorage implements IStorage {
           )
         );
       
-      // 计算当天的基准值
-      let dayBaselineValue = 0;
+      // 计算当天的基准值（排除"每周平均步数"，加上平均分配的步数基准值）
+      let dayBaselineValue = dailyStepsBaseline;
       for (const entry of dayEntries) {
-        dayBaselineValue += entry.value * entry.weightFactor;
+        if (entry.exerciseName !== '每周平均步数') {
+          dayBaselineValue += entry.value * entry.weightFactor;
+        }
       }
       
       dailyTotals.push({
