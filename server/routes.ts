@@ -400,7 +400,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         messages: [
           {
             role: "system",
-            content: "你是一位专业的健身教练，负责给用户提供每周运动表现评语。评语要简短（2-3句话）、有针对性、鼓励性，并给出具体建议。使用繁体中文回复。严禁使用任何emoji表情符号或特殊符号，只使用纯文字。"
+            content: "你是一位专业且直言不讳的健身教练。根据用户的运动数据给出客观、中肯的评语（2-3句话）。评价标准：排名在后40%或多项未达平均时要直接指出问题，不要美化数据；表现确实好时才给予肯定。给出具体可行的建议。使用繁体中文回复。严禁使用任何emoji表情符号。"
           },
           {
             role: "user",
@@ -447,35 +447,85 @@ function buildAssessmentPrompt(
 ): string {
   let prompt = "以下是用户本周的运动数据：\n\n";
   
-  if (weeklyStats) {
-    prompt += `【本周总分】${safeToFixed(weeklyStats.totalBaselineValue)} 基准值\n`;
-    prompt += `- 力量: ${safeToFixed(weeklyStats.strengthValue)}\n`;
-    prompt += `- 有氧: ${safeToFixed(weeklyStats.cardioValue)}\n`;
-    prompt += `- 活动量: ${safeToFixed(weeklyStats.activityValue)}\n\n`;
-  }
+  // 计算表现指标
+  let performanceIssues: string[] = [];
+  let performanceStrengths: string[] = [];
   
-  if (careerAverages) {
-    prompt += `【历史平均】总分: ${safeToFixed(careerAverages.total)}, 力量: ${safeToFixed(careerAverages.strength)}, 有氧: ${safeToFixed(careerAverages.cardio)}, 活动量: ${safeToFixed(careerAverages.activity)}\n\n`;
+  if (weeklyStats && careerAverages) {
+    const totalDiff = weeklyStats.totalBaselineValue - careerAverages.total;
+    const totalPercent = careerAverages.total > 0 ? (totalDiff / careerAverages.total * 100) : 0;
+    
+    prompt += `【本周总分】${safeToFixed(weeklyStats.totalBaselineValue)} 基准值`;
+    if (careerAverages.total > 0) {
+      if (totalDiff >= 0) {
+        prompt += `（比历史平均高 ${safeToFixed(totalPercent)}%）\n`;
+        performanceStrengths.push("总分超过平均");
+      } else {
+        prompt += `（比历史平均低 ${safeToFixed(Math.abs(totalPercent))}%）\n`;
+        performanceIssues.push("总分未达平均");
+      }
+    } else {
+      prompt += "\n";
+    }
+    
+    // 分项比较
+    const categories = [
+      { name: "力量", current: weeklyStats.strengthValue, avg: careerAverages.strength },
+      { name: "有氧", current: weeklyStats.cardioValue, avg: careerAverages.cardio },
+      { name: "活动量", current: weeklyStats.activityValue, avg: careerAverages.activity },
+    ];
+    
+    for (const cat of categories) {
+      const diff = cat.current - cat.avg;
+      const status = cat.avg > 0 ? (diff >= 0 ? "达标" : "未达标") : "";
+      prompt += `- ${cat.name}: ${safeToFixed(cat.current)}（平均${safeToFixed(cat.avg)}，${status}）\n`;
+      if (cat.avg > 0 && diff < 0) {
+        performanceIssues.push(`${cat.name}未达平均`);
+      } else if (cat.avg > 0 && diff >= 0) {
+        performanceStrengths.push(`${cat.name}达标`);
+      }
+    }
+    prompt += "\n";
   }
   
   if (ranking && ranking.totalWeeks > 0) {
     const percentile = Math.round((ranking.rank / ranking.totalWeeks) * 100);
-    prompt += `【排名】本周在历史${ranking.totalWeeks}周中排名第${ranking.rank}（前${percentile}%）\n\n`;
+    prompt += `【排名】本周在历史${ranking.totalWeeks}周中排名第${ranking.rank}（前${percentile}%）`;
+    if (percentile > 60) {
+      prompt += " - 表现低于多数周\n\n";
+      performanceIssues.push(`排名在后${100-percentile}%`);
+    } else if (percentile <= 30) {
+      prompt += " - 表现优异\n\n";
+      performanceStrengths.push("排名前30%");
+    } else {
+      prompt += "\n\n";
+    }
   }
   
   if (weeklyProgress && weeklyProgress.length > 0) {
     const aboveAverage = weeklyProgress.filter(p => p.weeklyAverage && p.currentValue >= p.weeklyAverage);
     const belowAverage = weeklyProgress.filter(p => p.weeklyAverage && p.currentValue < p.weeklyAverage);
     
-    if (aboveAverage.length > 0) {
-      prompt += `【超过平均的项目】${aboveAverage.map(p => p.exerciseName).join('、')}\n`;
-    }
     if (belowAverage.length > 0) {
-      prompt += `【未达平均的项目】${belowAverage.map(p => p.exerciseName).join('、')}\n`;
+      prompt += `【未达平均的项目】${belowAverage.length}项：${belowAverage.map(p => p.exerciseName).join('、')}\n`;
+    }
+    if (aboveAverage.length > 0) {
+      prompt += `【超过平均的项目】${aboveAverage.length}项：${aboveAverage.map(p => p.exerciseName).join('、')}\n`;
     }
   }
   
-  prompt += "\n请根据以上数据，给出简短的周评语（2-3句话），包含表现总结和具体建议。";
+  // 添加综合评判
+  prompt += "\n【综合判断】\n";
+  if (performanceIssues.length >= 2) {
+    prompt += `问题：${performanceIssues.join('、')}。本周整体表现不佳，需要改进。\n`;
+  } else if (performanceIssues.length === 1) {
+    prompt += `问题：${performanceIssues[0]}。有待加强。\n`;
+  }
+  if (performanceStrengths.length >= 3) {
+    prompt += `优点：${performanceStrengths.join('、')}。本周表现良好。\n`;
+  }
+  
+  prompt += "\n请根据以上数据，给出客观中肯的周评语（2-3句话）。如果数据显示表现不佳，请直接指出问题所在，不要过度美化。";
   
   return prompt;
 }
