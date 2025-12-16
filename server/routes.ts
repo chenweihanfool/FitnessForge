@@ -8,6 +8,40 @@ import OpenAI from "openai";
 
 const upload = multer({ storage: multer.memoryStorage() });
 
+// 获取台北时区的周中进度信息
+function getTaipeiWeekProgress(): { 
+  dayOfWeek: number; // 0=周一, 6=周日
+  dayName: string;
+  progressRatio: number; // 整体进度比例 1/7 到 7/7
+  activityRatio: number; // 活动量进度（周末才计入）
+  isWeekend: boolean;
+} {
+  const now = new Date();
+  // UTC+8 台北时区
+  const taipeiOffset = 8 * 60 * 60 * 1000;
+  const taipeiTime = new Date(now.getTime() + taipeiOffset);
+  
+  // getUTCDay(): 0=周日, 1=周一, ..., 6=周六
+  const jsDay = taipeiTime.getUTCDay();
+  // 转换为 0=周一, 1=周二, ..., 6=周日
+  const dayOfWeek = jsDay === 0 ? 6 : jsDay - 1;
+  
+  const dayNames = ["週一", "週二", "週三", "週四", "週五", "週六", "週日"];
+  const dayName = dayNames[dayOfWeek];
+  
+  // 整体进度比例：周一=1/7, 周二=2/7, ..., 周日=7/7
+  const progressRatio = (dayOfWeek + 1) / 7;
+  
+  // 活动量特殊处理：只有周末才计入
+  // 周一到周五：0，周六：0.5，周日：1
+  const isWeekend = dayOfWeek >= 5; // 周六=5, 周日=6
+  let activityRatio = 0;
+  if (dayOfWeek === 5) activityRatio = 0.5; // 周六
+  if (dayOfWeek === 6) activityRatio = 1;   // 周日
+  
+  return { dayOfWeek, dayName, progressRatio, activityRatio, isWeekend };
+}
+
 export async function registerRoutes(app: Express): Promise<Server> {
   // ==================== 运动类型 API ====================
   
@@ -400,7 +434,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         messages: [
           {
             role: "system",
-            content: "你是一位专业且直言不讳的健身教练。根据用户的运动数据给出客观、中肯的评语（2-3句话）。评价标准：排名在后40%或多项未达平均时要直接指出问题，不要美化数据；表现确实好时才给予肯定。给出具体可行的建议。使用繁体中文回复。严禁使用任何emoji表情符号。"
+            content: "你是一位专业且直言不讳的健身教练。根据用户的运动数据给出客观、中肯的评语（2-3句话）。重要规则：1.评价基于阶段性目标（周几=该周几/7的进度），而非完整周平均；2.活动量只在周末录入，平日活动量为0是正常的，不要将此视为问题或给出相关建议；3.进度落后时直接指出，进度超前时给予肯定。使用繁体中文回复。严禁使用任何emoji表情符号。"
           },
           {
             role: "user",
@@ -445,87 +479,144 @@ function buildAssessmentPrompt(
   weeklyProgress: Array<{ exerciseName: string; currentValue: number; weeklyAverage: number | null }> | null,
   careerAverages: { total: number; strength: number; cardio: number; activity: number } | null
 ): string {
-  let prompt = "以下是用户本周的运动数据：\n\n";
+  // 获取周中进度信息
+  const weekProgress = getTaipeiWeekProgress();
+  const progressPercent = Math.round(weekProgress.progressRatio * 100);
+  
+  let prompt = `以下是用户本周截至${weekProgress.dayName}的运动数据（本周已过${progressPercent}%）：\n\n`;
   
   // 计算表现指标
   let performanceIssues: string[] = [];
   let performanceStrengths: string[] = [];
   
   if (weeklyStats && careerAverages) {
-    const totalDiff = weeklyStats.totalBaselineValue - careerAverages.total;
-    const totalPercent = careerAverages.total > 0 ? (totalDiff / careerAverages.total * 100) : 0;
+    // 计算阶段性目标（根据周几调整）
+    // 力量和有氧按比例，活动量只有周末才计入
+    const expectedTotal = careerAverages.total * weekProgress.progressRatio;
+    const expectedStrength = careerAverages.strength * weekProgress.progressRatio;
+    const expectedCardio = careerAverages.cardio * weekProgress.progressRatio;
+    const expectedActivity = careerAverages.activity * weekProgress.activityRatio;
     
-    prompt += `【本周总分】${safeToFixed(weeklyStats.totalBaselineValue)} 基准值`;
-    if (careerAverages.total > 0) {
+    // 总分比较（使用阶段性目标）
+    const totalDiff = weeklyStats.totalBaselineValue - expectedTotal;
+    const totalPercent = expectedTotal > 0 ? (totalDiff / expectedTotal * 100) : 0;
+    
+    prompt += `【本周总分】${safeToFixed(weeklyStats.totalBaselineValue)} 基准值\n`;
+    prompt += `【${weekProgress.dayName}阶段目标】${safeToFixed(expectedTotal)}（历史周平均${safeToFixed(careerAverages.total)}的${progressPercent}%）\n`;
+    
+    if (expectedTotal > 0) {
       if (totalDiff >= 0) {
-        prompt += `（比历史平均高 ${safeToFixed(totalPercent)}%）\n`;
-        performanceStrengths.push("总分超过平均");
+        prompt += `进度状态：超前${safeToFixed(totalPercent)}%\n`;
+        performanceStrengths.push("总分进度超前");
       } else {
-        prompt += `（比历史平均低 ${safeToFixed(Math.abs(totalPercent))}%）\n`;
-        performanceIssues.push("总分未达平均");
+        prompt += `进度状态：落后${safeToFixed(Math.abs(totalPercent))}%\n`;
+        if (Math.abs(totalPercent) > 30) {
+          performanceIssues.push("总分进度严重落后");
+        } else if (Math.abs(totalPercent) > 10) {
+          performanceIssues.push("总分进度落后");
+        }
       }
-    } else {
-      prompt += "\n";
+    }
+    prompt += "\n";
+    
+    // 分项比较（使用阶段性目标）
+    prompt += "【分项进度】\n";
+    
+    // 力量
+    const strengthDiff = weeklyStats.strengthValue - expectedStrength;
+    const strengthPercent = expectedStrength > 0 ? (strengthDiff / expectedStrength * 100) : 0;
+    const strengthStatus = expectedStrength > 0 ? (strengthDiff >= 0 ? "达标" : "落后") : "";
+    prompt += `- 力量: ${safeToFixed(weeklyStats.strengthValue)}（阶段目标${safeToFixed(expectedStrength)}，${strengthStatus}）\n`;
+    if (expectedStrength > 0 && strengthDiff < -expectedStrength * 0.2) {
+      performanceIssues.push("力量进度落后");
+    } else if (expectedStrength > 0 && strengthDiff >= 0) {
+      performanceStrengths.push("力量达标");
     }
     
-    // 分项比较
-    const categories = [
-      { name: "力量", current: weeklyStats.strengthValue, avg: careerAverages.strength },
-      { name: "有氧", current: weeklyStats.cardioValue, avg: careerAverages.cardio },
-      { name: "活动量", current: weeklyStats.activityValue, avg: careerAverages.activity },
-    ];
+    // 有氧
+    const cardioDiff = weeklyStats.cardioValue - expectedCardio;
+    const cardioPercent = expectedCardio > 0 ? (cardioDiff / expectedCardio * 100) : 0;
+    const cardioStatus = expectedCardio > 0 ? (cardioDiff >= 0 ? "达标" : "落后") : "";
+    prompt += `- 有氧: ${safeToFixed(weeklyStats.cardioValue)}（阶段目标${safeToFixed(expectedCardio)}，${cardioStatus}）\n`;
+    if (expectedCardio > 0 && cardioDiff < -expectedCardio * 0.2) {
+      performanceIssues.push("有氧进度落后");
+    } else if (expectedCardio > 0 && cardioDiff >= 0) {
+      performanceStrengths.push("有氧达标");
+    }
     
-    for (const cat of categories) {
-      const diff = cat.current - cat.avg;
-      const status = cat.avg > 0 ? (diff >= 0 ? "达标" : "未达标") : "";
-      prompt += `- ${cat.name}: ${safeToFixed(cat.current)}（平均${safeToFixed(cat.avg)}，${status}）\n`;
-      if (cat.avg > 0 && diff < 0) {
-        performanceIssues.push(`${cat.name}未达平均`);
-      } else if (cat.avg > 0 && diff >= 0) {
-        performanceStrengths.push(`${cat.name}达标`);
+    // 活动量 - 特殊处理：只有周末才计入
+    if (weekProgress.isWeekend) {
+      const activityDiff = weeklyStats.activityValue - expectedActivity;
+      const activityStatus = expectedActivity > 0 ? (activityDiff >= 0 ? "达标" : "落后") : "";
+      prompt += `- 活动量: ${safeToFixed(weeklyStats.activityValue)}（阶段目标${safeToFixed(expectedActivity)}，${activityStatus}）\n`;
+      if (expectedActivity > 0 && activityDiff < -expectedActivity * 0.2) {
+        performanceIssues.push("活动量进度落后");
+      } else if (expectedActivity > 0 && activityDiff >= 0) {
+        performanceStrengths.push("活动量达标");
       }
+    } else {
+      prompt += `- 活动量: ${safeToFixed(weeklyStats.activityValue)}（活动量通常于周末录入，平日为0属正常）\n`;
     }
     prompt += "\n";
   }
   
+  // 排名只在周日显示完整评价，其他日子仅供参考
   if (ranking && ranking.totalWeeks > 0) {
     const percentile = Math.round((ranking.rank / ranking.totalWeeks) * 100);
-    prompt += `【排名】本周在历史${ranking.totalWeeks}周中排名第${ranking.rank}（前${percentile}%）`;
-    if (percentile > 60) {
-      prompt += " - 表现低于多数周\n\n";
-      performanceIssues.push(`排名在后${100-percentile}%`);
-    } else if (percentile <= 30) {
-      prompt += " - 表现优异\n\n";
-      performanceStrengths.push("排名前30%");
+    if (weekProgress.dayOfWeek === 6) { // 周日
+      prompt += `【排名】本周在历史${ranking.totalWeeks}周中排名第${ranking.rank}（前${percentile}%）`;
+      if (percentile > 60) {
+        prompt += " - 表现低于多数周\n\n";
+        performanceIssues.push(`排名在后${100-percentile}%`);
+      } else if (percentile <= 30) {
+        prompt += " - 表现优异\n\n";
+        performanceStrengths.push("排名前30%");
+      } else {
+        prompt += "\n\n";
+      }
     } else {
-      prompt += "\n\n";
+      prompt += `【暂时排名】第${ranking.rank}名（本周尚未结束，排名仅供参考）\n\n`;
     }
   }
   
   if (weeklyProgress && weeklyProgress.length > 0) {
-    const aboveAverage = weeklyProgress.filter(p => p.weeklyAverage && p.currentValue >= p.weeklyAverage);
-    const belowAverage = weeklyProgress.filter(p => p.weeklyAverage && p.currentValue < p.weeklyAverage);
+    // 按阶段性目标过滤（平均值 * 进度比例）
+    const aboveTarget = weeklyProgress.filter(p => {
+      if (!p.weeklyAverage) return false;
+      const target = p.weeklyAverage * weekProgress.progressRatio;
+      return p.currentValue >= target;
+    });
+    const belowTarget = weeklyProgress.filter(p => {
+      if (!p.weeklyAverage) return false;
+      const target = p.weeklyAverage * weekProgress.progressRatio;
+      return p.currentValue < target;
+    });
     
-    if (belowAverage.length > 0) {
-      prompt += `【未达平均的项目】${belowAverage.length}项：${belowAverage.map(p => p.exerciseName).join('、')}\n`;
+    if (belowTarget.length > 0) {
+      prompt += `【进度落后的项目】${belowTarget.length}项：${belowTarget.map(p => p.exerciseName).join('、')}\n`;
     }
-    if (aboveAverage.length > 0) {
-      prompt += `【超过平均的项目】${aboveAverage.length}项：${aboveAverage.map(p => p.exerciseName).join('、')}\n`;
+    if (aboveTarget.length > 0) {
+      prompt += `【进度达标的项目】${aboveTarget.length}项：${aboveTarget.map(p => p.exerciseName).join('、')}\n`;
     }
   }
   
   // 添加综合评判
   prompt += "\n【综合判断】\n";
+  prompt += `今天是${weekProgress.dayName}，本周已过${progressPercent}%。\n`;
+  
   if (performanceIssues.length >= 2) {
-    prompt += `问题：${performanceIssues.join('、')}。本周整体表现不佳，需要改进。\n`;
+    prompt += `问题：${performanceIssues.join('、')}。截至目前进度不理想，需要加把劲。\n`;
   } else if (performanceIssues.length === 1) {
     prompt += `问题：${performanceIssues[0]}。有待加强。\n`;
-  }
-  if (performanceStrengths.length >= 3) {
-    prompt += `优点：${performanceStrengths.join('、')}。本周表现良好。\n`;
+  } else if (performanceStrengths.length >= 2) {
+    prompt += `优点：${performanceStrengths.join('、')}。目前进度良好。\n`;
   }
   
-  prompt += "\n请根据以上数据，给出客观中肯的周评语（2-3句话）。如果数据显示表现不佳，请直接指出问题所在，不要过度美化。";
+  if (!weekProgress.isWeekend) {
+    prompt += "注意：活动量通常于周末录入，平日活动量为0不应视为问题。\n";
+  }
+  
+  prompt += "\n请根据以上数据，给出客观中肯的周中评语（2-3句话）。评价应基于阶段性目标，而非完整周平均。如果进度落后，请直接指出；如果进度良好，给予肯定并鼓励保持。";
   
   return prompt;
 }
