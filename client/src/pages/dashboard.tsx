@@ -6,7 +6,7 @@ import { StatsCard } from "@/components/stats-card";
 import { RankingMetricCard } from "@/components/ranking-metric-card";
 import { RankingDetailDialog } from "@/components/ranking-detail-dialog";
 import { TrendChart } from "@/components/trend-chart";
-import { Activity, TrendingUp, Calendar, Award, X, TrendingDown, Dumbbell, Heart, Footprints, Plus, Check, Minus, Loader2, Sparkles, RefreshCw } from "lucide-react";
+import { Activity, TrendingUp, Calendar, Award, X, TrendingDown, Dumbbell, Heart, Footprints, Plus, Check, Minus, Loader2, Sparkles, RefreshCw, Star } from "lucide-react";
 import { RankingData, WeeklyStats, RankingDetailResponse } from "@shared/schema";
 import { queryClient } from "@/lib/queryClient";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -315,34 +315,46 @@ export default function Dashboard() {
     const rank = rankingData.rank || totalWeeks;
     // 排名55/67 = 前82%，排名1/67 = 前1.5%
     const percentile = (rank / totalWeeks) * 100;
-    const inTop60 = percentile <= 60; // 前60%意味着排名在前60%位置
+    const inTop70 = percentile <= 70; // 前70%意味着排名在前70%位置
+    const inTop10 = percentile <= 10; // 前10%
     
     // 全项超越：检查所有有历史平均值的运动项目是否都超过平均
     const exercisesWithAverage = weeklyProgress?.exercises.filter(e => e.weeklyAverage !== null && e.weeklyAverage > 0) || [];
     const allExercisesAbove = exercisesWithAverage.length > 0 && 
       exercisesWithAverage.every(e => e.currentWeekValue >= (e.weeklyAverage || 0));
     
+    // 计算达成的里程碑数量（用于星星显示）
+    let achievedCount = 0;
+    if (inTop70) achievedCount++;
+    if (totalAbove) achievedCount++;
+    if (strengthAbove && cardioAbove && activityAbove) achievedCount++;
+    if (allExercisesAbove) achievedCount++;
+    if (inTop10) achievedCount++;
+    
     return {
       allAbove: allExercisesAbove,
       threeAbove: strengthAbove && cardioAbove && activityAbove,
       totalAbove,
-      inTop60,
+      inTop70,
+      inTop10,
       strengthAbove,
       cardioAbove,
       activityAbove,
       percentile,
       exercisesAboveCount: exercisesWithAverage.filter(e => e.currentWeekValue >= (e.weeklyAverage || 0)).length,
       exercisesTotalCount: exercisesWithAverage.length,
+      achievedCount,
     };
   })();
 
   // 确定达成的最高阶段
   const getHighestMilestone = () => {
     if (!milestones) return 0;
+    if (milestones.inTop10) return 5;
     if (milestones.allAbove) return 4;
     if (milestones.threeAbove) return 3;
     if (milestones.totalAbove) return 2;
-    if (milestones.inTop60) return 1;
+    if (milestones.inTop70) return 1;
     return 0;
   };
 
@@ -417,8 +429,40 @@ export default function Dashboard() {
                 )}
               </div>
 
-              {/* 4个阶段性目标 */}
-              <div className="grid grid-cols-2 gap-3 pt-4 border-t">
+              {/* 星星评级显示 */}
+              <div className="flex items-center gap-2 pt-4 border-t">
+                <span className="text-sm font-medium text-muted-foreground">本周达成:</span>
+                <div className="flex items-center gap-0.5">
+                  {[1, 2, 3, 4, 5].map((star) => (
+                    <Star
+                      key={star}
+                      className={`h-5 w-5 ${star <= milestones.achievedCount ? 'text-yellow-500 fill-yellow-500' : 'text-muted-foreground/30'}`}
+                    />
+                  ))}
+                </div>
+                <span className="text-sm font-medium">{milestones.achievedCount}/5</span>
+              </div>
+
+              {/* 5个阶段性目标 */}
+              <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 pt-3">
+                {/* 目标5: 前10% */}
+                <div 
+                  className={`p-3 rounded-lg border ${milestones.inTop10 ? 'bg-purple-50 dark:bg-purple-950/30 border-purple-200 dark:border-purple-800' : 'bg-muted/30 border-muted'}`}
+                  data-testid="milestone-top-10"
+                >
+                  <div className="flex items-center gap-2 mb-1">
+                    <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${milestones.inTop10 ? 'bg-purple-500 text-white' : 'bg-muted text-muted-foreground'}`}>
+                      5
+                    </div>
+                    <span className={`text-sm font-medium ${milestones.inTop10 ? 'text-purple-700 dark:text-purple-300' : 'text-muted-foreground'}`}>
+                      前10%
+                    </span>
+                  </div>
+                  <p className="text-xs text-muted-foreground ml-8">
+                    当前: 前{milestones.percentile.toFixed(0)}%
+                  </p>
+                </div>
+
                 {/* 目标4: 所有项目超过平均 */}
                 <div 
                   className={`p-3 rounded-lg border ${milestones.allAbove ? 'bg-green-50 dark:bg-green-950/30 border-green-200 dark:border-green-800' : 'bg-muted/30 border-muted'}`}
@@ -479,17 +523,17 @@ export default function Dashboard() {
                   <p className="text-xs text-muted-foreground ml-8">总分超过历史平均</p>
                 </div>
 
-                {/* 目标1: 总分在前60% */}
+                {/* 目标1: 总分在前70% */}
                 <div 
-                  className={`p-3 rounded-lg border ${milestones.inTop60 ? 'bg-orange-50 dark:bg-orange-950/30 border-orange-200 dark:border-orange-800' : 'bg-muted/30 border-muted'}`}
-                  data-testid="milestone-top-60"
+                  className={`p-3 rounded-lg border ${milestones.inTop70 ? 'bg-orange-50 dark:bg-orange-950/30 border-orange-200 dark:border-orange-800' : 'bg-muted/30 border-muted'}`}
+                  data-testid="milestone-top-70"
                 >
                   <div className="flex items-center gap-2 mb-1">
-                    <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${milestones.inTop60 ? 'bg-orange-500 text-white' : 'bg-muted text-muted-foreground'}`}>
+                    <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${milestones.inTop70 ? 'bg-orange-500 text-white' : 'bg-muted text-muted-foreground'}`}>
                       1
                     </div>
-                    <span className={`text-sm font-medium ${milestones.inTop60 ? 'text-orange-700 dark:text-orange-300' : 'text-muted-foreground'}`}>
-                      前60%
+                    <span className={`text-sm font-medium ${milestones.inTop70 ? 'text-orange-700 dark:text-orange-300' : 'text-muted-foreground'}`}>
+                      前70%
                     </span>
                   </div>
                   <p className="text-xs text-muted-foreground ml-8">
