@@ -1,11 +1,12 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
 import { useLocation } from "wouter";
 import { StatsCard } from "@/components/stats-card";
 import { RankingMetricCard } from "@/components/ranking-metric-card";
 import { RankingDetailDialog } from "@/components/ranking-detail-dialog";
 import { TrendChart } from "@/components/trend-chart";
-import { Activity, TrendingUp, Calendar, Award, X, TrendingDown, Dumbbell, Heart, Footprints, Plus, Check, Minus } from "lucide-react";
+import { Activity, TrendingUp, Calendar, Award, X, TrendingDown, Dumbbell, Heart, Footprints, Plus, Check, Minus, Loader2, Sparkles, RefreshCw } from "lucide-react";
 import { RankingData, WeeklyStats, RankingDetailResponse } from "@shared/schema";
 import { queryClient } from "@/lib/queryClient";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -18,6 +19,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { useToast } from "@/hooks/use-toast";
 import {
   Table,
   TableBody,
@@ -125,12 +127,14 @@ type DayEntriesData = {
 
 export default function Dashboard() {
   const [, setLocation] = useLocation();
+  const { toast } = useToast();
   const [showDetailsDialog, setShowDetailsDialog] = useState(false);
   const [showWeekRecordsDialog, setShowWeekRecordsDialog] = useState(false);
   const [showBestWeekDialog, setShowBestWeekDialog] = useState(false);
   const [rankingDetailMetric, setRankingDetailMetric] = useState<'total' | 'strength' | 'cardio' | 'activity' | null>(null);
   const [selectedDayDate, setSelectedDayDate] = useState<string | null>(null);
   const [selectedDayName, setSelectedDayName] = useState<string>("");
+  const [aiAssessment, setAiAssessment] = useState<string | null>(null);
   
   const handleAddEntry = (exerciseId: string) => {
     setLocation(`/entries?addExercise=${exerciseId}`);
@@ -175,6 +179,67 @@ export default function Dashboard() {
     },
     enabled: !!selectedDayDate,
   });
+
+  // AI评语 mutation
+  const aiAssessmentMutation = useMutation({
+    mutationFn: async () => {
+      const weeklyStats = rankingData?.currentWeek ? {
+        totalBaselineValue: rankingData.currentWeek.totalBaselineValue,
+        strengthValue: rankingData.currentWeek.strengthValue,
+        cardioValue: rankingData.currentWeek.cardioValue,
+        activityValue: rankingData.currentWeek.activityValue,
+      } : null;
+      
+      const categoryData = categoryBreakdown ? {
+        strength: categoryBreakdown.find(c => c.category === "力量")?.value || 0,
+        cardio: categoryBreakdown.find(c => c.category === "有氧")?.value || 0,
+        activity: categoryBreakdown.find(c => c.category === "活动量")?.value || 0,
+      } : null;
+      
+      const ranking = rankingData ? {
+        rank: rankingData.rank,
+        totalWeeks: rankingData.totalWeeks,
+        strengthRank: rankingData.strengthRank,
+        cardioRank: rankingData.cardioRank,
+        activityRank: rankingData.activityRank,
+      } : null;
+      
+      const progress = weeklyProgress?.exercises.map(e => ({
+        exerciseName: e.exerciseName,
+        currentValue: e.currentWeekValue,
+        weeklyAverage: e.weeklyAverage,
+      })) || null;
+      
+      const careerAvg = rankingData ? {
+        total: rankingData.averageWeeklyValue,
+        strength: rankingData.averageStrengthValue,
+        cardio: rankingData.averageCardioValue,
+        activity: rankingData.averageActivityValue,
+      } : null;
+      
+      const response = await apiRequest("POST", "/api/stats/ai-assessment", {
+        weeklyStats,
+        categoryBreakdown: categoryData,
+        ranking,
+        weeklyProgress: progress,
+        careerAverages: careerAvg,
+      });
+      return response.json();
+    },
+    onSuccess: (data) => {
+      setAiAssessment(data.assessment);
+    },
+    onError: (error) => {
+      toast({
+        title: "生成评语失败",
+        description: error instanceof Error ? error.message : "请稍后重试",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // 检查是否可以生成AI评语（数据已加载）
+  const canGenerateAI = !rankingLoading && !!rankingData?.currentWeek;
 
   if (rankingLoading || trendLoading) {
     return (
@@ -396,6 +461,42 @@ export default function Dashboard() {
                     当前: 前{milestones.percentile.toFixed(0)}%
                   </p>
                 </div>
+              </div>
+
+              {/* AI评语区域 */}
+              <div className="pt-4 border-t space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium flex items-center gap-1.5">
+                    <Sparkles className="h-4 w-4" />
+                    AI教练评语
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => aiAssessmentMutation.mutate()}
+                    disabled={aiAssessmentMutation.isPending || !canGenerateAI}
+                    data-testid="button-generate-ai-assessment"
+                  >
+                    {aiAssessmentMutation.isPending ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : aiAssessment ? (
+                      <RefreshCw className="h-4 w-4" />
+                    ) : (
+                      "生成评语"
+                    )}
+                  </Button>
+                </div>
+                {aiAssessment && (
+                  <div 
+                    className="p-3 rounded-lg bg-muted/50 text-sm leading-relaxed"
+                    data-testid="text-ai-assessment"
+                  >
+                    {aiAssessment}
+                  </div>
+                )}
+                {aiAssessmentMutation.isError && (
+                  <p className="text-sm text-destructive">生成评语失败，请稍后重试</p>
+                )}
               </div>
             </div>
           </CardContent>

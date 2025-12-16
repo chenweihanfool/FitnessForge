@@ -4,6 +4,7 @@ import { storage } from "./storage";
 import { insertExerciseSchema, insertWorkoutEntrySchema } from "@shared/schema";
 import multer from "multer";
 import Papa from "papaparse";
+import OpenAI from "openai";
 
 const upload = multer({ storage: multer.memoryStorage() });
 
@@ -366,6 +367,115 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ==================== AI 评语 API ====================
+  
+  // 检查AI集成环境变量
+  const hasAIIntegration = !!(process.env.AI_INTEGRATIONS_OPENAI_BASE_URL && process.env.AI_INTEGRATIONS_OPENAI_API_KEY);
+  
+  // 生成本周AI评语
+  app.post("/api/stats/ai-assessment", async (req, res) => {
+    try {
+      // 检查AI集成是否可用
+      if (!hasAIIntegration) {
+        return res.status(503).json({ error: "AI服务未配置" });
+      }
+      
+      const { weeklyStats, categoryBreakdown, ranking, weeklyProgress, careerAverages } = req.body;
+      
+      // 验证必要的数据存在
+      if (!weeklyStats || typeof weeklyStats.totalBaselineValue !== 'number') {
+        return res.status(400).json({ error: "缺少本周统计数据" });
+      }
+      
+      // 构建提示词
+      const prompt = buildAssessmentPrompt(weeklyStats, categoryBreakdown, ranking, weeklyProgress, careerAverages);
+      
+      const openai = new OpenAI({
+        baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+        apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
+      });
+      
+      const response = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [
+          {
+            role: "system",
+            content: "你是一位专业的健身教练，负责给用户提供每周运动表现评语。评语要简短（2-3句话）、有针对性、鼓励性，并给出具体建议。使用繁体中文回复。严禁使用任何emoji表情符号或特殊符号，只使用纯文字。"
+          },
+          {
+            role: "user",
+            content: prompt
+          }
+        ],
+        max_tokens: 200,
+        temperature: 0.7,
+      });
+      
+      let assessment = response.choices[0]?.message?.content || "无法生成评语";
+      // 移除emoji和特殊符号 - 使用简单的过滤方法
+      assessment = removeEmojis(assessment);
+      res.json({ assessment });
+    } catch (error) {
+      console.error("AI评语生成失败:", error);
+      res.status(500).json({ error: "生成评语失败", details: error instanceof Error ? error.message : String(error) });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
+}
+
+// 移除emoji和特殊符号
+function removeEmojis(text: string): string {
+  // 只保留常见的中文、英文、数字、标点符号
+  return text.replace(/[^\u4e00-\u9fa5\u3000-\u303f\uff00-\uffefa-zA-Z0-9\s.,!?;:'"()\[\]{}，。！？；：''""（）【】、\-—]/g, '');
+}
+
+// 安全的数字格式化
+function safeToFixed(value: number | undefined | null, decimals: number = 1): string {
+  if (value === undefined || value === null || isNaN(value)) return "0";
+  return value.toFixed(decimals);
+}
+
+// 构建AI评语提示词
+function buildAssessmentPrompt(
+  weeklyStats: { totalBaselineValue: number; strengthValue: number; cardioValue: number; activityValue: number } | null,
+  categoryBreakdown: { strength: number; cardio: number; activity: number } | null,
+  ranking: { rank: number; totalWeeks: number; strengthRank: number; cardioRank: number; activityRank: number } | null,
+  weeklyProgress: Array<{ exerciseName: string; currentValue: number; weeklyAverage: number | null }> | null,
+  careerAverages: { total: number; strength: number; cardio: number; activity: number } | null
+): string {
+  let prompt = "以下是用户本周的运动数据：\n\n";
+  
+  if (weeklyStats) {
+    prompt += `【本周总分】${safeToFixed(weeklyStats.totalBaselineValue)} 基准值\n`;
+    prompt += `- 力量: ${safeToFixed(weeklyStats.strengthValue)}\n`;
+    prompt += `- 有氧: ${safeToFixed(weeklyStats.cardioValue)}\n`;
+    prompt += `- 活动量: ${safeToFixed(weeklyStats.activityValue)}\n\n`;
+  }
+  
+  if (careerAverages) {
+    prompt += `【历史平均】总分: ${safeToFixed(careerAverages.total)}, 力量: ${safeToFixed(careerAverages.strength)}, 有氧: ${safeToFixed(careerAverages.cardio)}, 活动量: ${safeToFixed(careerAverages.activity)}\n\n`;
+  }
+  
+  if (ranking && ranking.totalWeeks > 0) {
+    const percentile = Math.round((ranking.rank / ranking.totalWeeks) * 100);
+    prompt += `【排名】本周在历史${ranking.totalWeeks}周中排名第${ranking.rank}（前${percentile}%）\n\n`;
+  }
+  
+  if (weeklyProgress && weeklyProgress.length > 0) {
+    const aboveAverage = weeklyProgress.filter(p => p.weeklyAverage && p.currentValue >= p.weeklyAverage);
+    const belowAverage = weeklyProgress.filter(p => p.weeklyAverage && p.currentValue < p.weeklyAverage);
+    
+    if (aboveAverage.length > 0) {
+      prompt += `【超过平均的项目】${aboveAverage.map(p => p.exerciseName).join('、')}\n`;
+    }
+    if (belowAverage.length > 0) {
+      prompt += `【未达平均的项目】${belowAverage.map(p => p.exerciseName).join('、')}\n`;
+    }
+  }
+  
+  prompt += "\n请根据以上数据，给出简短的周评语（2-3句话），包含表现总结和具体建议。";
+  
+  return prompt;
 }
