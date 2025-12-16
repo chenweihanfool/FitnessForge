@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useLocation } from "wouter";
@@ -135,6 +135,7 @@ export default function Dashboard() {
   const [selectedDayDate, setSelectedDayDate] = useState<string | null>(null);
   const [selectedDayName, setSelectedDayName] = useState<string>("");
   const [aiAssessment, setAiAssessment] = useState<string | null>(null);
+  const [aiAutoTriggered, setAiAutoTriggered] = useState(false);
   
   const handleAddEntry = (exerciseId: string) => {
     setLocation(`/entries?addExercise=${exerciseId}`);
@@ -240,6 +241,14 @@ export default function Dashboard() {
 
   // 检查是否可以生成AI评语（数据已加载）
   const canGenerateAI = !rankingLoading && !!rankingData?.currentWeek;
+
+  // 页面加载时自动生成AI评语
+  useEffect(() => {
+    if (canGenerateAI && !aiAutoTriggered && !aiAssessment && !aiAssessmentMutation.isPending) {
+      setAiAutoTriggered(true);
+      aiAssessmentMutation.mutate();
+    }
+  }, [canGenerateAI, aiAutoTriggered, aiAssessment, aiAssessmentMutation]);
 
   if (rankingLoading || trendLoading) {
     return (
@@ -357,33 +366,59 @@ export default function Dashboard() {
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              {/* 当前状态总结 */}
-              <div className="text-center py-2">
-                {highestMilestone === 4 ? (
-                  <p className="text-lg font-bold text-green-600 dark:text-green-400">
-                    全面超越！所有项目均超过历史平均
-                  </p>
-                ) : highestMilestone === 3 ? (
-                  <p className="text-lg font-bold text-green-600 dark:text-green-400">
-                    三项达标！力量、有氧、活动量均超过平均
-                  </p>
-                ) : highestMilestone === 2 ? (
-                  <p className="text-lg font-bold text-blue-600 dark:text-blue-400">
-                    总分达标！继续努力提升各项指标
-                  </p>
-                ) : highestMilestone === 1 ? (
-                  <p className="text-lg font-bold text-orange-600 dark:text-orange-400">
-                    进入前60%！离平均水平还有一步之遥
-                  </p>
-                ) : (
-                  <p className="text-lg font-bold text-muted-foreground">
-                    继续加油！向前60%目标迈进
-                  </p>
+              {/* AI评语区域 - 自动加载 */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium flex items-center gap-1.5">
+                    <Sparkles className="h-4 w-4" />
+                    AI教练评语
+                  </span>
+                  {aiAssessment && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => aiAssessmentMutation.mutate()}
+                      disabled={aiAssessmentMutation.isPending}
+                      data-testid="button-refresh-ai-assessment"
+                    >
+                      {aiAssessmentMutation.isPending ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <RefreshCw className="h-4 w-4" />
+                      )}
+                    </Button>
+                  )}
+                </div>
+                {aiAssessmentMutation.isPending && !aiAssessment ? (
+                  <div className="p-3 rounded-lg bg-muted/50 text-sm text-muted-foreground flex items-center gap-2">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    正在生成评语...
+                  </div>
+                ) : aiAssessment ? (
+                  <div 
+                    className="p-3 rounded-lg bg-muted/50 text-sm leading-relaxed"
+                    data-testid="text-ai-assessment"
+                  >
+                    {aiAssessment}
+                  </div>
+                ) : null}
+                {aiAssessmentMutation.isError && (
+                  <div className="p-3 rounded-lg bg-destructive/10 text-sm text-destructive flex items-center justify-between">
+                    <span>生成评语失败</span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => aiAssessmentMutation.mutate()}
+                      disabled={aiAssessmentMutation.isPending}
+                    >
+                      重试
+                    </Button>
+                  </div>
                 )}
               </div>
 
               {/* 4个阶段性目标 */}
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 gap-3 pt-4 border-t">
                 {/* 目标4: 所有项目超过平均 */}
                 <div 
                   className={`p-3 rounded-lg border ${milestones.allAbove ? 'bg-green-50 dark:bg-green-950/30 border-green-200 dark:border-green-800' : 'bg-muted/30 border-muted'}`}
@@ -461,42 +496,6 @@ export default function Dashboard() {
                     当前: 前{milestones.percentile.toFixed(0)}%
                   </p>
                 </div>
-              </div>
-
-              {/* AI评语区域 */}
-              <div className="pt-4 border-t space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium flex items-center gap-1.5">
-                    <Sparkles className="h-4 w-4" />
-                    AI教练评语
-                  </span>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => aiAssessmentMutation.mutate()}
-                    disabled={aiAssessmentMutation.isPending || !canGenerateAI}
-                    data-testid="button-generate-ai-assessment"
-                  >
-                    {aiAssessmentMutation.isPending ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : aiAssessment ? (
-                      <RefreshCw className="h-4 w-4" />
-                    ) : (
-                      "生成评语"
-                    )}
-                  </Button>
-                </div>
-                {aiAssessment && (
-                  <div 
-                    className="p-3 rounded-lg bg-muted/50 text-sm leading-relaxed"
-                    data-testid="text-ai-assessment"
-                  >
-                    {aiAssessment}
-                  </div>
-                )}
-                {aiAssessmentMutation.isError && (
-                  <p className="text-sm text-destructive">生成评语失败，请稍后重试</p>
-                )}
               </div>
             </div>
           </CardContent>
