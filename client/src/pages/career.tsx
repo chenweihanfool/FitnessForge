@@ -181,6 +181,13 @@ export default function Career() {
                         backgroundColor: "hsl(var(--card))",
                         border: "1px solid hsl(var(--border))",
                         borderRadius: "6px",
+                        color: "hsl(var(--card-foreground))",
+                      }}
+                      labelStyle={{
+                        color: "hsl(var(--card-foreground))",
+                      }}
+                      itemStyle={{
+                        color: "hsl(var(--card-foreground))",
                       }}
                       formatter={(value: number, name: string) => {
                         if (name === "completionRate") {
