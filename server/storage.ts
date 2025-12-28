@@ -2229,7 +2229,40 @@ export class DbStorage implements IStorage {
     const totalStars = weeks.reduce((sum, w) => sum + w.stars, 0);
     const averageStars = weeks.length > 0 ? totalStars / weeks.length : 0;
 
-    return { weeks, totalStars, averageStars };
+    // 计算年度统计
+    const yearlyMap = new Map<number, { weeksRecorded: number; totalStars: number }>();
+    for (const week of weeks) {
+      const existing = yearlyMap.get(week.year) || { weeksRecorded: 0, totalStars: 0 };
+      existing.weeksRecorded += 1;
+      existing.totalStars += week.stars;
+      yearlyMap.set(week.year, existing);
+    }
+
+    const yearlyStats = Array.from(yearlyMap.entries())
+      .map(([year, stats]) => {
+        // ISO年可能有52或53周，计算该年的实际ISO周数
+        const isoWeeksInYear = this.getISOWeeksInYear(year);
+        const maxStars = isoWeeksInYear * 5;
+        const completionRate = stats.totalStars / maxStars;
+        return {
+          year,
+          weeksRecorded: stats.weeksRecorded,
+          isoWeeksInYear,
+          totalStars: stats.totalStars,
+          maxStars,
+          completionRate,
+        };
+      })
+      .sort((a, b) => b.year - a.year); // 按年份倒序
+
+    return { weeks, totalStars, averageStars, yearlyStats };
+  }
+
+  // 辅助方法：计算某年的ISO周数（52或53）
+  private getISOWeeksInYear(year: number): number {
+    // ISO年的最后一周包含12月28日
+    const dec28 = new Date(Date.UTC(year, 11, 28));
+    return this.getWeekNumber(dec28);
   }
 }
 

@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Trophy, Star, TrendingUp, Calendar } from "lucide-react";
+import { Trophy, Star, TrendingUp, Calendar, BarChart3 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Table,
@@ -10,6 +10,16 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  Cell,
+} from "recharts";
 
 interface CareerWeek {
   weekStart: string;
@@ -24,10 +34,20 @@ interface CareerWeek {
   percentile: number;
 }
 
+interface YearlyStat {
+  year: number;
+  weeksRecorded: number;
+  isoWeeksInYear: number;
+  totalStars: number;
+  maxStars: number;
+  completionRate: number;
+}
+
 interface CareerOverview {
   weeks: CareerWeek[];
   totalStars: number;
   averageStars: number;
+  yearlyStats: YearlyStat[];
 }
 
 export default function Career() {
@@ -50,12 +70,25 @@ export default function Career() {
             <Skeleton key={i} className="h-24" />
           ))}
         </div>
+        <Skeleton className="h-64" />
         <Skeleton className="h-96" />
       </div>
     );
   }
 
   const totalWeeks = data?.weeks.length || 0;
+  const yearlyStats = data?.yearlyStats || [];
+
+  const chartData = [...yearlyStats]
+    .sort((a, b) => a.year - b.year)
+    .map((stat) => ({
+      year: `${stat.year}`,
+      completionRate: Math.round(stat.completionRate * 100 * 10) / 10,
+      totalStars: stat.totalStars,
+      weeksRecorded: stat.weeksRecorded,
+    }));
+
+  const currentYear = new Date().getFullYear();
 
   return (
     <div className="space-y-6" data-testid="page-career">
@@ -117,6 +150,120 @@ export default function Career() {
           </CardContent>
         </Card>
       </div>
+
+      {yearlyStats.length > 0 && (
+        <Card data-testid="card-yearly-stats">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <BarChart3 className="h-5 w-5" />
+              年度星星取得率
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-6 lg:grid-cols-2">
+              <div className="h-64" data-testid="chart-yearly-completion">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 10 }}>
+                    <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                    <XAxis
+                      dataKey="year"
+                      tick={{ fontSize: 12 }}
+                      className="text-muted-foreground"
+                    />
+                    <YAxis
+                      tick={{ fontSize: 12 }}
+                      className="text-muted-foreground"
+                      domain={[0, 100]}
+                      tickFormatter={(value) => `${value}%`}
+                    />
+                    <Tooltip
+                      contentStyle={{
+                        backgroundColor: "hsl(var(--card))",
+                        border: "1px solid hsl(var(--border))",
+                        borderRadius: "6px",
+                      }}
+                      formatter={(value: number, name: string) => {
+                        if (name === "completionRate") {
+                          return [`${value}%`, "取得率"];
+                        }
+                        return [value, name];
+                      }}
+                      labelFormatter={(label) => `${label}年`}
+                    />
+                    <Bar dataKey="completionRate" radius={[4, 4, 0, 0]}>
+                      {chartData.map((entry) => (
+                        <Cell
+                          key={entry.year}
+                          fill={
+                            parseInt(entry.year) === currentYear
+                              ? "hsl(var(--primary))"
+                              : "hsl(var(--muted-foreground) / 0.5)"
+                          }
+                        />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>年份</TableHead>
+                      <TableHead className="text-right">记录周数</TableHead>
+                      <TableHead className="text-right">星星数</TableHead>
+                      <TableHead className="text-right">取得率</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {yearlyStats.map((stat) => (
+                      <TableRow
+                        key={stat.year}
+                        className={stat.year === currentYear ? "bg-primary/5" : ""}
+                        data-testid={`row-yearly-${stat.year}`}
+                      >
+                        <TableCell className="font-medium">
+                          {stat.year}年
+                          {stat.year === currentYear && (
+                            <span className="ml-2 text-xs text-primary">
+                              本年
+                            </span>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          {stat.weeksRecorded} / {stat.isoWeeksInYear}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <span className="text-yellow-500 font-semibold">
+                            {stat.totalStars}
+                          </span>
+                          <span className="text-muted-foreground text-xs ml-1">
+                            / {stat.maxStars}
+                          </span>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <span
+                            className={`px-2 py-0.5 rounded text-xs font-medium ${
+                              stat.completionRate >= 0.5
+                                ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300"
+                                : stat.completionRate >= 0.3
+                                  ? "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300"
+                                  : "bg-muted text-muted-foreground"
+                            }`}
+                          >
+                            {(stat.completionRate * 100).toFixed(1)}%
+                          </span>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <Card data-testid="card-weekly-history">
         <CardHeader>
