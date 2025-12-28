@@ -326,6 +326,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // 获取生涯全览数据
+  app.get("/api/stats/career-overview", async (req, res) => {
+    try {
+      const overview = await storage.getCareerOverview();
+      res.json(overview);
+    } catch (error) {
+      console.error("获取生涯全览失败:", error);
+      res.status(500).json({ error: "获取生涯全览失败" });
+    }
+  });
+
   // ==================== CSV 导入导出 API ====================
 
   // CSV 导入

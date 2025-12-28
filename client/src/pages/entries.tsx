@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { useLocation, useSearch } from "wouter";
+import { useLocation, useSearch, useRoute } from "wouter";
 import { Exercise, WorkoutEntryWithExercise, InsertWorkoutEntry, insertWorkoutEntrySchema } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -116,12 +116,15 @@ export default function Entries() {
       queryClient.invalidateQueries({ queryKey: ["/api/stats/weekly-progress"] });
       queryClient.invalidateQueries({ queryKey: ["/api/stats/current-week-details"] });
       queryClient.invalidateQueries({ queryKey: ["/api/stats/category-breakdown"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/stats/career-overview"] });
       setIsCreateOpen(false);
       form.reset();
       toast({
         title: "成功",
         description: "运动记录已添加",
       });
+      // 跳转回首页
+      setLocation("/");
     },
   });
 

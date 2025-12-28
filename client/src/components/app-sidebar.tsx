@@ -1,4 +1,4 @@
-import { Home, Dumbbell, BarChart3, FileUp, FileDown, Settings } from "lucide-react";
+import { Home, Dumbbell, BarChart3, FileUp, FileDown, Settings, Trophy } from "lucide-react";
 import { useLocation } from "wouter";
 import {
   Sidebar,
@@ -28,6 +28,11 @@ const menuItems = [
     title: "数据记录",
     url: "/entries",
     icon: BarChart3,
+  },
+  {
+    title: "生涯全览",
+    url: "/career",
+    icon: Trophy,
   },
   {
     title: "数据导入",

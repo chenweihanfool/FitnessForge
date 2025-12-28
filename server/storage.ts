@@ -121,6 +121,22 @@ export interface IStorage {
       differencePercentage: number | null;
     }>;
   }>;
+  getCareerOverview(): Promise<{
+    weeks: Array<{
+      weekStart: string;
+      weekEnd: string;
+      year: number;
+      weekNumber: number;
+      totalScore: number;
+      strengthScore: number;
+      cardioScore: number;
+      activityScore: number;
+      stars: number;
+      percentile: number;
+    }>;
+    totalStars: number;
+    averageStars: number;
+  }>;
 }
 
 export class MemStorage implements IStorage {
@@ -1085,6 +1101,71 @@ export class MemStorage implements IStorage {
     // 调整到周四（周一+3天）
     tempDate.setUTCDate(tempDate.getUTCDate() + 3 - (tempDate.getUTCDay() + 6) % 7);
     return tempDate.getUTCFullYear();
+  }
+
+  async getCareerOverview() {
+    const allWeeklyStats = await this.getAllWeeklyStats();
+    
+    if (allWeeklyStats.length === 0) {
+      return { weeks: [], totalStars: 0, averageStars: 0 };
+    }
+
+    // 计算各项平均值
+    const avgTotal = allWeeklyStats.reduce((sum, w) => sum + w.totalBaselineValue, 0) / allWeeklyStats.length;
+    const avgStrength = allWeeklyStats.reduce((sum, w) => sum + w.strengthValue, 0) / allWeeklyStats.length;
+    const avgCardio = allWeeklyStats.reduce((sum, w) => sum + w.cardioValue, 0) / allWeeklyStats.length;
+    const avgActivity = allWeeklyStats.reduce((sum, w) => sum + w.activityValue, 0) / allWeeklyStats.length;
+
+    // 按总分排序计算百分比
+    const sortedByTotal = [...allWeeklyStats].sort((a, b) => b.totalBaselineValue - a.totalBaselineValue);
+
+    const weeks = allWeeklyStats.map((week) => {
+      const weekStart = new Date(week.weekStart);
+      const year = this.getISOYear(weekStart);
+      const weekNumber = this.getWeekNumber(weekStart);
+
+      // 计算百分位排名
+      const rank = sortedByTotal.findIndex(w => w.weekStart === week.weekStart && w.weekEnd === week.weekEnd) + 1;
+      const percentile = (rank / allWeeklyStats.length) * 100;
+
+      // 计算星星数量（5个里程碑）
+      let stars = 0;
+      const inTop70 = percentile <= 70;
+      const inTop10 = percentile <= 10;
+      const totalAbove = week.totalBaselineValue >= avgTotal;
+      const strengthAbove = week.strengthValue >= avgStrength && avgStrength > 0;
+      const cardioAbove = week.cardioValue >= avgCardio && avgCardio > 0;
+      const activityAbove = week.activityValue >= avgActivity && avgActivity > 0;
+      const threeAbove = strengthAbove && cardioAbove && activityAbove;
+
+      if (inTop70) stars++;
+      if (totalAbove) stars++;
+      if (threeAbove) stars++;
+      // 全项超越需要查看每个运动的表现，简化为三项达标+总分达标
+      if (threeAbove && totalAbove) stars++;
+      if (inTop10) stars++;
+
+      return {
+        weekStart: week.weekStart,
+        weekEnd: week.weekEnd,
+        year,
+        weekNumber,
+        totalScore: week.totalBaselineValue,
+        strengthScore: week.strengthValue,
+        cardioScore: week.cardioValue,
+        activityScore: week.activityValue,
+        stars,
+        percentile,
+      };
+    });
+
+    // 按时间倒序排列（最新的在前）
+    weeks.sort((a, b) => new Date(b.weekStart).getTime() - new Date(a.weekStart).getTime());
+
+    const totalStars = weeks.reduce((sum, w) => sum + w.stars, 0);
+    const averageStars = weeks.length > 0 ? totalStars / weeks.length : 0;
+
+    return { weeks, totalStars, averageStars };
   }
 }
 
@@ -2085,6 +2166,70 @@ export class DbStorage implements IStorage {
     // 调整到周四（周一+3天）
     tempDate.setUTCDate(tempDate.getUTCDate() + 3 - (tempDate.getUTCDay() + 6) % 7);
     return tempDate.getUTCFullYear();
+  }
+
+  async getCareerOverview() {
+    const allWeeklyStats = await this.getAllWeeklyStats();
+    
+    if (allWeeklyStats.length === 0) {
+      return { weeks: [], totalStars: 0, averageStars: 0 };
+    }
+
+    // 计算各项平均值
+    const avgTotal = allWeeklyStats.reduce((sum, w) => sum + w.totalBaselineValue, 0) / allWeeklyStats.length;
+    const avgStrength = allWeeklyStats.reduce((sum, w) => sum + w.strengthValue, 0) / allWeeklyStats.length;
+    const avgCardio = allWeeklyStats.reduce((sum, w) => sum + w.cardioValue, 0) / allWeeklyStats.length;
+    const avgActivity = allWeeklyStats.reduce((sum, w) => sum + w.activityValue, 0) / allWeeklyStats.length;
+
+    // 按总分排序计算百分比
+    const sortedByTotal = [...allWeeklyStats].sort((a, b) => b.totalBaselineValue - a.totalBaselineValue);
+
+    const weeks = allWeeklyStats.map((week) => {
+      const weekStart = new Date(week.weekStart);
+      const year = this.getISOYear(weekStart);
+      const weekNumber = this.getWeekNumber(weekStart);
+
+      // 计算百分位排名
+      const rank = sortedByTotal.findIndex(w => w.weekStart === week.weekStart && w.weekEnd === week.weekEnd) + 1;
+      const percentile = (rank / allWeeklyStats.length) * 100;
+
+      // 计算星星数量（5个里程碑）
+      let stars = 0;
+      const inTop70 = percentile <= 70;
+      const inTop10 = percentile <= 10;
+      const totalAbove = week.totalBaselineValue >= avgTotal;
+      const strengthAbove = week.strengthValue >= avgStrength && avgStrength > 0;
+      const cardioAbove = week.cardioValue >= avgCardio && avgCardio > 0;
+      const activityAbove = week.activityValue >= avgActivity && avgActivity > 0;
+      const threeAbove = strengthAbove && cardioAbove && activityAbove;
+
+      if (inTop70) stars++;
+      if (totalAbove) stars++;
+      if (threeAbove) stars++;
+      if (threeAbove && totalAbove) stars++;
+      if (inTop10) stars++;
+
+      return {
+        weekStart: week.weekStart,
+        weekEnd: week.weekEnd,
+        year,
+        weekNumber,
+        totalScore: week.totalBaselineValue,
+        strengthScore: week.strengthValue,
+        cardioScore: week.cardioValue,
+        activityScore: week.activityValue,
+        stars,
+        percentile,
+      };
+    });
+
+    // 按时间倒序排列（最新的在前）
+    weeks.sort((a, b) => new Date(b.weekStart).getTime() - new Date(a.weekStart).getTime());
+
+    const totalStars = weeks.reduce((sum, w) => sum + w.stars, 0);
+    const averageStars = weeks.length > 0 ? totalStars / weeks.length : 0;
+
+    return { weeks, totalStars, averageStars };
   }
 }
 

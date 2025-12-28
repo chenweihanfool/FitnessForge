@@ -11,6 +11,7 @@ import { Plus, Home } from "lucide-react";
 import Dashboard from "@/pages/dashboard";
 import Exercises from "@/pages/exercises";
 import Entries from "@/pages/entries";
+import Career from "@/pages/career";
 import ImportPage from "@/pages/import";
 import ExportPage from "@/pages/export";
 import NotFound from "@/pages/not-found";
@@ -21,6 +22,7 @@ function Router() {
       <Route path="/" component={Dashboard} />
       <Route path="/exercises" component={Exercises} />
       <Route path="/entries" component={Entries} />
+      <Route path="/career" component={Career} />
       <Route path="/import" component={ImportPage} />
       <Route path="/export" component={ExportPage} />
       <Route component={NotFound} />
