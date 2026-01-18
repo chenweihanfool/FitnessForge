@@ -39,7 +39,7 @@ interface YearlyStat {
   weeksRecorded: number;
   isoWeeksInYear: number;
   totalStars: number;
-  maxStars: number;
+  maxStarsRecorded: number;
   completionRate: number;
 }
 
@@ -246,7 +246,7 @@ export default function Career() {
                             {stat.totalStars}
                           </span>
                           <span className="text-muted-foreground text-xs ml-1">
-                            / {stat.maxStars}
+                            / {stat.maxStarsRecorded}
                           </span>
                         </TableCell>
                         <TableCell className="text-right">

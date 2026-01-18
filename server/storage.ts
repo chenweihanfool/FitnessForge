@@ -2242,14 +2242,15 @@ export class DbStorage implements IStorage {
       .map(([year, stats]) => {
         // ISO年可能有52或53周，计算该年的实际ISO周数
         const isoWeeksInYear = this.getISOWeeksInYear(year);
-        const maxStars = isoWeeksInYear * 5;
-        const completionRate = stats.totalStars / maxStars;
+        // 取得率改为：已取得星星 / 已记录周数能取得的最多星星
+        const maxStarsRecorded = stats.weeksRecorded * 5;
+        const completionRate = maxStarsRecorded > 0 ? stats.totalStars / maxStarsRecorded : 0;
         return {
           year,
           weeksRecorded: stats.weeksRecorded,
           isoWeeksInYear,
           totalStars: stats.totalStars,
-          maxStars,
+          maxStarsRecorded,
           completionRate,
         };
       })
