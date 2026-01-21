@@ -11,7 +11,14 @@ export const exercises = pgTable("exercises", {
   category: text("category"), // 运动分类，如 "力量"、"有氧"、"柔韧性"等
   splitCategory: text("split_category"), // 次要分类，用于混合运动（如"跑步機負重"需要分配部分基准值到力量）
   splitRatio: real("split_ratio").default(0), // 分配给次要分类的比例（0-1），默认0表示不分配
-  muscleGroup: text("muscle_group"), // 肌群分类，如 "胸"、"背"、"腿"、"肩"、"手臂"、"核心"等
+  muscleChest: real("muscle_chest").default(0), // 胸部肌群百分比 (0-100)
+  muscleBack: real("muscle_back").default(0), // 背部肌群百分比 (0-100)
+  muscleLegs: real("muscle_legs").default(0), // 腿部肌群百分比 (0-100)
+  muscleShoulders: real("muscle_shoulders").default(0), // 肩部肌群百分比 (0-100)
+  muscleArms: real("muscle_arms").default(0), // 手臂肌群百分比 (0-100)
+  muscleCore: real("muscle_core").default(0), // 核心肌群百分比 (0-100)
+  muscleGlutes: real("muscle_glutes").default(0), // 臀部肌群百分比 (0-100)
+  muscleFullBody: real("muscle_full_body").default(0), // 全身肌群百分比 (0-100)
 });
 
 // 定义camelCase的insert schema
@@ -22,7 +29,14 @@ export const insertExerciseSchema = z.object({
   category: z.string().optional(),
   splitCategory: z.string().optional(),
   splitRatio: z.number().min(0).max(1).default(0),
-  muscleGroup: z.string().optional(),
+  muscleChest: z.number().min(0).max(100).default(0),
+  muscleBack: z.number().min(0).max(100).default(0),
+  muscleLegs: z.number().min(0).max(100).default(0),
+  muscleShoulders: z.number().min(0).max(100).default(0),
+  muscleArms: z.number().min(0).max(100).default(0),
+  muscleCore: z.number().min(0).max(100).default(0),
+  muscleGlutes: z.number().min(0).max(100).default(0),
+  muscleFullBody: z.number().min(0).max(100).default(0),
 });
 
 // 运动记录表

@@ -1190,24 +1190,42 @@ export class MemStorage implements IStorage {
       .filter(entry => entry.date >= weekStart && entry.date <= weekEnd);
 
     const muscleGroupMap = new Map<string, { totalSets: number; totalVolume: number }>();
+    const muscleFields = [
+      { field: 'muscleChest', name: '胸' },
+      { field: 'muscleBack', name: '背' },
+      { field: 'muscleLegs', name: '腿' },
+      { field: 'muscleShoulders', name: '肩' },
+      { field: 'muscleArms', name: '手臂' },
+      { field: 'muscleCore', name: '核心' },
+      { field: 'muscleGlutes', name: '臀' },
+      { field: 'muscleFullBody', name: '全身' },
+    ] as const;
 
     for (const entry of entries) {
       const exercise = this.exercises.get(entry.exerciseId);
-      if (!exercise || !exercise.muscleGroup) continue;
+      if (!exercise) continue;
 
-      const muscleGroup = exercise.muscleGroup;
-      const existing = muscleGroupMap.get(muscleGroup) || { totalSets: 0, totalVolume: 0 };
-      existing.totalSets += entry.sets || 0;
-      existing.totalVolume += entry.value * exercise.weightFactor;
-      muscleGroupMap.set(muscleGroup, existing);
+      const baseVolume = entry.value * exercise.weightFactor;
+      const baseSets = entry.sets || 0;
+
+      for (const { field, name } of muscleFields) {
+        const percentage = (exercise[field] as number) || 0;
+        if (percentage <= 0) continue;
+
+        const existing = muscleGroupMap.get(name) || { totalSets: 0, totalVolume: 0 };
+        existing.totalSets += baseSets * (percentage / 100);
+        existing.totalVolume += baseVolume * (percentage / 100);
+        muscleGroupMap.set(name, existing);
+      }
     }
 
     const muscleGroups = Array.from(muscleGroupMap.entries())
       .map(([muscleGroup, stats]) => ({
         muscleGroup,
-        totalSets: stats.totalSets,
+        totalSets: Math.round(stats.totalSets * 10) / 10,
         totalVolume: stats.totalVolume,
       }))
+      .filter(g => g.totalVolume > 0)
       .sort((a, b) => b.totalVolume - a.totalVolume);
 
     return {
@@ -2322,11 +2340,17 @@ export class DbStorage implements IStorage {
 
     const entries = await this.db
       .select({
-        exerciseId: workoutEntries.exerciseId,
         value: workoutEntries.value,
         sets: workoutEntries.sets,
-        muscleGroup: exercises.muscleGroup,
         weightFactor: exercises.weightFactor,
+        muscleChest: exercises.muscleChest,
+        muscleBack: exercises.muscleBack,
+        muscleLegs: exercises.muscleLegs,
+        muscleShoulders: exercises.muscleShoulders,
+        muscleArms: exercises.muscleArms,
+        muscleCore: exercises.muscleCore,
+        muscleGlutes: exercises.muscleGlutes,
+        muscleFullBody: exercises.muscleFullBody,
       })
       .from(workoutEntries)
       .innerJoin(exercises, eq(workoutEntries.exerciseId, exercises.id))
@@ -2338,23 +2362,39 @@ export class DbStorage implements IStorage {
       );
 
     const muscleGroupMap = new Map<string, { totalSets: number; totalVolume: number }>();
+    const muscleFields = [
+      { field: 'muscleChest', name: '胸' },
+      { field: 'muscleBack', name: '背' },
+      { field: 'muscleLegs', name: '腿' },
+      { field: 'muscleShoulders', name: '肩' },
+      { field: 'muscleArms', name: '手臂' },
+      { field: 'muscleCore', name: '核心' },
+      { field: 'muscleGlutes', name: '臀' },
+      { field: 'muscleFullBody', name: '全身' },
+    ] as const;
 
     for (const entry of entries) {
-      if (!entry.muscleGroup) continue;
+      const baseVolume = entry.value * entry.weightFactor;
+      const baseSets = entry.sets || 0;
 
-      const muscleGroup = entry.muscleGroup;
-      const existing = muscleGroupMap.get(muscleGroup) || { totalSets: 0, totalVolume: 0 };
-      existing.totalSets += entry.sets || 0;
-      existing.totalVolume += entry.value * entry.weightFactor;
-      muscleGroupMap.set(muscleGroup, existing);
+      for (const { field, name } of muscleFields) {
+        const percentage = (entry[field] as number) || 0;
+        if (percentage <= 0) continue;
+
+        const existing = muscleGroupMap.get(name) || { totalSets: 0, totalVolume: 0 };
+        existing.totalSets += baseSets * (percentage / 100);
+        existing.totalVolume += baseVolume * (percentage / 100);
+        muscleGroupMap.set(name, existing);
+      }
     }
 
     const muscleGroups = Array.from(muscleGroupMap.entries())
       .map(([muscleGroup, stats]) => ({
         muscleGroup,
-        totalSets: stats.totalSets,
+        totalSets: Math.round(stats.totalSets * 10) / 10,
         totalVolume: stats.totalVolume,
       }))
+      .filter(g => g.totalVolume > 0)
       .sort((a, b) => b.totalVolume - a.totalVolume);
 
     return {
