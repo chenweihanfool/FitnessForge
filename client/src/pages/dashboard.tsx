@@ -7,7 +7,7 @@ import { RankingMetricCard } from "@/components/ranking-metric-card";
 import { RankingDetailDialog } from "@/components/ranking-detail-dialog";
 import { TrendChart } from "@/components/trend-chart";
 import { Activity, TrendingUp, Calendar, Award, X, TrendingDown, Dumbbell, Heart, Footprints, Plus, Check, Minus, Loader2, Sparkles, RefreshCw, Star } from "lucide-react";
-import { RankingData, WeeklyStats, RankingDetailResponse } from "@shared/schema";
+import { RankingData, WeeklyStats, RankingDetailResponse, Exercise } from "@shared/schema";
 import { queryClient } from "@/lib/queryClient";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -170,6 +170,10 @@ export default function Dashboard() {
 
   const { data: muscleGroupStats, isLoading: muscleGroupLoading } = useQuery<MuscleGroupWeeklyStats>({
     queryKey: ["/api/stats/muscle-group-weekly"],
+  });
+
+  const { data: exercises } = useQuery<Exercise[]>({
+    queryKey: ["/api/exercises"],
   });
 
   const { data: weeklyProgress, isLoading: weeklyProgressLoading } = useQuery<WeeklyProgress>({
@@ -854,6 +858,80 @@ export default function Dashboard() {
             </Card>
           )}
           
+          {/* 推荐运动卡片 - 根据未训练肌群推荐 */}
+          {exercises && exercises.length > 0 && (() => {
+            const muscleFieldMap: { field: keyof Exercise; name: string }[] = [
+              { field: 'muscleChest', name: '胸' },
+              { field: 'muscleBack', name: '背' },
+              { field: 'muscleLegs', name: '腿' },
+              { field: 'muscleShoulders', name: '肩' },
+              { field: 'muscleArms', name: '二头肌' },
+              { field: 'muscleCore', name: '核心' },
+              { field: 'muscleGlutes', name: '臀' },
+              { field: 'muscleFullBody', name: '三头肌' },
+            ];
+            
+            const trainedMuscles = new Set(
+              muscleGroupStats?.muscleGroups?.map(g => g.muscleGroup) || []
+            );
+            const untrainedMuscles = muscleFieldMap.filter(m => !trainedMuscles.has(m.name));
+            
+            if (untrainedMuscles.length === 0) return null;
+            
+            const recommendedExercises = exercises
+              .filter(ex => {
+                return untrainedMuscles.some(um => {
+                  const value = ex[um.field] as number | null;
+                  return value && value > 0;
+                });
+              })
+              .map(ex => {
+                const targetMuscles = untrainedMuscles
+                  .filter(um => {
+                    const value = ex[um.field] as number | null;
+                    return value && value > 0;
+                  })
+                  .map(um => um.name);
+                return { exercise: ex, targetMuscles };
+              })
+              .slice(0, 5);
+            
+            if (recommendedExercises.length === 0) return null;
+            
+            return (
+              <Card data-testid="card-muscle-recommendations">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Dumbbell className="h-5 w-5" />
+                    建议训练
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="text-sm text-muted-foreground">
+                    未锻炼肌群: {untrainedMuscles.map(m => m.name).join('、')}
+                  </div>
+                  <div className="space-y-2">
+                    {recommendedExercises.map(({ exercise, targetMuscles }) => (
+                      <div 
+                        key={exercise.id} 
+                        className="flex items-center justify-between p-2 bg-muted/50 rounded-md"
+                        data-testid={`recommendation-${exercise.id}`}
+                      >
+                        <div className="flex items-center gap-2">
+                          <Dumbbell className="h-4 w-4 text-primary" />
+                          <span className="text-sm font-medium">{exercise.name}</span>
+                        </div>
+                        <span className="text-xs text-muted-foreground">
+                          {targetMuscles.join('、')}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })()}
+
           {/* 本周每日锻炼热点图 */}
           {!dailyContributionsLoading && dailyContributions && (
             <Card data-testid="card-daily-heatmap">
