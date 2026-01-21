@@ -458,7 +458,17 @@ export default function Entries() {
                 />
                 {(() => {
                   const selectedExercise = exercises?.find((e) => e.id === form.watch("exerciseId"));
-                  const showSets = selectedExercise?.muscleGroup || selectedExercise?.category === "力量";
+                  const hasMuscleGroup = selectedExercise && (
+                    (selectedExercise.muscleChest ?? 0) > 0 ||
+                    (selectedExercise.muscleBack ?? 0) > 0 ||
+                    (selectedExercise.muscleLegs ?? 0) > 0 ||
+                    (selectedExercise.muscleShoulders ?? 0) > 0 ||
+                    (selectedExercise.muscleArms ?? 0) > 0 ||
+                    (selectedExercise.muscleCore ?? 0) > 0 ||
+                    (selectedExercise.muscleGlutes ?? 0) > 0 ||
+                    (selectedExercise.muscleFullBody ?? 0) > 0
+                  );
+                  const showSets = hasMuscleGroup || selectedExercise?.category === "力量";
                   return showSets ? (
                     <FormField
                       control={form.control}
@@ -725,7 +735,17 @@ export default function Entries() {
               />
               {(() => {
                 const selectedExercise = exercises?.find((e) => e.id === editForm.watch("exerciseId"));
-                const showSets = selectedExercise?.muscleGroup || selectedExercise?.category === "力量";
+                const hasMuscleGroup = selectedExercise && (
+                  (selectedExercise.muscleChest ?? 0) > 0 ||
+                  (selectedExercise.muscleBack ?? 0) > 0 ||
+                  (selectedExercise.muscleLegs ?? 0) > 0 ||
+                  (selectedExercise.muscleShoulders ?? 0) > 0 ||
+                  (selectedExercise.muscleArms ?? 0) > 0 ||
+                  (selectedExercise.muscleCore ?? 0) > 0 ||
+                  (selectedExercise.muscleGlutes ?? 0) > 0 ||
+                  (selectedExercise.muscleFullBody ?? 0) > 0
+                );
+                const showSets = hasMuscleGroup || selectedExercise?.category === "力量";
                 return showSets ? (
                   <FormField
                     control={editForm.control}
