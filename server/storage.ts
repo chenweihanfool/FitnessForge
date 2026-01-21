@@ -1393,6 +1393,7 @@ export class DbStorage implements IStorage {
       .values({
         exerciseId: insertEntry.exerciseId,
         value: insertEntry.value,
+        sets: insertEntry.sets ?? null,
         date,
         notes: insertEntry.notes ?? null,
       })

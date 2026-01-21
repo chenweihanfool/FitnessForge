@@ -759,8 +759,18 @@ export default function Dashboard() {
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               {(() => {
                 const maxVolume = Math.max(...muscleGroupStats.muscleGroups.map(g => g.totalVolume));
+                
+                const getSetStatus = (sets: number) => {
+                  if (sets < 4) return { color: 'bg-red-500', textColor: 'text-red-600 dark:text-red-400', label: '低于维持量' };
+                  if (sets <= 8) return { color: 'bg-yellow-500', textColor: 'text-yellow-600 dark:text-yellow-400', label: '维持中' };
+                  if (sets <= 15) return { color: 'bg-green-500', textColor: 'text-green-600 dark:text-green-400', label: '最佳区间' };
+                  if (sets <= 20) return { color: 'bg-green-500', textColor: 'text-green-600 dark:text-green-400', label: '高强度' };
+                  return { color: 'bg-purple-500', textColor: 'text-purple-600 dark:text-purple-400', label: '超量警示' };
+                };
+                
                 return muscleGroupStats.muscleGroups.map((group) => {
                   const percentage = maxVolume > 0 ? (group.totalVolume / maxVolume) * 100 : 0;
+                  const status = getSetStatus(group.totalSets);
                   return (
                     <div key={group.muscleGroup} className="space-y-2 p-3 rounded-lg bg-muted/50" data-testid={`muscle-group-stat-${group.muscleGroup}`}>
                       <div className="flex justify-between items-center">
@@ -776,9 +786,12 @@ export default function Dashboard() {
                       </div>
                       <div className="w-full bg-secondary rounded-full h-2">
                         <div
-                          className="bg-primary rounded-full h-2 transition-all"
+                          className={`${status.color} rounded-full h-2 transition-all`}
                           style={{ width: `${percentage}%` }}
                         />
+                      </div>
+                      <div className={`text-xs ${status.textColor}`} data-testid={`status-${group.muscleGroup}`}>
+                        {status.label}
                       </div>
                     </div>
                   );
