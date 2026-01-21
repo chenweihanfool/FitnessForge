@@ -57,6 +57,7 @@ export default function Exercises() {
     mutationFn: (data: InsertExercise) => apiRequest("POST", "/api/exercises", data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/exercises"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/stats/muscle-group-weekly"] });
       setIsCreateOpen(false);
       toast({
         title: "成功",
@@ -70,6 +71,7 @@ export default function Exercises() {
       apiRequest("PATCH", `/api/exercises/${id}`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/exercises"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/stats/muscle-group-weekly"] });
       setEditingExercise(null);
       toast({
         title: "成功",
@@ -84,6 +86,7 @@ export default function Exercises() {
       queryClient.invalidateQueries({ queryKey: ["/api/exercises"] });
       queryClient.invalidateQueries({ queryKey: ["/api/stats/ranking"] });
       queryClient.invalidateQueries({ queryKey: ["/api/stats/trends"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/stats/muscle-group-weekly"] });
       setDeletingExercise(null);
       toast({
         title: "成功",

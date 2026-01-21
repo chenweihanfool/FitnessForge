@@ -74,6 +74,16 @@ type CategoryBreakdown = {
   percentage: number;
 };
 
+type MuscleGroupWeeklyStats = {
+  weekStart: string;
+  weekEnd: string;
+  muscleGroups: Array<{
+    muscleGroup: string;
+    totalSets: number;
+    totalVolume: number;
+  }>;
+};
+
 type WeeklyProgress = {
   weekStart: string;
   weekEnd: string;
@@ -156,6 +166,10 @@ export default function Dashboard() {
 
   const { data: categoryBreakdown, isLoading: categoryLoading } = useQuery<CategoryBreakdown[]>({
     queryKey: ["/api/stats/category-breakdown"],
+  });
+
+  const { data: muscleGroupStats, isLoading: muscleGroupLoading } = useQuery<MuscleGroupWeeklyStats>({
+    queryKey: ["/api/stats/muscle-group-weekly"],
   });
 
   const { data: weeklyProgress, isLoading: weeklyProgressLoading } = useQuery<WeeklyProgress>({
@@ -794,6 +808,47 @@ export default function Dashboard() {
                       </p>
                     </div>
                   ));
+                })()}
+              </CardContent>
+            </Card>
+          )}
+
+          {/* 本周肌群训练量 */}
+          {!muscleGroupLoading && muscleGroupStats && muscleGroupStats.muscleGroups.length > 0 && (
+            <Card data-testid="card-muscle-group-stats">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Dumbbell className="h-5 w-5" />
+                  本周肌群训练
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {(() => {
+                  const maxVolume = Math.max(...muscleGroupStats.muscleGroups.map(g => g.totalVolume));
+                  return muscleGroupStats.muscleGroups.map((group) => {
+                    const percentage = maxVolume > 0 ? (group.totalVolume / maxVolume) * 100 : 0;
+                    return (
+                    <div key={group.muscleGroup} className="space-y-2" data-testid={`muscle-group-stat-${group.muscleGroup}`}>
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm font-medium">{group.muscleGroup}</span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-muted-foreground" data-testid={`sets-${group.muscleGroup}`}>
+                            {group.totalSets} 组
+                          </span>
+                          <span className="text-sm font-bold" data-testid={`volume-${group.muscleGroup}`}>
+                            {group.totalVolume.toFixed(1)}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="w-full bg-muted rounded-full h-2">
+                        <div
+                          className="bg-primary rounded-full h-2 transition-all"
+                          style={{ width: `${percentage}%` }}
+                        />
+                      </div>
+                    </div>
+                    );
+                  });
                 })()}
               </CardContent>
             </Card>

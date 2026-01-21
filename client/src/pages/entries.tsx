@@ -117,13 +117,13 @@ export default function Entries() {
       queryClient.invalidateQueries({ queryKey: ["/api/stats/current-week-details"] });
       queryClient.invalidateQueries({ queryKey: ["/api/stats/category-breakdown"] });
       queryClient.invalidateQueries({ queryKey: ["/api/stats/career-overview"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/stats/muscle-group-weekly"] });
       setIsCreateOpen(false);
       form.reset();
       toast({
         title: "成功",
         description: "运动记录已添加",
       });
-      // 跳转回首页
       setLocation("/");
     },
   });
@@ -137,6 +137,7 @@ export default function Entries() {
       queryClient.invalidateQueries({ queryKey: ["/api/stats/weekly-progress"] });
       queryClient.invalidateQueries({ queryKey: ["/api/stats/current-week-details"] });
       queryClient.invalidateQueries({ queryKey: ["/api/stats/category-breakdown"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/stats/muscle-group-weekly"] });
       setDeletingEntry(null);
       toast({
         title: "成功",
@@ -155,6 +156,7 @@ export default function Entries() {
       queryClient.invalidateQueries({ queryKey: ["/api/stats/weekly-progress"] });
       queryClient.invalidateQueries({ queryKey: ["/api/stats/current-week-details"] });
       queryClient.invalidateQueries({ queryKey: ["/api/stats/category-breakdown"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/stats/muscle-group-weekly"] });
       setIsEditOpen(false);
       setEditingEntry(null);
       editForm.reset();
@@ -563,6 +565,7 @@ export default function Entries() {
                 <TableRow>
                   <TableHead>运动</TableHead>
                   <TableHead>数据值</TableHead>
+                  <TableHead>组数</TableHead>
                   <TableHead>基准值</TableHead>
                   <TableHead>日期</TableHead>
                   <TableHead>备注</TableHead>
@@ -582,6 +585,9 @@ export default function Entries() {
                       </TableCell>
                       <TableCell>
                         {entry.value} {entry.exercise.unit}
+                      </TableCell>
+                      <TableCell data-testid={`sets-${entry.id}`}>
+                        {entry.sets ? `${entry.sets} 组` : "-"}
                       </TableCell>
                       <TableCell>
                         <Badge variant="secondary" data-testid={`badge-baseline-${entry.id}`}>
