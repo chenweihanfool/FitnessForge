@@ -565,7 +565,7 @@ export default function Dashboard() {
       )}
 
       {/* 本周训练进度 - 置顶显示 */}
-      {!weeklyProgressLoading && weeklyProgress && weeklyProgress.exercises.filter(e => e.currentWeekValue > 0 || (e.weeklyAverage !== null && e.weeklyAverage > 0)).length > 0 && (
+      {!weeklyProgressLoading && weeklyProgress && weeklyProgress.exercises.length > 0 && (
         <Card data-testid="card-weekly-progress">
           <CardHeader className="pb-3">
             <CardTitle className="flex items-center gap-2">
@@ -576,7 +576,6 @@ export default function Dashboard() {
           <CardContent>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
               {weeklyProgress.exercises
-                .filter((e) => e.currentWeekValue > 0 || (e.weeklyAverage !== null && e.weeklyAverage > 0))
                 .sort((a, b) => {
                   // 按距上次锻炼天数降序排列，null值排最后
                   const daysA = a.daysSinceLastWorkout ?? -1;
@@ -763,7 +762,7 @@ export default function Dashboard() {
       )}
 
       {/* 独立推荐卡片 - 当本周训练进度卡片不显示时显示 */}
-      {(!weeklyProgress || weeklyProgress.exercises.filter(e => e.currentWeekValue > 0 || (e.weeklyAverage !== null && e.weeklyAverage > 0)).length === 0) && 
+      {(!weeklyProgress || weeklyProgress.exercises.length === 0) && 
         exercises && exercises.length > 0 && (() => {
           const muscleFieldMap: { field: keyof Exercise; name: string }[] = [
             { field: 'muscleChest', name: '胸' },
