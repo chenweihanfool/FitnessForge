@@ -684,65 +684,49 @@ export default function Dashboard() {
                     </div>
                   );
                 })}
-              {/* 推荐训练项目 - 根据未训练肌群推荐 */}
-              {exercises && exercises.length > 0 && (() => {
-                const muscleFieldMap: { field: keyof Exercise; name: string }[] = [
-                  { field: 'muscleChest', name: '胸' },
-                  { field: 'muscleBack', name: '背' },
-                  { field: 'muscleLegs', name: '腿' },
-                  { field: 'muscleShoulders', name: '肩' },
-                  { field: 'muscleArms', name: '二头肌' },
-                  { field: 'muscleCore', name: '核心' },
-                  { field: 'muscleGlutes', name: '臀' },
-                  { field: 'muscleFullBody', name: '三头肌' },
-                ];
-                
-                const trainedMuscles = new Set(
-                  muscleGroupStats?.muscleGroups?.map(g => g.muscleGroup) || []
-                );
-                const untrainedMuscles = muscleFieldMap.filter(m => !trainedMuscles.has(m.name));
-                
-                if (untrainedMuscles.length === 0) return null;
-                
-                const recommendedExercises = exercises
-                  .filter(ex => {
-                    return untrainedMuscles.some(um => {
-                      const value = ex[um.field] as number | null;
-                      return value && value > 0;
-                    });
-                  })
-                  .map(ex => {
-                    const targetMuscles = untrainedMuscles
-                      .filter(um => {
-                        const value = ex[um.field] as number | null;
+              {/* 推荐训练项目 - 使用后端推荐数据 */}
+              {weeklyProgress.recommendations && weeklyProgress.recommendations.length > 0 && (
+                <>
+                  {weeklyProgress.recommendations.map((rec) => {
+                    const exerciseInfo = exercises?.find(e => e.id === rec.exerciseId);
+                    const muscleFieldMap: { field: keyof Exercise; name: string }[] = [
+                      { field: 'muscleChest', name: '胸' },
+                      { field: 'muscleBack', name: '背' },
+                      { field: 'muscleLegs', name: '腿' },
+                      { field: 'muscleShoulders', name: '肩' },
+                      { field: 'muscleArms', name: '二头肌' },
+                      { field: 'muscleCore', name: '核心' },
+                      { field: 'muscleGlutes', name: '臀' },
+                      { field: 'muscleFullBody', name: '三头肌' },
+                    ];
+                    const targetMuscles = exerciseInfo ? muscleFieldMap
+                      .filter(m => {
+                        const value = exerciseInfo[m.field] as number | null;
                         return value && value > 0;
                       })
-                      .map(um => um.name);
-                    return { exercise: ex, targetMuscles };
-                  })
-                  .slice(0, 5);
-                
-                if (recommendedExercises.length === 0) return null;
-                
-                return (
-                  <>
-                    {recommendedExercises.map(({ exercise, targetMuscles }) => (
+                      .map(m => m.name)
+                    : [];
+                    
+                    return (
                       <div
-                        key={`rec-${exercise.id}`}
+                        key={`rec-${rec.exerciseId}`}
                         className="space-y-2 p-3 rounded-lg border-2 border-dashed border-primary/30 bg-primary/5 hover-elevate cursor-pointer group"
-                        data-testid={`recommendation-${exercise.id}`}
-                        onClick={() => handleAddEntry(exercise.id)}
+                        data-testid={`recommendation-${rec.exerciseId}`}
+                        onClick={() => handleAddEntry(rec.exerciseId)}
                       >
                         <div className="flex items-center justify-between text-sm">
-                          <span className="font-medium truncate">{exercise.name}</span>
+                          <span className="font-medium truncate">{rec.exerciseName}</span>
                           <div className="flex items-center gap-1 shrink-0 ml-2">
                             <Plus className="h-4 w-4 text-primary" />
                           </div>
                         </div>
+                        {targetMuscles.length > 0 && (
+                          <div className="text-xs text-primary/80">
+                            {targetMuscles.join(' / ')}
+                          </div>
+                        )}
                         <div className="flex items-center justify-between text-xs text-muted-foreground">
-                          <span className="truncate">
-                            锻炼: {targetMuscles.join('、')}
-                          </span>
+                          <span className="truncate">{rec.reason}</span>
                           <span className="text-primary font-medium shrink-0 ml-2">建议</span>
                         </div>
                         <div className="h-1.5 w-full overflow-hidden rounded-full bg-secondary">
@@ -752,10 +736,10 @@ export default function Dashboard() {
                           />
                         </div>
                       </div>
-                    ))}
-                  </>
-                );
-              })()}
+                    );
+                  })}
+                </>
+              )}
             </div>
           </CardContent>
         </Card>
