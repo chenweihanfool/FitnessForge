@@ -11,6 +11,7 @@ export const exercises = pgTable("exercises", {
   category: text("category"), // 运动分类，如 "力量"、"有氧"、"柔韧性"等
   splitCategory: text("split_category"), // 次要分类，用于混合运动（如"跑步機負重"需要分配部分基准值到力量）
   splitRatio: real("split_ratio").default(0), // 分配给次要分类的比例（0-1），默认0表示不分配
+  muscleGroup: text("muscle_group"), // 肌群分类，如 "胸"、"背"、"腿"、"肩"、"手臂"、"核心"等
 });
 
 // 定义camelCase的insert schema
@@ -21,6 +22,7 @@ export const insertExerciseSchema = z.object({
   category: z.string().optional(),
   splitCategory: z.string().optional(),
   splitRatio: z.number().min(0).max(1).default(0),
+  muscleGroup: z.string().optional(),
 });
 
 // 运动记录表
@@ -28,6 +30,7 @@ export const workoutEntries = pgTable("workout_entries", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   exerciseId: varchar("exercise_id").notNull().references(() => exercises.id, { onDelete: "cascade" }),
   value: real("value").notNull(), // 运动数据值
+  sets: real("sets"), // 组数（可选）
   date: timestamp("date").notNull().defaultNow(), // 记录日期时间
   notes: text("notes"), // 可选备注
 });
@@ -35,6 +38,7 @@ export const workoutEntries = pgTable("workout_entries", {
 export const insertWorkoutEntrySchema = z.object({
   exerciseId: z.string(),
   value: z.number(),
+  sets: z.number().optional(), // 组数（可选）
   date: z.string().optional(), // 允许从前端传递ISO日期字符串
   notes: z.string().optional(),
 });
