@@ -95,6 +95,17 @@ export default function Exercises() {
     },
   });
 
+  const muscleGroupLabels = [
+    { field: 'muscleChest' as const, name: '胸' },
+    { field: 'muscleBack' as const, name: '背' },
+    { field: 'muscleLegs' as const, name: '腿' },
+    { field: 'muscleShoulders' as const, name: '肩' },
+    { field: 'muscleArms' as const, name: '手臂' },
+    { field: 'muscleCore' as const, name: '核心' },
+    { field: 'muscleGlutes' as const, name: '臀' },
+    { field: 'muscleFullBody' as const, name: '全身' },
+  ];
+
   const form = useForm<InsertExercise>({
     resolver: zodResolver(insertExerciseSchema),
     defaultValues: {
@@ -104,7 +115,14 @@ export default function Exercises() {
       category: "none",
       splitCategory: "none",
       splitRatio: 0,
-      muscleGroup: "none",
+      muscleChest: 0,
+      muscleBack: 0,
+      muscleLegs: 0,
+      muscleShoulders: 0,
+      muscleArms: 0,
+      muscleCore: 0,
+      muscleGlutes: 0,
+      muscleFullBody: 0,
     },
   });
 
@@ -117,7 +135,14 @@ export default function Exercises() {
       category: "none",
       splitCategory: "none",
       splitRatio: 0,
-      muscleGroup: "none",
+      muscleChest: 0,
+      muscleBack: 0,
+      muscleLegs: 0,
+      muscleShoulders: 0,
+      muscleArms: 0,
+      muscleCore: 0,
+      muscleGlutes: 0,
+      muscleFullBody: 0,
     },
   });
 
@@ -127,7 +152,6 @@ export default function Exercises() {
       category: data.category === "none" ? undefined : data.category,
       splitCategory: data.splitCategory === "none" ? undefined : data.splitCategory,
       splitRatio: data.splitCategory === "none" ? 0 : data.splitRatio,
-      muscleGroup: data.muscleGroup === "none" ? undefined : data.muscleGroup,
     };
     createMutation.mutate(submitData);
   };
@@ -139,7 +163,6 @@ export default function Exercises() {
         category: data.category === "none" ? undefined : data.category,
         splitCategory: data.splitCategory === "none" ? undefined : data.splitCategory,
         splitRatio: data.splitCategory === "none" ? 0 : data.splitRatio,
-        muscleGroup: data.muscleGroup === "none" ? undefined : data.muscleGroup,
       };
       updateMutation.mutate({ id: editingExercise.id, data: submitData });
     }
@@ -154,7 +177,14 @@ export default function Exercises() {
       category: exercise.category || "none",
       splitCategory: exercise.splitCategory || "none",
       splitRatio: exercise.splitRatio || 0,
-      muscleGroup: exercise.muscleGroup || "none",
+      muscleChest: exercise.muscleChest || 0,
+      muscleBack: exercise.muscleBack || 0,
+      muscleLegs: exercise.muscleLegs || 0,
+      muscleShoulders: exercise.muscleShoulders || 0,
+      muscleArms: exercise.muscleArms || 0,
+      muscleCore: exercise.muscleCore || 0,
+      muscleGlutes: exercise.muscleGlutes || 0,
+      muscleFullBody: exercise.muscleFullBody || 0,
     });
   };
 
@@ -318,34 +348,38 @@ export default function Exercises() {
                     )}
                   />
                 )}
-                <FormField
-                  control={form.control}
-                  name="muscleGroup"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>目标肌群（可选）</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value}>
-                        <FormControl>
-                          <SelectTrigger data-testid="select-exercise-muscle-group">
-                            <SelectValue placeholder="选择肌群" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          <SelectItem value="none" data-testid="muscle-group-option-none">无肌群</SelectItem>
-                          {MUSCLE_GROUPS.map((group) => (
-                            <SelectItem key={group} value={group} data-testid={`muscle-group-option-${group}`}>
-                              {group}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <FormDescription>
-                        力量训练可设置目标肌群，用于追踪各肌群训练量
-                      </FormDescription>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+                <div className="space-y-3">
+                  <FormLabel>肌群百分比（可选）</FormLabel>
+                  <FormDescription className="text-xs">
+                    设置各肌群训练占比（0-100%），总和可超过100%
+                  </FormDescription>
+                  <div className="grid grid-cols-4 gap-2">
+                    {muscleGroupLabels.map(({ field: fieldName, name }) => (
+                      <FormField
+                        key={fieldName}
+                        control={form.control}
+                        name={fieldName}
+                        render={({ field }) => (
+                          <FormItem className="space-y-1">
+                            <FormLabel className="text-xs">{name}</FormLabel>
+                            <FormControl>
+                              <Input
+                                type="number"
+                                min="0"
+                                max="100"
+                                placeholder="0"
+                                className="h-8 text-sm"
+                                {...field}
+                                onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
+                                data-testid={`input-muscle-${fieldName}`}
+                              />
+                            </FormControl>
+                          </FormItem>
+                        )}
+                      />
+                    ))}
+                  </div>
+                </div>
                 <div className="flex justify-end gap-2">
                   <Button
                     type="button"
@@ -450,14 +484,24 @@ export default function Exercises() {
                       </Badge>
                     </div>
                   )}
-                  {exercise.muscleGroup && (
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-muted-foreground">目标肌群</span>
-                      <Badge variant="outline" data-testid={`badge-muscle-group-${exercise.id}`}>
-                        {exercise.muscleGroup}
-                      </Badge>
-                    </div>
-                  )}
+                  {(() => {
+                    const muscles = muscleGroupLabels
+                      .filter(({ field }) => (exercise[field] as number) > 0)
+                      .map(({ field, name }) => `${name}${exercise[field]}%`);
+                    if (muscles.length === 0) return null;
+                    return (
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-sm text-muted-foreground">肌群</span>
+                        <div className="flex flex-wrap gap-1 justify-end" data-testid={`badges-muscle-${exercise.id}`}>
+                          {muscles.map((m, i) => (
+                            <Badge key={i} variant="outline" className="text-xs">
+                              {m}
+                            </Badge>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })()}
                   <p className="text-xs text-muted-foreground mt-2">
                     基准值 = 数据 × {exercise.weightFactor}
                   </p>
@@ -609,34 +653,38 @@ export default function Exercises() {
                   )}
                 />
               )}
-              <FormField
-                control={editForm.control}
-                name="muscleGroup"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>目标肌群（可选）</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
-                      <FormControl>
-                        <SelectTrigger data-testid="select-edit-muscle-group">
-                          <SelectValue placeholder="选择肌群" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        <SelectItem value="none" data-testid="edit-muscle-group-option-none">无肌群</SelectItem>
-                        {MUSCLE_GROUPS.map((group) => (
-                          <SelectItem key={group} value={group} data-testid={`edit-muscle-group-option-${group}`}>
-                            {group}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormDescription>
-                      力量训练可设置目标肌群，用于追踪各肌群训练量
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+              <div className="space-y-3">
+                <FormLabel>肌群百分比（可选）</FormLabel>
+                <FormDescription className="text-xs">
+                  设置各肌群训练占比（0-100%），总和可超过100%
+                </FormDescription>
+                <div className="grid grid-cols-4 gap-2">
+                  {muscleGroupLabels.map(({ field: fieldName, name }) => (
+                    <FormField
+                      key={fieldName}
+                      control={editForm.control}
+                      name={fieldName}
+                      render={({ field }) => (
+                        <FormItem className="space-y-1">
+                          <FormLabel className="text-xs">{name}</FormLabel>
+                          <FormControl>
+                            <Input
+                              type="number"
+                              min="0"
+                              max="100"
+                              placeholder="0"
+                              className="h-8 text-sm"
+                              {...field}
+                              onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
+                              data-testid={`input-edit-muscle-${fieldName}`}
+                            />
+                          </FormControl>
+                        </FormItem>
+                      )}
+                    />
+                  ))}
+                </div>
+              </div>
               <div className="flex justify-end gap-2">
                 <Button
                   type="button"

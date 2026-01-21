@@ -212,7 +212,14 @@ export class MemStorage implements IStorage {
       category: insertExercise.category ?? null,
       splitCategory: insertExercise.splitCategory ?? null,
       splitRatio: insertExercise.splitRatio ?? 0,
-      muscleGroup: insertExercise.muscleGroup ?? null,
+      muscleChest: insertExercise.muscleChest ?? 0,
+      muscleBack: insertExercise.muscleBack ?? 0,
+      muscleLegs: insertExercise.muscleLegs ?? 0,
+      muscleShoulders: insertExercise.muscleShoulders ?? 0,
+      muscleArms: insertExercise.muscleArms ?? 0,
+      muscleCore: insertExercise.muscleCore ?? 0,
+      muscleGlutes: insertExercise.muscleGlutes ?? 0,
+      muscleFullBody: insertExercise.muscleFullBody ?? 0,
     };
     this.exercises.set(id, exercise);
     return exercise;
@@ -228,7 +235,14 @@ export class MemStorage implements IStorage {
       category: insertExercise.category ?? null,
       splitCategory: insertExercise.splitCategory ?? null,
       splitRatio: insertExercise.splitRatio ?? 0,
-      muscleGroup: insertExercise.muscleGroup ?? null,
+      muscleChest: insertExercise.muscleChest ?? 0,
+      muscleBack: insertExercise.muscleBack ?? 0,
+      muscleLegs: insertExercise.muscleLegs ?? 0,
+      muscleShoulders: insertExercise.muscleShoulders ?? 0,
+      muscleArms: insertExercise.muscleArms ?? 0,
+      muscleCore: insertExercise.muscleCore ?? 0,
+      muscleGlutes: insertExercise.muscleGlutes ?? 0,
+      muscleFullBody: insertExercise.muscleFullBody ?? 0,
     };
     this.exercises.set(id, updated);
     return updated;
