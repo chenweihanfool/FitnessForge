@@ -30,7 +30,7 @@ import {
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Plus, Activity, Trash2, Calendar, Target, Edit } from "lucide-react";
+import { Plus, Activity, Trash2, Calendar, Edit } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -57,11 +57,6 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { getTaipeiTime, toTaipeiTime } from "@/lib/timezone";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
 
 interface WeeklyProgress {
   weekStart: string;
@@ -91,7 +86,6 @@ export default function Entries() {
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [editingEntry, setEditingEntry] = useState<WorkoutEntryWithExercise | null>(null);
   const [deletingEntry, setDeletingEntry] = useState<WorkoutEntryWithExercise | null>(null);
-  const [showWeeklyProgress, setShowWeeklyProgress] = useState(true);
   const { toast } = useToast();
 
   const { data: exercises } = useQuery<Exercise[]>({
@@ -299,59 +293,6 @@ export default function Entries() {
               <DialogTitle>添加运动记录</DialogTitle>
               <DialogDescription>记录您的运动数据和相关信息</DialogDescription>
             </DialogHeader>
-
-            {weeklyProgress && weeklyProgress.recommendations.length > 0 && (
-              <Collapsible open={showWeeklyProgress} onOpenChange={setShowWeeklyProgress}>
-                <CollapsibleTrigger asChild>
-                  <Button
-                    variant="outline"
-                    className="w-full justify-between"
-                    type="button"
-                    data-testid="button-toggle-weekly-progress"
-                  >
-                    <span className="flex items-center gap-2">
-                      <Target className="h-4 w-4" />
-                      推荐训练
-                    </span>
-                    <span className="text-xs text-muted-foreground">
-                      {showWeeklyProgress ? "收起" : "展开"}
-                    </span>
-                  </Button>
-                </CollapsibleTrigger>
-                <CollapsibleContent className="mt-4">
-                  <Card className="bg-primary/5 border-primary/20">
-                    <CardHeader className="pb-3">
-                      <CardTitle className="text-sm flex items-center gap-2">
-                        <Target className="h-4 w-4 text-primary" />
-                        推荐训练
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-2">
-                      {weeklyProgress.recommendations.map((rec) => (
-                        <div
-                          key={rec.exerciseId}
-                          className="flex items-center justify-between gap-2 p-2 rounded-md bg-background/50"
-                          data-testid={`recommendation-${rec.exerciseId}`}
-                        >
-                          <div className="flex-1">
-                            <div className="font-medium text-sm">{rec.exerciseName}</div>
-                            <div className="text-xs text-muted-foreground">{rec.reason}</div>
-                          </div>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => form.setValue("exerciseId", rec.exerciseId)}
-                            data-testid={`button-select-${rec.exerciseId}`}
-                          >
-                            选择
-                          </Button>
-                        </div>
-                      ))}
-                    </CardContent>
-                  </Card>
-                </CollapsibleContent>
-              </Collapsible>
-            )}
 
             <Form {...form}>
               <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
