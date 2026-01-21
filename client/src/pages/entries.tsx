@@ -172,6 +172,7 @@ export default function Entries() {
       value: "" as any,
       date: getTaipeiTime(),
       notes: "",
+      sets: undefined,
     },
   });
 
@@ -182,6 +183,7 @@ export default function Entries() {
       value: "" as any,
       date: getTaipeiTime(),
       notes: "",
+      sets: undefined,
     },
   });
 
@@ -265,6 +267,7 @@ export default function Entries() {
       value: entry.exercise.name === '每周平均步数' ? entry.value / 7 : entry.value,
       date: taipeiDate,
       notes: entry.notes || "",
+      sets: entry.sets ?? undefined,
     });
     setIsEditOpen(true);
   };
@@ -451,6 +454,37 @@ export default function Entries() {
                     );
                   }}
                 />
+                {(() => {
+                  const selectedExercise = exercises?.find((e) => e.id === form.watch("exerciseId"));
+                  const showSets = selectedExercise?.muscleGroup || selectedExercise?.category === "力量";
+                  return showSets ? (
+                    <FormField
+                      control={form.control}
+                      name="sets"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>组数（可选）</FormLabel>
+                          <FormControl>
+                            <Input
+                              type="number"
+                              step="1"
+                              min="1"
+                              placeholder="输入组数"
+                              {...field}
+                              value={field.value ?? ""}
+                              onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value) : undefined)}
+                              data-testid="input-entry-sets"
+                            />
+                          </FormControl>
+                          <FormDescription>
+                            记录本次训练的组数，用于追踪各肌群训练量
+                          </FormDescription>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  ) : null;
+                })()}
                 <FormField
                   control={form.control}
                   name="date"
@@ -683,6 +717,37 @@ export default function Entries() {
                   );
                 }}
               />
+              {(() => {
+                const selectedExercise = exercises?.find((e) => e.id === editForm.watch("exerciseId"));
+                const showSets = selectedExercise?.muscleGroup || selectedExercise?.category === "力量";
+                return showSets ? (
+                  <FormField
+                    control={editForm.control}
+                    name="sets"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>组数（可选）</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            step="1"
+                            min="1"
+                            placeholder="输入组数"
+                            {...field}
+                            value={field.value ?? ""}
+                            onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value) : undefined)}
+                            data-testid="input-entry-sets"
+                          />
+                        </FormControl>
+                        <FormDescription>
+                          记录本次训练的组数，用于追踪各肌群训练量
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                ) : null;
+              })()}
               <FormField
                 control={editForm.control}
                 name="date"
