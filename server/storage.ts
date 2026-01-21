@@ -137,6 +137,15 @@ export interface IStorage {
     totalStars: number;
     averageStars: number;
   }>;
+  getMuscleGroupWeeklyStats(): Promise<{
+    weekStart: string;
+    weekEnd: string;
+    muscleGroups: Array<{
+      muscleGroup: string;
+      totalSets: number;
+      totalVolume: number;
+    }>;
+  }>;
 }
 
 export class MemStorage implements IStorage {
@@ -203,6 +212,7 @@ export class MemStorage implements IStorage {
       category: insertExercise.category ?? null,
       splitCategory: insertExercise.splitCategory ?? null,
       splitRatio: insertExercise.splitRatio ?? 0,
+      muscleGroup: insertExercise.muscleGroup ?? null,
     };
     this.exercises.set(id, exercise);
     return exercise;
@@ -218,6 +228,7 @@ export class MemStorage implements IStorage {
       category: insertExercise.category ?? null,
       splitCategory: insertExercise.splitCategory ?? null,
       splitRatio: insertExercise.splitRatio ?? 0,
+      muscleGroup: insertExercise.muscleGroup ?? null,
     };
     this.exercises.set(id, updated);
     return updated;
@@ -269,6 +280,7 @@ export class MemStorage implements IStorage {
       id,
       exerciseId: insertEntry.exerciseId,
       value: insertEntry.value,
+      sets: insertEntry.sets ?? null,
       date,
       notes: insertEntry.notes || null,
     };
@@ -287,6 +299,7 @@ export class MemStorage implements IStorage {
       id,
       exerciseId: insertEntry.exerciseId,
       value: insertEntry.value,
+      sets: insertEntry.sets ?? null,
       date,
       notes: insertEntry.notes || null,
     };
@@ -1166,6 +1179,42 @@ export class MemStorage implements IStorage {
     const averageStars = weeks.length > 0 ? totalStars / weeks.length : 0;
 
     return { weeks, totalStars, averageStars };
+  }
+
+  async getMuscleGroupWeeklyStats() {
+    const now = new Date();
+    const weekStart = this.getWeekStart(now);
+    const weekEnd = this.getWeekEnd(now);
+
+    const entries = Array.from(this.workoutEntries.values())
+      .filter(entry => entry.date >= weekStart && entry.date <= weekEnd);
+
+    const muscleGroupMap = new Map<string, { totalSets: number; totalVolume: number }>();
+
+    for (const entry of entries) {
+      const exercise = this.exercises.get(entry.exerciseId);
+      if (!exercise || !exercise.muscleGroup) continue;
+
+      const muscleGroup = exercise.muscleGroup;
+      const existing = muscleGroupMap.get(muscleGroup) || { totalSets: 0, totalVolume: 0 };
+      existing.totalSets += entry.sets || 0;
+      existing.totalVolume += entry.value * exercise.weightFactor;
+      muscleGroupMap.set(muscleGroup, existing);
+    }
+
+    const muscleGroups = Array.from(muscleGroupMap.entries())
+      .map(([muscleGroup, stats]) => ({
+        muscleGroup,
+        totalSets: stats.totalSets,
+        totalVolume: stats.totalVolume,
+      }))
+      .sort((a, b) => b.totalVolume - a.totalVolume);
+
+    return {
+      weekStart: weekStart.toISOString(),
+      weekEnd: weekEnd.toISOString(),
+      muscleGroups,
+    };
   }
 }
 
@@ -2264,6 +2313,55 @@ export class DbStorage implements IStorage {
     // ISO年的最后一周包含12月28日
     const dec28 = new Date(Date.UTC(year, 11, 28));
     return this.getWeekNumber(dec28);
+  }
+
+  async getMuscleGroupWeeklyStats() {
+    const now = new Date();
+    const weekStart = this.getWeekStart(now);
+    const weekEnd = this.getWeekEnd(now);
+
+    const entries = await this.db
+      .select({
+        exerciseId: workoutEntries.exerciseId,
+        value: workoutEntries.value,
+        sets: workoutEntries.sets,
+        muscleGroup: exercises.muscleGroup,
+        weightFactor: exercises.weightFactor,
+      })
+      .from(workoutEntries)
+      .innerJoin(exercises, eq(workoutEntries.exerciseId, exercises.id))
+      .where(
+        and(
+          gte(workoutEntries.date, weekStart),
+          lte(workoutEntries.date, weekEnd)
+        )
+      );
+
+    const muscleGroupMap = new Map<string, { totalSets: number; totalVolume: number }>();
+
+    for (const entry of entries) {
+      if (!entry.muscleGroup) continue;
+
+      const muscleGroup = entry.muscleGroup;
+      const existing = muscleGroupMap.get(muscleGroup) || { totalSets: 0, totalVolume: 0 };
+      existing.totalSets += entry.sets || 0;
+      existing.totalVolume += entry.value * entry.weightFactor;
+      muscleGroupMap.set(muscleGroup, existing);
+    }
+
+    const muscleGroups = Array.from(muscleGroupMap.entries())
+      .map(([muscleGroup, stats]) => ({
+        muscleGroup,
+        totalSets: stats.totalSets,
+        totalVolume: stats.totalVolume,
+      }))
+      .sort((a, b) => b.totalVolume - a.totalVolume);
+
+    return {
+      weekStart: weekStart.toISOString(),
+      weekEnd: weekEnd.toISOString(),
+      muscleGroups,
+    };
   }
 }
 

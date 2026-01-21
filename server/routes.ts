@@ -337,6 +337,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // 获取本周各肌群训练统计
+  app.get("/api/stats/muscle-group-weekly", async (req, res) => {
+    try {
+      const stats = await storage.getMuscleGroupWeeklyStats();
+      res.json(stats);
+    } catch (error) {
+      console.error("获取肌群周统计失败:", error);
+      res.status(500).json({ error: "获取肌群周统计失败" });
+    }
+  });
+
   // ==================== CSV 导入导出 API ====================
 
   // CSV 导入
