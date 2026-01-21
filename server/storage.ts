@@ -725,7 +725,17 @@ export class MemStorage implements IStorage {
     const weekDetails = await this.getCurrentWeekDetails();
     const now = new Date();
     
-    const exercisesProgress = [];
+    const exercisesProgress: Array<{
+      exerciseId: string;
+      exerciseName: string;
+      exerciseUnit: string;
+      exerciseCategory: string | null;
+      currentWeekValue: number;
+      weeklyAverage: number | null;
+      difference: number | null;
+      differencePercentage: number | null;
+      daysSinceLastWorkout: number | null;
+    }> = [];
     
     for (const exercise of allExercises) {
       const weekDetail = weekDetails.details.find(d => d.exerciseId === exercise.id);
@@ -770,67 +780,128 @@ export class MemStorage implements IStorage {
       });
     }
     
-    // 推荐逻辑：
-    // 1. 优先推荐本周还没有做过的运动
-    // 2. 其次推荐本周累积值距离历史平均值差距最大的（负方向）
+    // 推荐逻辑（MemStorage）：
+    // 1. 最优先：推荐能锻炼到组数落后肌群的运动项目
+    // 2. 其次：按距离上次锻炼天数排序，推荐很久没练的运动
     // 注意：排除"每周平均步数"，因为它是特殊的统计项目
-    const recommendations = [];
+    const recommendations: Array<{
+      exerciseId: string;
+      exerciseName: string;
+      exerciseUnit: string;
+      reason: string;
+    }> = [];
     
-    // 找出本周还没做过的运动（排除"每周平均步数"）
-    const notDoneYet = exercisesProgress.filter(e => 
-      e.currentWeekValue === 0 && 
-      e.weeklyAverage !== null && 
-      e.weeklyAverage > 0 &&
-      e.exerciseName !== '每周平均步数'
-    );
-    if (notDoneYet.length > 0) {
-      // 按历史周平均值排序，推荐平均值最高的
-      notDoneYet.sort((a, b) => (b.weeklyAverage || 0) - (a.weeklyAverage || 0));
+    // 获取本周肌群训练数据
+    const muscleGroupStats = await this.getMuscleGroupWeeklyStats();
+    
+    // 定义肌群字段映射
+    const muscleFieldMap: Array<{ field: string; name: string }> = [
+      { field: 'muscleChest', name: '胸' },
+      { field: 'muscleBack', name: '背' },
+      { field: 'muscleLegs', name: '腿' },
+      { field: 'muscleShoulders', name: '肩' },
+      { field: 'muscleArms', name: '二头肌' },
+      { field: 'muscleCore', name: '核心' },
+      { field: 'muscleGlutes', name: '臀' },
+      { field: 'muscleFullBody', name: '三头肌' },
+    ];
+    
+    // 找出组数落后的肌群（< 4组为低于维持量）
+    const trainedMuscleMap = new Map<string, number>();
+    for (const mg of muscleGroupStats.muscleGroups) {
+      trainedMuscleMap.set(mg.muscleGroup, mg.totalSets);
+    }
+    
+    // 找出所有肌群及其组数（未训练的为0）
+    const allMuscleSetCounts: Array<{ name: string; sets: number }> = muscleFieldMap.map(m => ({
+      name: m.name,
+      sets: trainedMuscleMap.get(m.name) || 0,
+    }));
+    
+    // 按组数排序，组数最少的排前面
+    allMuscleSetCounts.sort((a, b) => a.sets - b.sets);
+    
+    // 找出组数落后的肌群（< 4组）
+    const laggingMuscles = allMuscleSetCounts.filter(m => m.sets < 4);
+    
+    // 找出能锻炼落后肌群的运动（排除"每周平均步数"）
+    if (laggingMuscles.length > 0) {
+      for (const laggingMuscle of laggingMuscles) {
+        const fieldInfo = muscleFieldMap.find(m => m.name === laggingMuscle.name);
+        if (!fieldInfo) continue;
+        
+        // 找出能锻炼这个肌群的运动
+        const exercisesForMuscle = allExercises.filter(ex => {
+          const muscleValue = (ex as Record<string, unknown>)[fieldInfo.field] as number | null;
+          return muscleValue && muscleValue > 0 && ex.name !== '每周平均步数';
+        });
+        
+        if (exercisesForMuscle.length > 0) {
+          // 优先推荐本周还没练过的
+          const notDoneExercises = exercisesForMuscle.filter(ex => {
+            const progress = exercisesProgress.find(p => p.exerciseId === ex.id);
+            return progress && progress.currentWeekValue === 0;
+          });
+          
+          // 按肌群百分比排序，选择对该肌群锻炼效果最好的
+          const sortedExercises = (notDoneExercises.length > 0 ? notDoneExercises : exercisesForMuscle)
+            .sort((a, b) => {
+              const aValue = ((a as Record<string, unknown>)[fieldInfo.field] as number) || 0;
+              const bValue = ((b as Record<string, unknown>)[fieldInfo.field] as number) || 0;
+              return bValue - aValue;
+            });
+          
+          const bestExercise = sortedExercises[0];
+          if (bestExercise && !recommendations.find(r => r.exerciseId === bestExercise.id)) {
+            const setsText = laggingMuscle.sets === 0 ? '未训练' : `仅${laggingMuscle.sets.toFixed(0)}组`;
+            recommendations.push({
+              exerciseId: bestExercise.id,
+              exerciseName: bestExercise.name,
+              exerciseUnit: bestExercise.unit,
+              reason: `${laggingMuscle.name}肌群${setsText}，建议加强`,
+            });
+            
+            // 最多推荐3个基于肌群落后的运动
+            if (recommendations.length >= 3) break;
+          }
+        }
+      }
+    }
+    
+    // 其次按距离上次锻炼天数推荐（排除"每周平均步数"）
+    const byDaysSinceLastWorkout = exercisesProgress
+      .filter(e => 
+        e.exerciseName !== '每周平均步数' &&
+        e.daysSinceLastWorkout !== null &&
+        e.daysSinceLastWorkout > 7 && // 超过一周没练
+        !recommendations.find(r => r.exerciseId === e.exerciseId)
+      )
+      .sort((a, b) => (b.daysSinceLastWorkout || 0) - (a.daysSinceLastWorkout || 0));
+    
+    for (const exercise of byDaysSinceLastWorkout) {
+      if (recommendations.length >= 5) break;
       recommendations.push({
-        exerciseId: notDoneYet[0].exerciseId,
-        exerciseName: notDoneYet[0].exerciseName,
-        exerciseUnit: notDoneYet[0].exerciseUnit,
-        reason: "本周尚未训练，建议开始",
+        exerciseId: exercise.exerciseId,
+        exerciseName: exercise.exerciseName,
+        exerciseUnit: exercise.exerciseUnit,
+        reason: `已${exercise.daysSinceLastWorkout}天未训练`,
       });
     }
     
-    // 找出差距最大的（负方向，即做得比平均少很多的）（排除"每周平均步数"）
-    const belowAverage = exercisesProgress.filter(e => 
-      e.differencePercentage !== null && 
-      e.differencePercentage < -10 && 
-      e.currentWeekValue > 0 &&
-      e.exerciseName !== '每周平均步数'
-    );
-    if (belowAverage.length > 0) {
-      // 按差距百分比排序，差距最大的排前面
-      belowAverage.sort((a, b) => (a.differencePercentage || 0) - (b.differencePercentage || 0));
-      
-      // 避免重复推荐
-      if (!recommendations.find(r => r.exerciseId === belowAverage[0].exerciseId)) {
+    // 如果还没有推荐，找出低于历史平均的运动
+    if (recommendations.length === 0) {
+      const belowAverage = exercisesProgress.filter(e => 
+        e.differencePercentage !== null && 
+        e.differencePercentage < -10 && 
+        e.exerciseName !== '每周平均步数'
+      );
+      if (belowAverage.length > 0) {
+        belowAverage.sort((a, b) => (a.differencePercentage || 0) - (b.differencePercentage || 0));
         recommendations.push({
           exerciseId: belowAverage[0].exerciseId,
           exerciseName: belowAverage[0].exerciseName,
           exerciseUnit: belowAverage[0].exerciseUnit,
           reason: `低于平均值${Math.abs(belowAverage[0].differencePercentage!).toFixed(0)}%，需加强`,
-        });
-      }
-    }
-    
-    // 如果以上都没有，找出做得比平均少的（排除"每周平均步数"）
-    if (recommendations.length === 0) {
-      const slightlyBelow = exercisesProgress.filter(e => 
-        e.differencePercentage !== null && 
-        e.differencePercentage < 0 &&
-        e.currentWeekValue > 0 &&
-        e.exerciseName !== '每周平均步数'
-      );
-      if (slightlyBelow.length > 0) {
-        slightlyBelow.sort((a, b) => (a.differencePercentage || 0) - (b.differencePercentage || 0));
-        recommendations.push({
-          exerciseId: slightlyBelow[0].exerciseId,
-          exerciseName: slightlyBelow[0].exerciseName,
-          exerciseUnit: slightlyBelow[0].exerciseUnit,
-          reason: "可以加强训练",
         });
       }
     }
@@ -848,6 +919,7 @@ export class MemStorage implements IStorage {
     const weekStart = this.getWeekStart(now);
     const weekEnd = this.getWeekEnd(weekStart);
     
+    // MemStorage: 计算每日数据
     const dayNames = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
     const dailyData: Array<{
       date: string;
@@ -1832,7 +1904,17 @@ export class DbStorage implements IStorage {
     const weekDetails = await this.getCurrentWeekDetails();
     const now = new Date();
     
-    const exercisesProgress = [];
+    const exercisesProgress: Array<{
+      exerciseId: string;
+      exerciseName: string;
+      exerciseUnit: string;
+      exerciseCategory: string | null;
+      currentWeekValue: number;
+      weeklyAverage: number | null;
+      difference: number | null;
+      differencePercentage: number | null;
+      daysSinceLastWorkout: number | null;
+    }> = [];
     
     for (const exercise of allExercises) {
       const weekDetail = weekDetails.details.find(d => d.exerciseId === exercise.id);
@@ -1880,67 +1962,128 @@ export class DbStorage implements IStorage {
       });
     }
     
-    // 推荐逻辑：
-    // 1. 优先推荐本周还没有做过的运动
-    // 2. 其次推荐本周累积值距离历史平均值差距最大的（负方向）
+    // 推荐逻辑（DbStorage）：
+    // 1. 最优先：推荐能锻炼到组数落后肌群的运动项目
+    // 2. 其次：按距离上次锻炼天数排序，推荐很久没练的运动
     // 注意：排除"每周平均步数"，因为它是特殊的统计项目
-    const recommendations = [];
+    const recommendations: Array<{
+      exerciseId: string;
+      exerciseName: string;
+      exerciseUnit: string;
+      reason: string;
+    }> = [];
     
-    // 找出本周还没做过的运动（排除"每周平均步数"）
-    const notDoneYet = exercisesProgress.filter(e => 
-      e.currentWeekValue === 0 && 
-      e.weeklyAverage !== null && 
-      e.weeklyAverage > 0 &&
-      e.exerciseName !== '每周平均步数'
-    );
-    if (notDoneYet.length > 0) {
-      // 按历史周平均值排序，推荐平均值最高的
-      notDoneYet.sort((a, b) => (b.weeklyAverage || 0) - (a.weeklyAverage || 0));
+    // 获取本周肌群训练数据
+    const muscleGroupStats = await this.getMuscleGroupWeeklyStats();
+    
+    // 定义肌群字段映射
+    const muscleFieldMap: Array<{ field: string; name: string }> = [
+      { field: 'muscleChest', name: '胸' },
+      { field: 'muscleBack', name: '背' },
+      { field: 'muscleLegs', name: '腿' },
+      { field: 'muscleShoulders', name: '肩' },
+      { field: 'muscleArms', name: '二头肌' },
+      { field: 'muscleCore', name: '核心' },
+      { field: 'muscleGlutes', name: '臀' },
+      { field: 'muscleFullBody', name: '三头肌' },
+    ];
+    
+    // 找出组数落后的肌群（< 4组为低于维持量）
+    const trainedMuscleMap = new Map<string, number>();
+    for (const mg of muscleGroupStats.muscleGroups) {
+      trainedMuscleMap.set(mg.muscleGroup, mg.totalSets);
+    }
+    
+    // 找出所有肌群及其组数（未训练的为0）
+    const allMuscleSetCounts: Array<{ name: string; sets: number }> = muscleFieldMap.map(m => ({
+      name: m.name,
+      sets: trainedMuscleMap.get(m.name) || 0,
+    }));
+    
+    // 按组数排序，组数最少的排前面
+    allMuscleSetCounts.sort((a, b) => a.sets - b.sets);
+    
+    // 找出组数落后的肌群（< 4组）
+    const laggingMuscles = allMuscleSetCounts.filter(m => m.sets < 4);
+    
+    // 找出能锻炼落后肌群的运动（排除"每周平均步数"）
+    if (laggingMuscles.length > 0) {
+      for (const laggingMuscle of laggingMuscles) {
+        const fieldInfo = muscleFieldMap.find(m => m.name === laggingMuscle.name);
+        if (!fieldInfo) continue;
+        
+        // 找出能锻炼这个肌群的运动
+        const exercisesForMuscle = allExercises.filter(ex => {
+          const muscleValue = (ex as Record<string, unknown>)[fieldInfo.field] as number | null;
+          return muscleValue && muscleValue > 0 && ex.name !== '每周平均步数';
+        });
+        
+        if (exercisesForMuscle.length > 0) {
+          // 优先推荐本周还没练过的
+          const notDoneExercises = exercisesForMuscle.filter(ex => {
+            const progress = exercisesProgress.find(p => p.exerciseId === ex.id);
+            return progress && progress.currentWeekValue === 0;
+          });
+          
+          // 按肌群百分比排序，选择对该肌群锻炼效果最好的
+          const sortedExercises = (notDoneExercises.length > 0 ? notDoneExercises : exercisesForMuscle)
+            .sort((a, b) => {
+              const aValue = ((a as Record<string, unknown>)[fieldInfo.field] as number) || 0;
+              const bValue = ((b as Record<string, unknown>)[fieldInfo.field] as number) || 0;
+              return bValue - aValue;
+            });
+          
+          const bestExercise = sortedExercises[0];
+          if (bestExercise && !recommendations.find(r => r.exerciseId === bestExercise.id)) {
+            const setsText = laggingMuscle.sets === 0 ? '未训练' : `仅${laggingMuscle.sets.toFixed(0)}组`;
+            recommendations.push({
+              exerciseId: bestExercise.id,
+              exerciseName: bestExercise.name,
+              exerciseUnit: bestExercise.unit,
+              reason: `${laggingMuscle.name}肌群${setsText}，建议加强`,
+            });
+            
+            // 最多推荐3个基于肌群落后的运动
+            if (recommendations.length >= 3) break;
+          }
+        }
+      }
+    }
+    
+    // 其次按距离上次锻炼天数推荐（排除"每周平均步数"）
+    const byDaysSinceLastWorkout = exercisesProgress
+      .filter(e => 
+        e.exerciseName !== '每周平均步数' &&
+        e.daysSinceLastWorkout !== null &&
+        e.daysSinceLastWorkout > 7 && // 超过一周没练
+        !recommendations.find(r => r.exerciseId === e.exerciseId)
+      )
+      .sort((a, b) => (b.daysSinceLastWorkout || 0) - (a.daysSinceLastWorkout || 0));
+    
+    for (const exercise of byDaysSinceLastWorkout) {
+      if (recommendations.length >= 5) break;
       recommendations.push({
-        exerciseId: notDoneYet[0].exerciseId,
-        exerciseName: notDoneYet[0].exerciseName,
-        exerciseUnit: notDoneYet[0].exerciseUnit,
-        reason: "本周尚未训练，建议开始",
+        exerciseId: exercise.exerciseId,
+        exerciseName: exercise.exerciseName,
+        exerciseUnit: exercise.exerciseUnit,
+        reason: `已${exercise.daysSinceLastWorkout}天未训练`,
       });
     }
     
-    // 找出差距最大的（负方向，即做得比平均少很多的）（排除"每周平均步数"）
-    const belowAverage = exercisesProgress.filter(e => 
-      e.differencePercentage !== null && 
-      e.differencePercentage < -10 && 
-      e.currentWeekValue > 0 &&
-      e.exerciseName !== '每周平均步数'
-    );
-    if (belowAverage.length > 0) {
-      // 按差距百分比排序，差距最大的排前面
-      belowAverage.sort((a, b) => (a.differencePercentage || 0) - (b.differencePercentage || 0));
-      
-      // 避免重复推荐
-      if (!recommendations.find(r => r.exerciseId === belowAverage[0].exerciseId)) {
+    // 如果还没有推荐，找出低于历史平均的运动
+    if (recommendations.length === 0) {
+      const belowAverage = exercisesProgress.filter(e => 
+        e.differencePercentage !== null && 
+        e.differencePercentage < -10 && 
+        e.exerciseName !== '每周平均步数'
+      );
+      if (belowAverage.length > 0) {
+        belowAverage.sort((a, b) => (a.differencePercentage || 0) - (b.differencePercentage || 0));
         recommendations.push({
           exerciseId: belowAverage[0].exerciseId,
           exerciseName: belowAverage[0].exerciseName,
           exerciseUnit: belowAverage[0].exerciseUnit,
           reason: `低于平均值${Math.abs(belowAverage[0].differencePercentage!).toFixed(0)}%，需加强`,
-        });
-      }
-    }
-    
-    // 如果以上都没有，找出做得比平均少的（排除"每周平均步数"）
-    if (recommendations.length === 0) {
-      const slightlyBelow = exercisesProgress.filter(e => 
-        e.differencePercentage !== null && 
-        e.differencePercentage < 0 &&
-        e.currentWeekValue > 0 &&
-        e.exerciseName !== '每周平均步数'
-      );
-      if (slightlyBelow.length > 0) {
-        slightlyBelow.sort((a, b) => (a.differencePercentage || 0) - (b.differencePercentage || 0));
-        recommendations.push({
-          exerciseId: slightlyBelow[0].exerciseId,
-          exerciseName: slightlyBelow[0].exerciseName,
-          exerciseUnit: slightlyBelow[0].exerciseUnit,
-          reason: "可以加强训练",
         });
       }
     }
@@ -1971,7 +2114,7 @@ export class DbStorage implements IStorage {
     let weekTotal = 0;
     const dailyTotals: { date: Date; baselineValue: number; entryCount: number }[] = [];
     
-    // 先计算本周"每周平均步数"的总基准值，用于平均分配到每天
+    // DbStorage: 先计算本周"每周平均步数"的总基准值，用于平均分配到每天
     const weekEndTime = new Date(weekEnd.getTime() + 24 * 60 * 60 * 1000);
     const weeklyStepsEntries = await this.db
       .select({
