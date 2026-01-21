@@ -662,14 +662,7 @@ export default function Dashboard() {
                 
                 if (untrainedMuscles.length === 0) return null;
                 
-                const alreadyDisplayedIds = new Set(
-                  weeklyProgress.exercises
-                    .filter(e => e.weeklyAverage !== null && e.weeklyAverage > 0)
-                    .map(e => e.exerciseId)
-                );
-                
                 const recommendedExercises = exercises
-                  .filter(ex => !alreadyDisplayedIds.has(ex.id))
                   .filter(ex => {
                     return untrainedMuscles.some(um => {
                       const value = ex[um.field] as number | null;
