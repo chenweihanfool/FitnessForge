@@ -642,10 +642,166 @@ export default function Dashboard() {
                     </div>
                   );
                 })}
+              {/* 推荐训练项目 - 根据未训练肌群推荐 */}
+              {exercises && exercises.length > 0 && (() => {
+                const muscleFieldMap: { field: keyof Exercise; name: string }[] = [
+                  { field: 'muscleChest', name: '胸' },
+                  { field: 'muscleBack', name: '背' },
+                  { field: 'muscleLegs', name: '腿' },
+                  { field: 'muscleShoulders', name: '肩' },
+                  { field: 'muscleArms', name: '二头肌' },
+                  { field: 'muscleCore', name: '核心' },
+                  { field: 'muscleGlutes', name: '臀' },
+                  { field: 'muscleFullBody', name: '三头肌' },
+                ];
+                
+                const trainedMuscles = new Set(
+                  muscleGroupStats?.muscleGroups?.map(g => g.muscleGroup) || []
+                );
+                const untrainedMuscles = muscleFieldMap.filter(m => !trainedMuscles.has(m.name));
+                
+                if (untrainedMuscles.length === 0) return null;
+                
+                const alreadyDisplayedIds = new Set(
+                  weeklyProgress.exercises
+                    .filter(e => e.weeklyAverage !== null && e.weeklyAverage > 0)
+                    .map(e => e.exerciseId)
+                );
+                
+                const recommendedExercises = exercises
+                  .filter(ex => !alreadyDisplayedIds.has(ex.id))
+                  .filter(ex => {
+                    return untrainedMuscles.some(um => {
+                      const value = ex[um.field] as number | null;
+                      return value && value > 0;
+                    });
+                  })
+                  .map(ex => {
+                    const targetMuscles = untrainedMuscles
+                      .filter(um => {
+                        const value = ex[um.field] as number | null;
+                        return value && value > 0;
+                      })
+                      .map(um => um.name);
+                    return { exercise: ex, targetMuscles };
+                  })
+                  .slice(0, 5);
+                
+                if (recommendedExercises.length === 0) return null;
+                
+                return (
+                  <>
+                    {recommendedExercises.map(({ exercise, targetMuscles }) => (
+                      <div
+                        key={`rec-${exercise.id}`}
+                        className="space-y-2 p-3 rounded-lg border-2 border-dashed border-primary/30 bg-primary/5 hover-elevate cursor-pointer group"
+                        data-testid={`recommendation-${exercise.id}`}
+                        onClick={() => handleAddEntry(exercise.id)}
+                      >
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="font-medium truncate">{exercise.name}</span>
+                          <div className="flex items-center gap-1 shrink-0 ml-2">
+                            <Plus className="h-4 w-4 text-primary" />
+                          </div>
+                        </div>
+                        <div className="flex items-center justify-between text-xs text-muted-foreground">
+                          <span className="truncate">
+                            锻炼: {targetMuscles.join('、')}
+                          </span>
+                          <span className="text-primary font-medium shrink-0 ml-2">建议</span>
+                        </div>
+                        <div className="h-1.5 w-full overflow-hidden rounded-full bg-secondary">
+                          <div
+                            className="h-full bg-primary/50"
+                            style={{ width: '0%' }}
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </>
+                );
+              })()}
             </div>
           </CardContent>
         </Card>
       )}
+
+      {/* 独立推荐卡片 - 当本周训练进度卡片不显示时显示 */}
+      {(!weeklyProgress || weeklyProgress.exercises.filter(e => e.weeklyAverage !== null && e.weeklyAverage > 0).length === 0) && 
+        exercises && exercises.length > 0 && (() => {
+          const muscleFieldMap: { field: keyof Exercise; name: string }[] = [
+            { field: 'muscleChest', name: '胸' },
+            { field: 'muscleBack', name: '背' },
+            { field: 'muscleLegs', name: '腿' },
+            { field: 'muscleShoulders', name: '肩' },
+            { field: 'muscleArms', name: '二头肌' },
+            { field: 'muscleCore', name: '核心' },
+            { field: 'muscleGlutes', name: '臀' },
+            { field: 'muscleFullBody', name: '三头肌' },
+          ];
+          
+          const trainedMuscles = new Set(
+            muscleGroupStats?.muscleGroups?.map(g => g.muscleGroup) || []
+          );
+          const untrainedMuscles = muscleFieldMap.filter(m => !trainedMuscles.has(m.name));
+          
+          if (untrainedMuscles.length === 0) return null;
+          
+          const recommendedExercises = exercises
+            .filter(ex => {
+              return untrainedMuscles.some(um => {
+                const value = ex[um.field] as number | null;
+                return value && value > 0;
+              });
+            })
+            .map(ex => {
+              const targetMuscles = untrainedMuscles
+                .filter(um => {
+                  const value = ex[um.field] as number | null;
+                  return value && value > 0;
+                })
+                .map(um => um.name);
+              return { exercise: ex, targetMuscles };
+            })
+            .slice(0, 5);
+          
+          if (recommendedExercises.length === 0) return null;
+          
+          return (
+            <Card data-testid="card-muscle-recommendations">
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center gap-2">
+                  <Dumbbell className="h-5 w-5" />
+                  建议训练
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm text-muted-foreground mb-3">
+                  未锻炼肌群: {untrainedMuscles.map(m => m.name).join('、')}
+                </p>
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                  {recommendedExercises.map(({ exercise, targetMuscles }) => (
+                    <div
+                      key={`rec-${exercise.id}`}
+                      className="space-y-2 p-3 rounded-lg border-2 border-dashed border-primary/30 bg-primary/5 hover-elevate cursor-pointer group"
+                      data-testid={`recommendation-${exercise.id}`}
+                      onClick={() => handleAddEntry(exercise.id)}
+                    >
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="font-medium truncate">{exercise.name}</span>
+                        <Plus className="h-4 w-4 text-primary shrink-0 ml-2" />
+                      </div>
+                      <div className="text-xs text-muted-foreground truncate">
+                        锻炼: {targetMuscles.join('、')}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          );
+        })()
+      }
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <StatsCard
@@ -858,79 +1014,6 @@ export default function Dashboard() {
             </Card>
           )}
           
-          {/* 推荐运动卡片 - 根据未训练肌群推荐 */}
-          {exercises && exercises.length > 0 && (() => {
-            const muscleFieldMap: { field: keyof Exercise; name: string }[] = [
-              { field: 'muscleChest', name: '胸' },
-              { field: 'muscleBack', name: '背' },
-              { field: 'muscleLegs', name: '腿' },
-              { field: 'muscleShoulders', name: '肩' },
-              { field: 'muscleArms', name: '二头肌' },
-              { field: 'muscleCore', name: '核心' },
-              { field: 'muscleGlutes', name: '臀' },
-              { field: 'muscleFullBody', name: '三头肌' },
-            ];
-            
-            const trainedMuscles = new Set(
-              muscleGroupStats?.muscleGroups?.map(g => g.muscleGroup) || []
-            );
-            const untrainedMuscles = muscleFieldMap.filter(m => !trainedMuscles.has(m.name));
-            
-            if (untrainedMuscles.length === 0) return null;
-            
-            const recommendedExercises = exercises
-              .filter(ex => {
-                return untrainedMuscles.some(um => {
-                  const value = ex[um.field] as number | null;
-                  return value && value > 0;
-                });
-              })
-              .map(ex => {
-                const targetMuscles = untrainedMuscles
-                  .filter(um => {
-                    const value = ex[um.field] as number | null;
-                    return value && value > 0;
-                  })
-                  .map(um => um.name);
-                return { exercise: ex, targetMuscles };
-              })
-              .slice(0, 5);
-            
-            if (recommendedExercises.length === 0) return null;
-            
-            return (
-              <Card data-testid="card-muscle-recommendations">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Dumbbell className="h-5 w-5" />
-                    建议训练
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <div className="text-sm text-muted-foreground">
-                    未锻炼肌群: {untrainedMuscles.map(m => m.name).join('、')}
-                  </div>
-                  <div className="space-y-2">
-                    {recommendedExercises.map(({ exercise, targetMuscles }) => (
-                      <div 
-                        key={exercise.id} 
-                        className="flex items-center justify-between p-2 bg-muted/50 rounded-md"
-                        data-testid={`recommendation-${exercise.id}`}
-                      >
-                        <div className="flex items-center gap-2">
-                          <Dumbbell className="h-4 w-4 text-primary" />
-                          <span className="text-sm font-medium">{exercise.name}</span>
-                        </div>
-                        <span className="text-xs text-muted-foreground">
-                          {targetMuscles.join('、')}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-            );
-          })()}
 
           {/* 本周每日锻炼热点图 */}
           {!dailyContributionsLoading && dailyContributions && (
