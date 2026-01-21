@@ -575,6 +575,63 @@ export default function Dashboard() {
           </CardHeader>
           <CardContent>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              {/* 推荐训练项目 - 放在最前面 */}
+              {weeklyProgress.recommendations && weeklyProgress.recommendations.length > 0 && (
+                <>
+                  {weeklyProgress.recommendations.map((rec) => {
+                    const exerciseInfo = exercises?.find(e => e.id === rec.exerciseId);
+                    const muscleFieldMap: { field: keyof Exercise; name: string }[] = [
+                      { field: 'muscleChest', name: '胸' },
+                      { field: 'muscleBack', name: '背' },
+                      { field: 'muscleLegs', name: '腿' },
+                      { field: 'muscleShoulders', name: '肩' },
+                      { field: 'muscleArms', name: '二头肌' },
+                      { field: 'muscleCore', name: '核心' },
+                      { field: 'muscleGlutes', name: '臀' },
+                      { field: 'muscleFullBody', name: '三头肌' },
+                    ];
+                    const targetMuscles = exerciseInfo ? muscleFieldMap
+                      .filter(m => {
+                        const value = exerciseInfo[m.field] as number | null;
+                        return value && value > 0;
+                      })
+                      .map(m => m.name)
+                    : [];
+                    
+                    return (
+                      <div
+                        key={`rec-${rec.exerciseId}`}
+                        className="space-y-2 p-3 rounded-lg border-2 border-dashed border-primary/30 bg-primary/5 hover-elevate cursor-pointer group"
+                        data-testid={`recommendation-${rec.exerciseId}`}
+                        onClick={() => handleAddEntry(rec.exerciseId)}
+                      >
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="font-medium truncate">{rec.exerciseName}</span>
+                          <div className="flex items-center gap-1 shrink-0 ml-2">
+                            <Plus className="h-4 w-4 text-primary" />
+                          </div>
+                        </div>
+                        {targetMuscles.length > 0 && (
+                          <div className="text-xs text-primary/80">
+                            {targetMuscles.join(' / ')}
+                          </div>
+                        )}
+                        <div className="flex items-center justify-between text-xs text-muted-foreground">
+                          <span className="truncate">{rec.reason}</span>
+                          <span className="text-primary font-medium shrink-0 ml-2">建议</span>
+                        </div>
+                        <div className="h-1.5 w-full overflow-hidden rounded-full bg-secondary">
+                          <div
+                            className="h-full bg-primary/50"
+                            style={{ width: '0%' }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </>
+              )}
+              {/* 运动项目列表 - 按距离锻炼时间排序 */}
               {weeklyProgress.exercises
                 .sort((a, b) => {
                   // 按距上次锻炼天数降序排列，null值排最后
@@ -684,62 +741,49 @@ export default function Dashboard() {
                     </div>
                   );
                 })}
-              {/* 推荐训练项目 - 使用后端推荐数据 */}
-              {weeklyProgress.recommendations && weeklyProgress.recommendations.length > 0 && (
-                <>
-                  {weeklyProgress.recommendations.map((rec) => {
-                    const exerciseInfo = exercises?.find(e => e.id === rec.exerciseId);
-                    const muscleFieldMap: { field: keyof Exercise; name: string }[] = [
-                      { field: 'muscleChest', name: '胸' },
-                      { field: 'muscleBack', name: '背' },
-                      { field: 'muscleLegs', name: '腿' },
-                      { field: 'muscleShoulders', name: '肩' },
-                      { field: 'muscleArms', name: '二头肌' },
-                      { field: 'muscleCore', name: '核心' },
-                      { field: 'muscleGlutes', name: '臀' },
-                      { field: 'muscleFullBody', name: '三头肌' },
-                    ];
-                    const targetMuscles = exerciseInfo ? muscleFieldMap
-                      .filter(m => {
-                        const value = exerciseInfo[m.field] as number | null;
-                        return value && value > 0;
-                      })
-                      .map(m => m.name)
-                    : [];
-                    
-                    return (
-                      <div
-                        key={`rec-${rec.exerciseId}`}
-                        className="space-y-2 p-3 rounded-lg border-2 border-dashed border-primary/30 bg-primary/5 hover-elevate cursor-pointer group"
-                        data-testid={`recommendation-${rec.exerciseId}`}
-                        onClick={() => handleAddEntry(rec.exerciseId)}
-                      >
-                        <div className="flex items-center justify-between text-sm">
-                          <span className="font-medium truncate">{rec.exerciseName}</span>
-                          <div className="flex items-center gap-1 shrink-0 ml-2">
-                            <Plus className="h-4 w-4 text-primary" />
-                          </div>
-                        </div>
-                        {targetMuscles.length > 0 && (
-                          <div className="text-xs text-primary/80">
-                            {targetMuscles.join(' / ')}
-                          </div>
-                        )}
-                        <div className="flex items-center justify-between text-xs text-muted-foreground">
-                          <span className="truncate">{rec.reason}</span>
-                          <span className="text-primary font-medium shrink-0 ml-2">建议</span>
-                        </div>
-                        <div className="h-1.5 w-full overflow-hidden rounded-full bg-secondary">
-                          <div
-                            className="h-full bg-primary/50"
-                            style={{ width: '0%' }}
-                          />
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* 本周肌群训练量 - 紧跟本周训练进度 */}
+      {!muscleGroupLoading && muscleGroupStats && muscleGroupStats.muscleGroups.length > 0 && (
+        <Card data-testid="card-muscle-group-stats">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Dumbbell className="h-5 w-5" />
+              本周肌群训练
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              {(() => {
+                const maxVolume = Math.max(...muscleGroupStats.muscleGroups.map(g => g.totalVolume));
+                return muscleGroupStats.muscleGroups.map((group) => {
+                  const percentage = maxVolume > 0 ? (group.totalVolume / maxVolume) * 100 : 0;
+                  return (
+                    <div key={group.muscleGroup} className="space-y-2 p-3 rounded-lg bg-muted/50" data-testid={`muscle-group-stat-${group.muscleGroup}`}>
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm font-medium">{group.muscleGroup}</span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-muted-foreground" data-testid={`sets-${group.muscleGroup}`}>
+                            {group.totalSets} 组
+                          </span>
+                          <span className="text-sm font-bold" data-testid={`volume-${group.muscleGroup}`}>
+                            {group.totalVolume.toFixed(1)}
+                          </span>
                         </div>
                       </div>
-                    );
-                  })}
-                </>
-              )}
+                      <div className="w-full bg-secondary rounded-full h-2">
+                        <div
+                          className="bg-primary rounded-full h-2 transition-all"
+                          style={{ width: `${percentage}%` }}
+                        />
+                      </div>
+                    </div>
+                  );
+                });
+              })()}
             </div>
           </CardContent>
         </Card>
@@ -992,47 +1036,6 @@ export default function Dashboard() {
             </Card>
           )}
 
-          {/* 本周肌群训练量 */}
-          {!muscleGroupLoading && muscleGroupStats && muscleGroupStats.muscleGroups.length > 0 && (
-            <Card data-testid="card-muscle-group-stats">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Dumbbell className="h-5 w-5" />
-                  本周肌群训练
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {(() => {
-                  const maxVolume = Math.max(...muscleGroupStats.muscleGroups.map(g => g.totalVolume));
-                  return muscleGroupStats.muscleGroups.map((group) => {
-                    const percentage = maxVolume > 0 ? (group.totalVolume / maxVolume) * 100 : 0;
-                    return (
-                    <div key={group.muscleGroup} className="space-y-2" data-testid={`muscle-group-stat-${group.muscleGroup}`}>
-                      <div className="flex justify-between items-center">
-                        <span className="text-sm font-medium">{group.muscleGroup}</span>
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs text-muted-foreground" data-testid={`sets-${group.muscleGroup}`}>
-                            {group.totalSets} 组
-                          </span>
-                          <span className="text-sm font-bold" data-testid={`volume-${group.muscleGroup}`}>
-                            {group.totalVolume.toFixed(1)}
-                          </span>
-                        </div>
-                      </div>
-                      <div className="w-full bg-muted rounded-full h-2">
-                        <div
-                          className="bg-primary rounded-full h-2 transition-all"
-                          style={{ width: `${percentage}%` }}
-                        />
-                      </div>
-                    </div>
-                    );
-                  });
-                })()}
-              </CardContent>
-            </Card>
-          )}
-          
 
           {/* 本周每日锻炼热点图 */}
           {!dailyContributionsLoading && dailyContributions && (
