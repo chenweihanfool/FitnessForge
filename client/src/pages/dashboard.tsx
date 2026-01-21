@@ -565,7 +565,7 @@ export default function Dashboard() {
       )}
 
       {/* 本周训练进度 - 置顶显示 */}
-      {!weeklyProgressLoading && weeklyProgress && weeklyProgress.exercises.filter(e => e.weeklyAverage !== null && e.weeklyAverage > 0).length > 0 && (
+      {!weeklyProgressLoading && weeklyProgress && weeklyProgress.exercises.filter(e => e.currentWeekValue > 0 || (e.weeklyAverage !== null && e.weeklyAverage > 0)).length > 0 && (
         <Card data-testid="card-weekly-progress">
           <CardHeader className="pb-3">
             <CardTitle className="flex items-center gap-2">
@@ -576,7 +576,7 @@ export default function Dashboard() {
           <CardContent>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
               {weeklyProgress.exercises
-                .filter((e) => e.weeklyAverage !== null && e.weeklyAverage > 0)
+                .filter((e) => e.currentWeekValue > 0 || (e.weeklyAverage !== null && e.weeklyAverage > 0))
                 .sort((a, b) => {
                   // 按距上次锻炼天数降序排列，null值排最后
                   const daysA = a.daysSinceLastWorkout ?? -1;
@@ -588,6 +588,32 @@ export default function Dashboard() {
                   const isAbove = percentage >= 0;
                   const displayPercentage = Math.abs(percentage);
                   const progressValue = Math.min(displayPercentage, 100);
+                  
+                  // 获取运动的主要锻炼肌群
+                  const exerciseInfo = exercises?.find(e => e.id === ex.exerciseId);
+                  const muscleFieldMap: { field: keyof Exercise; name: string }[] = [
+                    { field: 'muscleChest', name: '胸' },
+                    { field: 'muscleBack', name: '背' },
+                    { field: 'muscleLegs', name: '腿' },
+                    { field: 'muscleShoulders', name: '肩' },
+                    { field: 'muscleArms', name: '二头肌' },
+                    { field: 'muscleCore', name: '核心' },
+                    { field: 'muscleGlutes', name: '臀' },
+                    { field: 'muscleFullBody', name: '三头肌' },
+                  ];
+                  const primaryMuscles = exerciseInfo ? muscleFieldMap
+                    .filter(m => {
+                      const value = exerciseInfo[m.field] as number | null;
+                      return value && value > 0;
+                    })
+                    .sort((a, b) => {
+                      const valueA = (exerciseInfo[a.field] as number) || 0;
+                      const valueB = (exerciseInfo[b.field] as number) || 0;
+                      return valueB - valueA;
+                    })
+                    .slice(0, 3)
+                    .map(m => m.name)
+                  : [];
 
                   return (
                     <div
@@ -600,30 +626,45 @@ export default function Dashboard() {
                         <span className="font-medium truncate">{ex.exerciseName}</span>
                         <div className="flex items-center gap-1 shrink-0 ml-2">
                           <Plus className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
-                          {isAbove ? (
-                            <TrendingUp className="h-4 w-4 text-green-500" />
+                          {ex.weeklyAverage !== null && ex.weeklyAverage > 0 ? (
+                            <>
+                              {isAbove ? (
+                                <TrendingUp className="h-4 w-4 text-green-500" />
+                              ) : (
+                                <TrendingDown className="h-4 w-4 text-orange-500" />
+                              )}
+                              <span
+                                className={
+                                  isAbove ? "text-green-600 dark:text-green-400 font-semibold" : "text-orange-600 dark:text-orange-400 font-semibold"
+                                }
+                              >
+                                {isAbove ? "+" : ""}
+                                {percentage.toFixed(0)}%
+                              </span>
+                            </>
                           ) : (
-                            <TrendingDown className="h-4 w-4 text-orange-500" />
+                            <span className="text-muted-foreground text-xs">新</span>
                           )}
-                          <span
-                            className={
-                              isAbove ? "text-green-600 dark:text-green-400 font-semibold" : "text-orange-600 dark:text-orange-400 font-semibold"
-                            }
-                          >
-                            {isAbove ? "+" : ""}
-                            {percentage.toFixed(0)}%
-                          </span>
                         </div>
                       </div>
+                      {primaryMuscles.length > 0 && (
+                        <div className="text-xs text-primary/80">
+                          {primaryMuscles.join(' / ')}
+                        </div>
+                      )}
                       <div className="flex items-center justify-between text-xs text-muted-foreground">
                         <div className="flex items-center gap-2">
                           <span>
                             本周: {ex.currentWeekValue.toFixed(1)} {ex.exerciseUnit}
                           </span>
-                          <span>|</span>
-                          <span>
-                            平均: {ex.weeklyAverage?.toFixed(1)} {ex.exerciseUnit}
-                          </span>
+                          {ex.weeklyAverage !== null && ex.weeklyAverage > 0 && (
+                            <>
+                              <span>|</span>
+                              <span>
+                                平均: {ex.weeklyAverage.toFixed(1)} {ex.exerciseUnit}
+                              </span>
+                            </>
+                          )}
                         </div>
                         {ex.daysSinceLastWorkout !== null && (
                           <span className={ex.daysSinceLastWorkout >= 7 ? "text-orange-500 font-medium" : ""}>
@@ -631,14 +672,16 @@ export default function Dashboard() {
                           </span>
                         )}
                       </div>
-                      <div className="h-1.5 w-full overflow-hidden rounded-full bg-secondary">
-                        <div
-                          className={`h-full transition-all ${
-                            isAbove ? "bg-green-500" : "bg-orange-500"
-                          }`}
-                          style={{ width: `${progressValue}%` }}
-                        />
-                      </div>
+                      {ex.weeklyAverage !== null && ex.weeklyAverage > 0 && (
+                        <div className="h-1.5 w-full overflow-hidden rounded-full bg-secondary">
+                          <div
+                            className={`h-full transition-all ${
+                              isAbove ? "bg-green-500" : "bg-orange-500"
+                            }`}
+                            style={{ width: `${progressValue}%` }}
+                          />
+                        </div>
+                      )}
                     </div>
                   );
                 })}
@@ -720,7 +763,7 @@ export default function Dashboard() {
       )}
 
       {/* 独立推荐卡片 - 当本周训练进度卡片不显示时显示 */}
-      {(!weeklyProgress || weeklyProgress.exercises.filter(e => e.weeklyAverage !== null && e.weeklyAverage > 0).length === 0) && 
+      {(!weeklyProgress || weeklyProgress.exercises.filter(e => e.currentWeekValue > 0 || (e.weeklyAverage !== null && e.weeklyAverage > 0)).length === 0) && 
         exercises && exercises.length > 0 && (() => {
           const muscleFieldMap: { field: keyof Exercise; name: string }[] = [
             { field: 'muscleChest', name: '胸' },
