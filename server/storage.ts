@@ -1220,7 +1220,7 @@ export class MemStorage implements IStorage {
       if (!exercise) continue;
 
       const baseVolume = entry.value * exercise.weightFactor;
-      const baseSets = entry.sets || 0;
+      const baseSets = entry.sets || 1;
 
       for (const { field, name } of muscleFields) {
         const percentage = (exercise[field] as number) || 0;
@@ -2397,7 +2397,7 @@ export class DbStorage implements IStorage {
 
     for (const entry of entries) {
       const baseVolume = entry.value * entry.weightFactor;
-      const baseSets = entry.sets || 0;
+      const baseSets = entry.sets || 1;
 
       for (const { field, name } of muscleFields) {
         const percentage = (entry[field] as number) || 0;
