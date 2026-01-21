@@ -40,7 +40,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 
 const CATEGORIES = ["力量", "有氧", "柔韧性", "核心", "平衡", "活动量", "其他"];
-const MUSCLE_GROUPS = ["胸", "背", "腿", "肩", "手臂", "核心", "臀", "全身"];
+const MUSCLE_GROUPS = ["胸", "背", "腿", "肩", "二头肌", "核心", "臀", "三头肌"];
 
 export default function Exercises() {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
@@ -100,10 +100,10 @@ export default function Exercises() {
     { field: 'muscleBack' as const, name: '背' },
     { field: 'muscleLegs' as const, name: '腿' },
     { field: 'muscleShoulders' as const, name: '肩' },
-    { field: 'muscleArms' as const, name: '手臂' },
+    { field: 'muscleArms' as const, name: '二头肌' },
     { field: 'muscleCore' as const, name: '核心' },
     { field: 'muscleGlutes' as const, name: '臀' },
-    { field: 'muscleFullBody' as const, name: '全身' },
+    { field: 'muscleFullBody' as const, name: '三头肌' },
   ];
 
   const form = useForm<InsertExercise>({

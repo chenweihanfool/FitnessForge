@@ -1209,10 +1209,10 @@ export class MemStorage implements IStorage {
       { field: 'muscleBack', name: '背' },
       { field: 'muscleLegs', name: '腿' },
       { field: 'muscleShoulders', name: '肩' },
-      { field: 'muscleArms', name: '手臂' },
+      { field: 'muscleArms', name: '二头肌' },
       { field: 'muscleCore', name: '核心' },
       { field: 'muscleGlutes', name: '臀' },
-      { field: 'muscleFullBody', name: '全身' },
+      { field: 'muscleFullBody', name: '三头肌' },
     ] as const;
 
     for (const entry of entries) {
@@ -2389,10 +2389,10 @@ export class DbStorage implements IStorage {
       { field: 'muscleBack', name: '背' },
       { field: 'muscleLegs', name: '腿' },
       { field: 'muscleShoulders', name: '肩' },
-      { field: 'muscleArms', name: '手臂' },
+      { field: 'muscleArms', name: '二头肌' },
       { field: 'muscleCore', name: '核心' },
       { field: 'muscleGlutes', name: '臀' },
-      { field: 'muscleFullBody', name: '全身' },
+      { field: 'muscleFullBody', name: '三头肌' },
     ] as const;
 
     for (const entry of entries) {
