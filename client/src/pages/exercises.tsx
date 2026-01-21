@@ -40,6 +40,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 
 const CATEGORIES = ["力量", "有氧", "柔韧性", "核心", "平衡", "活动量", "其他"];
+const MUSCLE_GROUPS = ["胸", "背", "腿", "肩", "手臂", "核心", "臀", "全身"];
 
 export default function Exercises() {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
@@ -100,6 +101,7 @@ export default function Exercises() {
       category: "none",
       splitCategory: "none",
       splitRatio: 0,
+      muscleGroup: "none",
     },
   });
 
@@ -112,6 +114,7 @@ export default function Exercises() {
       category: "none",
       splitCategory: "none",
       splitRatio: 0,
+      muscleGroup: "none",
     },
   });
 
@@ -121,6 +124,7 @@ export default function Exercises() {
       category: data.category === "none" ? undefined : data.category,
       splitCategory: data.splitCategory === "none" ? undefined : data.splitCategory,
       splitRatio: data.splitCategory === "none" ? 0 : data.splitRatio,
+      muscleGroup: data.muscleGroup === "none" ? undefined : data.muscleGroup,
     };
     createMutation.mutate(submitData);
   };
@@ -132,6 +136,7 @@ export default function Exercises() {
         category: data.category === "none" ? undefined : data.category,
         splitCategory: data.splitCategory === "none" ? undefined : data.splitCategory,
         splitRatio: data.splitCategory === "none" ? 0 : data.splitRatio,
+        muscleGroup: data.muscleGroup === "none" ? undefined : data.muscleGroup,
       };
       updateMutation.mutate({ id: editingExercise.id, data: submitData });
     }
@@ -146,6 +151,7 @@ export default function Exercises() {
       category: exercise.category || "none",
       splitCategory: exercise.splitCategory || "none",
       splitRatio: exercise.splitRatio || 0,
+      muscleGroup: exercise.muscleGroup || "none",
     });
   };
 
@@ -309,6 +315,34 @@ export default function Exercises() {
                     )}
                   />
                 )}
+                <FormField
+                  control={form.control}
+                  name="muscleGroup"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>目标肌群（可选）</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <FormControl>
+                          <SelectTrigger data-testid="select-exercise-muscle-group">
+                            <SelectValue placeholder="选择肌群" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="none" data-testid="muscle-group-option-none">无肌群</SelectItem>
+                          {MUSCLE_GROUPS.map((group) => (
+                            <SelectItem key={group} value={group} data-testid={`muscle-group-option-${group}`}>
+                              {group}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormDescription>
+                        力量训练可设置目标肌群，用于追踪各肌群训练量
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
                 <div className="flex justify-end gap-2">
                   <Button
                     type="button"
@@ -410,6 +444,14 @@ export default function Exercises() {
                       <span className="text-sm text-muted-foreground">分类</span>
                       <Badge variant="outline" data-testid={`badge-category-${exercise.id}`}>
                         {exercise.category}
+                      </Badge>
+                    </div>
+                  )}
+                  {exercise.muscleGroup && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-muted-foreground">目标肌群</span>
+                      <Badge variant="outline" data-testid={`badge-muscle-group-${exercise.id}`}>
+                        {exercise.muscleGroup}
                       </Badge>
                     </div>
                   )}
@@ -564,6 +606,34 @@ export default function Exercises() {
                   )}
                 />
               )}
+              <FormField
+                control={editForm.control}
+                name="muscleGroup"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>目标肌群（可选）</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger data-testid="select-edit-muscle-group">
+                          <SelectValue placeholder="选择肌群" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="none" data-testid="edit-muscle-group-option-none">无肌群</SelectItem>
+                        {MUSCLE_GROUPS.map((group) => (
+                          <SelectItem key={group} value={group} data-testid={`edit-muscle-group-option-${group}`}>
+                            {group}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormDescription>
+                      力量训练可设置目标肌群，用于追踪各肌群训练量
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
               <div className="flex justify-end gap-2">
                 <Button
                   type="button"
