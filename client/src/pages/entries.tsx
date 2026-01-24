@@ -169,6 +169,7 @@ export default function Entries() {
       date: getTaipeiTime(),
       notes: "",
       sets: undefined,
+      weightFactor: undefined,
     },
   });
 
@@ -180,6 +181,7 @@ export default function Entries() {
       date: getTaipeiTime(),
       notes: "",
       sets: undefined,
+      weightFactor: undefined,
     },
   });
 
@@ -264,14 +266,16 @@ export default function Entries() {
       date: taipeiDate,
       notes: entry.notes || "",
       sets: entry.sets ?? undefined,
+      weightFactor: entry.exercise.weightFactor,
     });
     setIsEditOpen(true);
   };
 
-  const calculateBaselineValue = (value: number, exerciseId: string) => {
+  const calculateBaselineValue = (value: number, exerciseId: string, customWeightFactor?: number) => {
     const exercise = exercises?.find((e) => e.id === exerciseId);
     if (!exercise) return 0;
-    return value * exercise.weightFactor;
+    const weightFactor = customWeightFactor ?? exercise.weightFactor;
+    return value * weightFactor;
   };
 
   return (
@@ -308,7 +312,13 @@ export default function Entries() {
                     return (
                       <FormItem>
                         <FormLabel>运动类型</FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value}>
+                        <Select onValueChange={(value) => {
+                          field.onChange(value);
+                          const exercise = exercises?.find((e) => e.id === value);
+                          if (exercise) {
+                            form.setValue("weightFactor", exercise.weightFactor);
+                          }
+                        }} value={field.value}>
                           <FormControl>
                             <SelectTrigger data-testid="select-exercise">
                               <SelectValue placeholder="选择运动类型" />
@@ -351,12 +361,43 @@ export default function Entries() {
                     );
                   }}
                 />
+                {form.watch("exerciseId") && (
+                  <FormField
+                    control={form.control}
+                    name="weightFactor"
+                    render={({ field }) => {
+                      const selectedExercise = exercises?.find((e) => e.id === form.watch("exerciseId"));
+                      return (
+                        <FormItem>
+                          <FormLabel>权重系数</FormLabel>
+                          <FormControl>
+                            <Input
+                              type="number"
+                              step="0.1"
+                              min="0"
+                              placeholder="输入权重系数"
+                              {...field}
+                              value={field.value ?? selectedExercise?.weightFactor ?? 1}
+                              onChange={(e) => field.onChange(parseFloat(e.target.value) || 1)}
+                              data-testid="input-entry-weight-factor"
+                            />
+                          </FormControl>
+                          <FormDescription className="text-xs text-muted-foreground">
+                            默认值: {selectedExercise?.weightFactor ?? 1}（可临时修改本次记录的权重）
+                          </FormDescription>
+                          <FormMessage />
+                        </FormItem>
+                      );
+                    }}
+                  />
+                )}
                 <FormField
                   control={form.control}
                   name="value"
                   render={({ field }) => {
                     const selectedExercise = exercises?.find((e) => e.id === form.watch("exerciseId"));
                     const isAverageSteps = selectedExercise?.name === '每周平均步数';
+                    const currentWeightFactor = form.watch("weightFactor");
                     
                     return (
                       <FormItem>
@@ -378,11 +419,11 @@ export default function Entries() {
                             {isAverageSteps ? (
                               <>
                                 每周总步数: {(field.value * 7).toFixed(0)} 步 | 
-                                基准值: {calculateBaselineValue(field.value * 7, form.watch("exerciseId")).toFixed(2)}
+                                基准值: {calculateBaselineValue(field.value * 7, form.watch("exerciseId"), currentWeightFactor).toFixed(2)}
                               </>
                             ) : (
                               <>
-                                基准值: {calculateBaselineValue(field.value, form.watch("exerciseId")).toFixed(2)}
+                                基准值: {calculateBaselineValue(field.value, form.watch("exerciseId"), currentWeightFactor).toFixed(2)}
                               </>
                             )}
                           </FormDescription>
@@ -609,7 +650,13 @@ export default function Entries() {
                   return (
                     <FormItem>
                       <FormLabel>运动类型</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value}>
+                      <Select onValueChange={(value) => {
+                        field.onChange(value);
+                        const exercise = exercises?.find((e) => e.id === value);
+                        if (exercise) {
+                          editForm.setValue("weightFactor", exercise.weightFactor);
+                        }
+                      }} value={field.value}>
                         <FormControl>
                           <SelectTrigger data-testid="select-exercise">
                             <SelectValue placeholder="选择运动类型" />
@@ -628,12 +675,43 @@ export default function Entries() {
                   );
                 }}
               />
+              {editForm.watch("exerciseId") && (
+                <FormField
+                  control={editForm.control}
+                  name="weightFactor"
+                  render={({ field }) => {
+                    const selectedExercise = exercises?.find((e) => e.id === editForm.watch("exerciseId"));
+                    return (
+                      <FormItem>
+                        <FormLabel>权重系数</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            step="0.1"
+                            min="0"
+                            placeholder="输入权重系数"
+                            {...field}
+                            value={field.value ?? selectedExercise?.weightFactor ?? 1}
+                            onChange={(e) => field.onChange(parseFloat(e.target.value) || 1)}
+                            data-testid="input-edit-weight-factor"
+                          />
+                        </FormControl>
+                        <FormDescription className="text-xs text-muted-foreground">
+                          默认值: {selectedExercise?.weightFactor ?? 1}（可临时修改本次记录的权重）
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    );
+                  }}
+                />
+              )}
               <FormField
                 control={editForm.control}
                 name="value"
                 render={({ field }) => {
                   const selectedExercise = exercises?.find((e) => e.id === editForm.watch("exerciseId"));
                   const isAverageSteps = selectedExercise?.name === '每周平均步数';
+                  const currentWeightFactor = editForm.watch("weightFactor");
                   
                   return (
                     <FormItem>
@@ -655,11 +733,11 @@ export default function Entries() {
                           {isAverageSteps ? (
                             <>
                               每周总步数: {(field.value * 7).toFixed(0)} 步 | 
-                              基准值: {calculateBaselineValue(field.value * 7, editForm.watch("exerciseId")).toFixed(2)}
+                              基准值: {calculateBaselineValue(field.value * 7, editForm.watch("exerciseId"), currentWeightFactor).toFixed(2)}
                             </>
                           ) : (
                             <>
-                              基准值: {calculateBaselineValue(field.value, editForm.watch("exerciseId")).toFixed(2)}
+                              基准值: {calculateBaselineValue(field.value, editForm.watch("exerciseId"), currentWeightFactor).toFixed(2)}
                             </>
                           )}
                         </FormDescription>

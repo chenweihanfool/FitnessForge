@@ -290,9 +290,9 @@ export class MemStorage implements IStorage {
     const id = randomUUID();
     const date = insertEntry.date ? new Date(insertEntry.date) : new Date();
     
-    // 获取运动类型的权重系数以计算基准值
+    // 使用传入的权重（如果有），否则使用运动类型的默认权重
     const exercise = this.exercises.get(insertEntry.exerciseId);
-    const weightFactor = exercise?.weightFactor ?? 1;
+    const weightFactor = insertEntry.weightFactor ?? exercise?.weightFactor ?? 1;
     const sets = insertEntry.sets ?? 1;
     const baselineValue = insertEntry.value * sets * weightFactor;
     
@@ -316,9 +316,9 @@ export class MemStorage implements IStorage {
 
     const date = insertEntry.date ? new Date(insertEntry.date) : existing.date;
     
-    // 获取运动类型的权重系数以重新计算基准值
+    // 使用传入的权重（如果有），否则使用运动类型的默认权重
     const exercise = this.exercises.get(insertEntry.exerciseId);
-    const weightFactor = exercise?.weightFactor ?? 1;
+    const weightFactor = insertEntry.weightFactor ?? exercise?.weightFactor ?? 1;
     const sets = insertEntry.sets ?? 1;
     const baselineValue = insertEntry.value * sets * weightFactor;
     
@@ -1493,12 +1493,12 @@ export class DbStorage implements IStorage {
   async createWorkoutEntry(insertEntry: InsertWorkoutEntry): Promise<WorkoutEntry> {
     const date = insertEntry.date ? new Date(insertEntry.date) : new Date();
     
-    // 获取运动类型的权重系数以计算基准值
+    // 使用传入的权重（如果有），否则使用运动类型的默认权重
     const exerciseResult = await this.db
       .select({ weightFactor: exercises.weightFactor })
       .from(exercises)
       .where(eq(exercises.id, insertEntry.exerciseId));
-    const weightFactor = exerciseResult[0]?.weightFactor ?? 1;
+    const weightFactor = insertEntry.weightFactor ?? exerciseResult[0]?.weightFactor ?? 1;
     const sets = insertEntry.sets ?? 1;
     const baselineValue = insertEntry.value * sets * weightFactor;
     
@@ -1520,12 +1520,12 @@ export class DbStorage implements IStorage {
   async updateWorkoutEntry(id: string, insertEntry: InsertWorkoutEntry): Promise<WorkoutEntry | undefined> {
     const date = insertEntry.date ? new Date(insertEntry.date) : undefined;
     
-    // 获取运动类型的权重系数以重新计算基准值
+    // 使用传入的权重（如果有），否则使用运动类型的默认权重
     const exerciseResult = await this.db
       .select({ weightFactor: exercises.weightFactor })
       .from(exercises)
       .where(eq(exercises.id, insertEntry.exerciseId));
-    const weightFactor = exerciseResult[0]?.weightFactor ?? 1;
+    const weightFactor = insertEntry.weightFactor ?? exerciseResult[0]?.weightFactor ?? 1;
     const sets = insertEntry.sets ?? 1;
     const baselineValue = insertEntry.value * sets * weightFactor;
     

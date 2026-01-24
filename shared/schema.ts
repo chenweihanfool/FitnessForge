@@ -54,6 +54,7 @@ export const insertWorkoutEntrySchema = z.object({
   exerciseId: z.string(),
   value: z.number(),
   sets: z.number().optional(), // 组数（可选）
+  weightFactor: z.number().optional(), // 动态权重（可选，覆盖运动类型的默认权重）
   date: z.string().optional(), // 允许从前端传递ISO日期字符串
   notes: z.string().optional(),
 });
