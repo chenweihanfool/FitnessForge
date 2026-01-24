@@ -102,6 +102,35 @@ export type RankingData = {
   topWeekActivityValue: number; // 活动量第一名的数值
 };
 
+// 每周肌群训练统计表
+export const weeklyMuscleStats = pgTable("weekly_muscle_stats", {
+  weekStart: varchar("week_start").primaryKey(), // ISO日期字符串，如 "2024-01-15"
+  chestValue: real("chest_value").notNull().default(0), // 胸部肌群训练基准值
+  backValue: real("back_value").notNull().default(0), // 背部肌群训练基准值
+  legsValue: real("legs_value").notNull().default(0), // 腿部肌群训练基准值
+  shouldersValue: real("shoulders_value").notNull().default(0), // 肩部肌群训练基准值
+  armsValue: real("arms_value").notNull().default(0), // 手臂肌群训练基准值
+  coreValue: real("core_value").notNull().default(0), // 核心肌群训练基准值
+  glutesValue: real("glutes_value").notNull().default(0), // 臀部肌群训练基准值
+  fullBodyValue: real("full_body_value").notNull().default(0), // 全身/三头肌训练基准值
+  updatedAt: timestamp("updated_at").notNull().defaultNow(), // 最后更新时间
+});
+
+export const insertWeeklyMuscleStatsSchema = z.object({
+  weekStart: z.string(),
+  chestValue: z.number().default(0),
+  backValue: z.number().default(0),
+  legsValue: z.number().default(0),
+  shouldersValue: z.number().default(0),
+  armsValue: z.number().default(0),
+  coreValue: z.number().default(0),
+  glutesValue: z.number().default(0),
+  fullBodyValue: z.number().default(0),
+});
+
+export type InsertWeeklyMuscleStats = z.infer<typeof insertWeeklyMuscleStatsSchema>;
+export type WeeklyMuscleStats = typeof weeklyMuscleStats.$inferSelect;
+
 // 排名快照类型（用于排名详情）
 export type RankingSnapshot = {
   weekStart: string;

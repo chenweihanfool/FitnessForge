@@ -9,6 +9,7 @@ import {
   type RankingDetailResponse,
   exercises,
   workoutEntries,
+  weeklyMuscleStats,
 } from "@shared/schema";
 import { randomUUID } from "crypto";
 import { drizzle } from "drizzle-orm/node-postgres";
@@ -147,11 +148,52 @@ export interface IStorage {
       totalVolume: number;
     }>;
   }>;
+  
+  // 每周肌群统计持久化
+  updateWeeklyMuscleStats(weekStart: string): Promise<void>;
+  getWeeklyMuscleStatsHistory(): Promise<Array<{
+    weekStart: string;
+    chestValue: number;
+    backValue: number;
+    legsValue: number;
+    shouldersValue: number;
+    armsValue: number;
+    coreValue: number;
+    glutesValue: number;
+    fullBodyValue: number;
+    updatedAt: Date;
+  }>>;
+  getMuscleGroupAverages(): Promise<{
+    chestAvg: number;
+    backAvg: number;
+    legsAvg: number;
+    shouldersAvg: number;
+    armsAvg: number;
+    coreAvg: number;
+    glutesAvg: number;
+    fullBodyAvg: number;
+    weekCount: number;
+  }>;
+  migrateHistoricalMuscleStats(): Promise<{ migratedWeeks: number }>;
 }
+
+type WeeklyMuscleStatsRecord = {
+  weekStart: string;
+  chestValue: number;
+  backValue: number;
+  legsValue: number;
+  shouldersValue: number;
+  armsValue: number;
+  coreValue: number;
+  glutesValue: number;
+  fullBodyValue: number;
+  updatedAt: Date;
+};
 
 export class MemStorage implements IStorage {
   private exercises: Map<string, Exercise>;
   private workoutEntries: Map<string, WorkoutEntry>;
+  private weeklyMuscleStatsStore: Map<string, WeeklyMuscleStatsRecord>;
   
   // UTC+8时区偏移（毫秒）
   private readonly TAIPEI_OFFSET = 8 * 60 * 60 * 1000;
@@ -159,6 +201,7 @@ export class MemStorage implements IStorage {
   constructor() {
     this.exercises = new Map();
     this.workoutEntries = new Map();
+    this.weeklyMuscleStatsStore = new Map();
   }
   
   // 辅助方法：获取台北时区的年月日时分秒
@@ -1352,6 +1395,143 @@ export class MemStorage implements IStorage {
       muscleGroups,
     };
   }
+
+  // 获取台北时区的日期字符串 (YYYY-MM-DD)
+  private formatTaipeiDate(date: Date): string {
+    const taipei = this.getTaipeiComponents(date);
+    const year = taipei.year;
+    const month = String(taipei.month + 1).padStart(2, '0');
+    const day = String(taipei.day).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+
+  async updateWeeklyMuscleStats(weekStartStr: string): Promise<void> {
+    const weekStart = new Date(weekStartStr);
+    const weekEnd = this.getWeekEnd(weekStart);
+    const weekEndTime = new Date(weekEnd.getTime() + 24 * 60 * 60 * 1000);
+
+    let chestValue = 0, backValue = 0, legsValue = 0, shouldersValue = 0;
+    let armsValue = 0, coreValue = 0, glutesValue = 0, fullBodyValue = 0;
+
+    const allEntries = Array.from(this.workoutEntries.values());
+    for (const entry of allEntries) {
+      const entryDate = new Date(entry.date);
+      if (entryDate >= weekStart && entryDate < weekEndTime) {
+        const exercise = this.exercises.get(entry.exerciseId);
+        if (!exercise) continue;
+
+        const baseVolume = entry.baselineValue ?? (entry.value * (entry.sets || 1) * exercise.weightFactor);
+
+        chestValue += baseVolume * ((exercise.muscleChest || 0) / 100);
+        backValue += baseVolume * ((exercise.muscleBack || 0) / 100);
+        legsValue += baseVolume * ((exercise.muscleLegs || 0) / 100);
+        shouldersValue += baseVolume * ((exercise.muscleShoulders || 0) / 100);
+        armsValue += baseVolume * ((exercise.muscleArms || 0) / 100);
+        coreValue += baseVolume * ((exercise.muscleCore || 0) / 100);
+        glutesValue += baseVolume * ((exercise.muscleGlutes || 0) / 100);
+        fullBodyValue += baseVolume * ((exercise.muscleFullBody || 0) / 100);
+      }
+    }
+
+    const weekStartFormatted = this.formatTaipeiDate(weekStart);
+    this.weeklyMuscleStatsStore.set(weekStartFormatted, {
+      weekStart: weekStartFormatted,
+      chestValue,
+      backValue,
+      legsValue,
+      shouldersValue,
+      armsValue,
+      coreValue,
+      glutesValue,
+      fullBodyValue,
+      updatedAt: new Date(),
+    });
+  }
+
+  async getWeeklyMuscleStatsHistory(): Promise<Array<{
+    weekStart: string;
+    chestValue: number;
+    backValue: number;
+    legsValue: number;
+    shouldersValue: number;
+    armsValue: number;
+    coreValue: number;
+    glutesValue: number;
+    fullBodyValue: number;
+    updatedAt: Date;
+  }>> {
+    const records = Array.from(this.weeklyMuscleStatsStore.values());
+    return records.sort((a, b) => b.weekStart.localeCompare(a.weekStart));
+  }
+
+  async getMuscleGroupAverages(): Promise<{
+    chestAvg: number;
+    backAvg: number;
+    legsAvg: number;
+    shouldersAvg: number;
+    armsAvg: number;
+    coreAvg: number;
+    glutesAvg: number;
+    fullBodyAvg: number;
+    weekCount: number;
+  }> {
+    const records = Array.from(this.weeklyMuscleStatsStore.values());
+    if (records.length === 0) {
+      return {
+        chestAvg: 0,
+        backAvg: 0,
+        legsAvg: 0,
+        shouldersAvg: 0,
+        armsAvg: 0,
+        coreAvg: 0,
+        glutesAvg: 0,
+        fullBodyAvg: 0,
+        weekCount: 0,
+      };
+    }
+
+    const totals = records.reduce((acc, r) => {
+      acc.chest += r.chestValue;
+      acc.back += r.backValue;
+      acc.legs += r.legsValue;
+      acc.shoulders += r.shouldersValue;
+      acc.arms += r.armsValue;
+      acc.core += r.coreValue;
+      acc.glutes += r.glutesValue;
+      acc.fullBody += r.fullBodyValue;
+      return acc;
+    }, { chest: 0, back: 0, legs: 0, shoulders: 0, arms: 0, core: 0, glutes: 0, fullBody: 0 });
+
+    const count = records.length;
+    return {
+      chestAvg: totals.chest / count,
+      backAvg: totals.back / count,
+      legsAvg: totals.legs / count,
+      shouldersAvg: totals.shoulders / count,
+      armsAvg: totals.arms / count,
+      coreAvg: totals.core / count,
+      glutesAvg: totals.glutes / count,
+      fullBodyAvg: totals.fullBody / count,
+      weekCount: count,
+    };
+  }
+
+  async migrateHistoricalMuscleStats(): Promise<{ migratedWeeks: number }> {
+    const allEntries = Array.from(this.workoutEntries.values());
+
+    const weekStartsSet = new Set<string>();
+    for (const entry of allEntries) {
+      const weekStart = this.getWeekStart(entry.date);
+      weekStartsSet.add(this.formatTaipeiDate(weekStart));
+    }
+
+    const weekStarts = Array.from(weekStartsSet);
+    for (const weekStartStr of weekStarts) {
+      await this.updateWeeklyMuscleStats(weekStartStr);
+    }
+
+    return { migratedWeeks: weekStarts.length };
+  }
 }
 
 export class DbStorage implements IStorage {
@@ -1400,6 +1580,15 @@ export class DbStorage implements IStorage {
     const taipeiDate = new Date(Date.UTC(year, month, day, hour, minute, second, ms));
     // 减去8小时偏移得到真正的UTC时间
     return new Date(taipeiDate.getTime() - this.TAIPEI_OFFSET);
+  }
+
+  // 获取台北时区的日期字符串 (YYYY-MM-DD)
+  private formatTaipeiDate(date: Date): string {
+    const taipei = this.getTaipeiComponents(date);
+    const year = taipei.year;
+    const month = String(taipei.month + 1).padStart(2, '0');
+    const day = String(taipei.day).padStart(2, '0');
+    return `${year}-${month}-${day}`;
   }
 
   // 运动类型方法
@@ -1517,10 +1706,21 @@ export class DbStorage implements IStorage {
       })
       .returning();
 
+    // 更新该周的肌群统计
+    const weekStart = this.getWeekStart(date);
+    await this.updateWeeklyMuscleStats(this.formatTaipeiDate(weekStart));
+
     return result[0];
   }
 
   async updateWorkoutEntry(id: string, insertEntry: InsertWorkoutEntry): Promise<WorkoutEntry | undefined> {
+    // 先获取原记录以确定原来的日期（用于更新旧周的统计）
+    const oldEntry = await this.db
+      .select({ date: workoutEntries.date })
+      .from(workoutEntries)
+      .where(eq(workoutEntries.id, id));
+    const oldDate = oldEntry[0]?.date;
+    
     const date = insertEntry.date ? new Date(insertEntry.date) : undefined;
     
     // 使用传入的权重（如果有），否则使用运动类型的默认权重
@@ -1545,12 +1745,44 @@ export class DbStorage implements IStorage {
       .where(eq(workoutEntries.id, id))
       .returning();
 
+    if (result.length > 0) {
+      // 更新新日期所在周的肌群统计
+      const newDate = date || oldDate;
+      if (newDate) {
+        const newWeekStart = this.getWeekStart(newDate);
+        await this.updateWeeklyMuscleStats(this.formatTaipeiDate(newWeekStart));
+      }
+      // 如果日期跨周了，还需要更新旧周的统计
+      if (oldDate && date) {
+        const oldWeekStart = this.getWeekStart(oldDate);
+        const newWeekStart = this.getWeekStart(date);
+        if (oldWeekStart.getTime() !== newWeekStart.getTime()) {
+          await this.updateWeeklyMuscleStats(this.formatTaipeiDate(oldWeekStart));
+        }
+      }
+    }
+
     return result.length > 0 ? result[0] : undefined;
   }
 
   async deleteWorkoutEntry(id: string): Promise<boolean> {
+    // 先获取记录日期以便后续更新肌群统计
+    const entry = await this.db
+      .select({ date: workoutEntries.date })
+      .from(workoutEntries)
+      .where(eq(workoutEntries.id, id));
+    const entryDate = entry[0]?.date;
+    
     const result = await this.db.delete(workoutEntries).where(eq(workoutEntries.id, id));
-    return result.rowCount ? result.rowCount > 0 : false;
+    const deleted = result.rowCount ? result.rowCount > 0 : false;
+    
+    // 更新该周的肌群统计
+    if (deleted && entryDate) {
+      const weekStart = this.getWeekStart(entryDate);
+      await this.updateWeeklyMuscleStats(this.formatTaipeiDate(weekStart));
+    }
+    
+    return deleted;
   }
 
   // 统计和分析方法
@@ -2645,6 +2877,164 @@ export class DbStorage implements IStorage {
       weekEnd: weekEnd.toISOString(),
       muscleGroups,
     };
+  }
+
+  async updateWeeklyMuscleStats(weekStartStr: string): Promise<void> {
+    const weekStart = new Date(weekStartStr);
+    const weekEnd = this.getWeekEnd(weekStart);
+    const weekEndTime = new Date(weekEnd.getTime() + 24 * 60 * 60 * 1000);
+
+    const entries = await this.db
+      .select({
+        value: workoutEntries.value,
+        sets: workoutEntries.sets,
+        baselineValue: workoutEntries.baselineValue,
+        weightFactor: exercises.weightFactor,
+        muscleChest: exercises.muscleChest,
+        muscleBack: exercises.muscleBack,
+        muscleLegs: exercises.muscleLegs,
+        muscleShoulders: exercises.muscleShoulders,
+        muscleArms: exercises.muscleArms,
+        muscleCore: exercises.muscleCore,
+        muscleGlutes: exercises.muscleGlutes,
+        muscleFullBody: exercises.muscleFullBody,
+      })
+      .from(workoutEntries)
+      .innerJoin(exercises, eq(workoutEntries.exerciseId, exercises.id))
+      .where(
+        and(
+          gte(workoutEntries.date, weekStart),
+          lt(workoutEntries.date, weekEndTime)
+        )
+      );
+
+    let chestValue = 0, backValue = 0, legsValue = 0, shouldersValue = 0;
+    let armsValue = 0, coreValue = 0, glutesValue = 0, fullBodyValue = 0;
+
+    for (const entry of entries) {
+      const baseVolume = entry.baselineValue ?? (entry.value * (entry.sets || 1) * entry.weightFactor);
+
+      chestValue += baseVolume * ((entry.muscleChest || 0) / 100);
+      backValue += baseVolume * ((entry.muscleBack || 0) / 100);
+      legsValue += baseVolume * ((entry.muscleLegs || 0) / 100);
+      shouldersValue += baseVolume * ((entry.muscleShoulders || 0) / 100);
+      armsValue += baseVolume * ((entry.muscleArms || 0) / 100);
+      coreValue += baseVolume * ((entry.muscleCore || 0) / 100);
+      glutesValue += baseVolume * ((entry.muscleGlutes || 0) / 100);
+      fullBodyValue += baseVolume * ((entry.muscleFullBody || 0) / 100);
+    }
+
+    const weekStartFormatted = this.formatTaipeiDate(weekStart);
+    
+    await this.db
+      .insert(weeklyMuscleStats)
+      .values({
+        weekStart: weekStartFormatted,
+        chestValue,
+        backValue,
+        legsValue,
+        shouldersValue,
+        armsValue,
+        coreValue,
+        glutesValue,
+        fullBodyValue,
+        updatedAt: new Date(),
+      })
+      .onConflictDoUpdate({
+        target: weeklyMuscleStats.weekStart,
+        set: {
+          chestValue,
+          backValue,
+          legsValue,
+          shouldersValue,
+          armsValue,
+          coreValue,
+          glutesValue,
+          fullBodyValue,
+          updatedAt: new Date(),
+        },
+      });
+  }
+
+  async getWeeklyMuscleStatsHistory(): Promise<Array<{
+    weekStart: string;
+    chestValue: number;
+    backValue: number;
+    legsValue: number;
+    shouldersValue: number;
+    armsValue: number;
+    coreValue: number;
+    glutesValue: number;
+    fullBodyValue: number;
+    updatedAt: Date;
+  }>> {
+    const result = await this.db
+      .select()
+      .from(weeklyMuscleStats)
+      .orderBy(desc(weeklyMuscleStats.weekStart));
+    
+    return result;
+  }
+
+  async getMuscleGroupAverages(): Promise<{
+    chestAvg: number;
+    backAvg: number;
+    legsAvg: number;
+    shouldersAvg: number;
+    armsAvg: number;
+    coreAvg: number;
+    glutesAvg: number;
+    fullBodyAvg: number;
+    weekCount: number;
+  }> {
+    const result = await this.db
+      .select({
+        chestAvg: sql<number>`coalesce(avg(${weeklyMuscleStats.chestValue}), 0)`,
+        backAvg: sql<number>`coalesce(avg(${weeklyMuscleStats.backValue}), 0)`,
+        legsAvg: sql<number>`coalesce(avg(${weeklyMuscleStats.legsValue}), 0)`,
+        shouldersAvg: sql<number>`coalesce(avg(${weeklyMuscleStats.shouldersValue}), 0)`,
+        armsAvg: sql<number>`coalesce(avg(${weeklyMuscleStats.armsValue}), 0)`,
+        coreAvg: sql<number>`coalesce(avg(${weeklyMuscleStats.coreValue}), 0)`,
+        glutesAvg: sql<number>`coalesce(avg(${weeklyMuscleStats.glutesValue}), 0)`,
+        fullBodyAvg: sql<number>`coalesce(avg(${weeklyMuscleStats.fullBodyValue}), 0)`,
+        weekCount: sql<number>`count(*)`,
+      })
+      .from(weeklyMuscleStats);
+
+    return result[0] || {
+      chestAvg: 0,
+      backAvg: 0,
+      legsAvg: 0,
+      shouldersAvg: 0,
+      armsAvg: 0,
+      coreAvg: 0,
+      glutesAvg: 0,
+      fullBodyAvg: 0,
+      weekCount: 0,
+    };
+  }
+
+  async migrateHistoricalMuscleStats(): Promise<{ migratedWeeks: number }> {
+    // 获取所有运动记录的日期，找出所有涉及的周
+    const allEntries = await this.db
+      .select({
+        date: workoutEntries.date,
+      })
+      .from(workoutEntries);
+
+    const weekStartsSet = new Set<string>();
+    for (const entry of allEntries) {
+      const weekStart = this.getWeekStart(entry.date);
+      weekStartsSet.add(this.formatTaipeiDate(weekStart));
+    }
+
+    // 为每个周更新肌群统计
+    const weekStarts = Array.from(weekStartsSet);
+    for (const weekStartStr of weekStarts) {
+      await this.updateWeeklyMuscleStats(weekStartStr);
+    }
+
+    return { migratedWeeks: weekStarts.length };
   }
 }
 

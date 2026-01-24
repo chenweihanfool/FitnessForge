@@ -348,6 +348,39 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // 获取肌群历史统计数据
+  app.get("/api/stats/muscle-group-history", async (req, res) => {
+    try {
+      const history = await storage.getWeeklyMuscleStatsHistory();
+      res.json(history);
+    } catch (error) {
+      console.error("获取肌群历史统计失败:", error);
+      res.status(500).json({ error: "获取肌群历史统计失败" });
+    }
+  });
+
+  // 获取肌群平均值统计
+  app.get("/api/stats/muscle-group-averages", async (req, res) => {
+    try {
+      const averages = await storage.getMuscleGroupAverages();
+      res.json(averages);
+    } catch (error) {
+      console.error("获取肌群平均值失败:", error);
+      res.status(500).json({ error: "获取肌群平均值失败" });
+    }
+  });
+
+  // 迁移历史肌群统计数据
+  app.post("/api/admin/migrate-muscle-stats", async (req, res) => {
+    try {
+      const result = await storage.migrateHistoricalMuscleStats();
+      res.json({ success: true, ...result });
+    } catch (error) {
+      console.error("迁移肌群统计失败:", error);
+      res.status(500).json({ error: "迁移肌群统计失败" });
+    }
+  });
+
   // ==================== CSV 导入导出 API ====================
 
   // CSV 导入
