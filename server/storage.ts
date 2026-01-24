@@ -94,6 +94,7 @@ export interface IStorage {
       exerciseUnit: string;
       exerciseCategory: string | null;
       value: number;
+      sets: number | null;
       baselineValue: number;
       weightFactor: number;
     }>;
@@ -1057,6 +1058,7 @@ export class MemStorage implements IStorage {
       exerciseUnit: string;
       exerciseCategory: string | null;
       value: number;
+      sets: number | null;
       baselineValue: number;
       weightFactor: number;
     }> = [];
@@ -1077,6 +1079,7 @@ export class MemStorage implements IStorage {
         exerciseUnit: exercise.unit,
         exerciseCategory: exercise.category,
         value: entry.value,
+        sets: entry.sets,
         baselineValue,
         weightFactor: exercise.weightFactor,
       });
@@ -2327,6 +2330,7 @@ export class DbStorage implements IStorage {
         exerciseUnit: entry.exerciseUnit,
         exerciseCategory: entry.exerciseCategory,
         value: entry.value,
+        sets: entry.sets,
         baselineValue: entryBaselineValue,
         weightFactor: entry.weightFactor,
       };

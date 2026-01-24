@@ -128,6 +128,7 @@ type DayEntriesData = {
     exerciseUnit: string;
     exerciseCategory: string | null;
     value: number;
+    sets: number | null;
     baselineValue: number;
     weightFactor: number;
   }>;
@@ -1542,6 +1543,9 @@ export default function Dashboard() {
                   <div className="flex flex-col items-end gap-0.5">
                     <span className="font-semibold">
                       {entry.value} {entry.exerciseUnit}
+                      {entry.sets && entry.sets > 1 && (
+                        <span className="text-muted-foreground font-normal"> x {entry.sets}组</span>
+                      )}
                     </span>
                     <span className="text-xs text-muted-foreground">
                       基准值: {entry.baselineValue.toFixed(1)}
