@@ -26,6 +26,7 @@ The frontend uses TanStack Query for server state management with optimistic upd
 - **Data Import/Export**: Supports CSV-based data portability and includes an Excel import script for historical data.
 - **Timezone Handling**: All user-facing times are UTC+8 (Taipei time), while backend stores timestamps in UTC.
 - **"每周平均步数" Special Handling**: Automatically converts daily average step inputs to weekly totals for this specific exercise type.
+- **Fixed Baseline Value Storage**: Baseline values are calculated and stored in the database at the time of entry creation (value × sets × weightFactor). Once stored, all statistics queries use the saved baseline value, ensuring historical data remains unchanged even if exercise weight factors are modified later. This provides data integrity and accurate historical tracking.
 
 ### System Design Choices
 The application adopts a monorepo structure, housing frontend, backend, and shared code (types, schemas). It emphasizes type safety through end-to-end TypeScript and shared Zod schemas. The storage layer is abstracted, supporting easy migration from in-memory to PostgreSQL. UI is built with a component-based, atomic design approach.

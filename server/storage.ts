@@ -290,11 +290,18 @@ export class MemStorage implements IStorage {
     const id = randomUUID();
     const date = insertEntry.date ? new Date(insertEntry.date) : new Date();
     
+    // 获取运动类型的权重系数以计算基准值
+    const exercise = this.exercises.get(insertEntry.exerciseId);
+    const weightFactor = exercise?.weightFactor ?? 1;
+    const sets = insertEntry.sets ?? 1;
+    const baselineValue = insertEntry.value * sets * weightFactor;
+    
     const entry: WorkoutEntry = {
       id,
       exerciseId: insertEntry.exerciseId,
       value: insertEntry.value,
       sets: insertEntry.sets ?? null,
+      baselineValue,
       date,
       notes: insertEntry.notes || null,
     };
@@ -309,11 +316,18 @@ export class MemStorage implements IStorage {
 
     const date = insertEntry.date ? new Date(insertEntry.date) : existing.date;
     
+    // 获取运动类型的权重系数以重新计算基准值
+    const exercise = this.exercises.get(insertEntry.exerciseId);
+    const weightFactor = exercise?.weightFactor ?? 1;
+    const sets = insertEntry.sets ?? 1;
+    const baselineValue = insertEntry.value * sets * weightFactor;
+    
     const updated: WorkoutEntry = {
       id,
       exerciseId: insertEntry.exerciseId,
       value: insertEntry.value,
       sets: insertEntry.sets ?? null,
+      baselineValue,
       date,
       notes: insertEntry.notes || null,
     };
@@ -342,9 +356,8 @@ export class MemStorage implements IStorage {
     for (const entry of entries) {
       const exercise = this.exercises.get(entry.exerciseId);
       if (exercise) {
-        // 方式B：数据值 = 每组的量，总量 = 数据值 × 组数
-        const sets = entry.sets || 1;
-        const baseline = entry.value * sets * exercise.weightFactor;
+        // 直接使用已保存的基准值，不再动态计算
+        const baseline = entry.baselineValue ?? (entry.value * (entry.sets || 1) * exercise.weightFactor);
         totalBaselineValue += baseline;
 
         // 检查是否有分配比例（混合运动类型）
@@ -444,10 +457,10 @@ export class MemStorage implements IStorage {
       const exercise = this.exercises.get(entry.exerciseId);
       if (!exercise) continue;
 
-      // 方式B：数据值 = 每组的量，总量 = 数据值 × 组数
+      // 直接使用已保存的基准值
       const sets = entry.sets || 1;
       const entryTotal = entry.value * sets;
-      const entryBaseline = entryTotal * exercise.weightFactor;
+      const entryBaseline = entry.baselineValue ?? (entryTotal * exercise.weightFactor);
 
       const existing = exerciseStats.get(entry.exerciseId);
       if (existing) {
@@ -949,9 +962,8 @@ export class MemStorage implements IStorage {
       if (entryDate >= weekStart && entryDate < weekEndTime) {
         const exercise = this.exercises.get(entry.exerciseId);
         if (exercise && exercise.name === '每周平均步数') {
-          // 方式B：数据值 = 每组的量，总量 = 数据值 × 组数
-          const sets = entry.sets || 1;
-          weeklyStepsBaselineTotal += entry.value * sets * exercise.weightFactor;
+          // 直接使用已保存的基准值
+          weeklyStepsBaselineTotal += entry.baselineValue ?? (entry.value * (entry.sets || 1) * exercise.weightFactor);
         }
       }
     }
@@ -973,9 +985,8 @@ export class MemStorage implements IStorage {
       for (const entry of dayEntries) {
         const exercise = this.exercises.get(entry.exerciseId);
         if (exercise && exercise.name !== '每周平均步数') {
-          // 方式B：数据值 = 每组的量，总量 = 数据值 × 组数
-          const sets = entry.sets || 1;
-          dayBaselineValue += entry.value * sets * exercise.weightFactor;
+          // 直接使用已保存的基准值
+          dayBaselineValue += entry.baselineValue ?? (entry.value * (entry.sets || 1) * exercise.weightFactor);
         }
       }
       
@@ -1028,7 +1039,8 @@ export class MemStorage implements IStorage {
       if (entryDate >= weekStart && entryDate < weekEndTime) {
         const exercise = this.exercises.get(entry.exerciseId);
         if (exercise && exercise.name === '每周平均步数') {
-          weeklyStepsBaselineTotal += entry.value * exercise.weightFactor;
+          // 直接使用已保存的基准值
+          weeklyStepsBaselineTotal += entry.baselineValue ?? (entry.value * (entry.sets || 1) * exercise.weightFactor);
         }
       }
     }
@@ -1055,7 +1067,8 @@ export class MemStorage implements IStorage {
       const exercise = this.exercises.get(entry.exerciseId);
       if (!exercise) continue;
       
-      const baselineValue = entry.value * exercise.weightFactor;
+      // 直接使用已保存的基准值
+      const baselineValue = entry.baselineValue ?? (entry.value * (entry.sets || 1) * exercise.weightFactor);
       totalBaselineValue += baselineValue;
       
       result.push({
@@ -1102,11 +1115,15 @@ export class MemStorage implements IStorage {
       const exercise = this.exercises.get(entry.exerciseId);
       if (!exercise) continue;
 
+      // 直接使用已保存的基准值
+      const entryBaselineValue = entry.baselineValue ?? (entry.value * (entry.sets || 1) * exercise.weightFactor);
+      const entryTotalValue = entry.value * (entry.sets || 1);
+      
       const existing = exerciseStats.get(entry.exerciseId);
       if (existing) {
         existing.count++;
-        existing.totalValue += entry.value;
-        existing.baselineValue += entry.value * exercise.weightFactor;
+        existing.totalValue += entryTotalValue;
+        existing.baselineValue += entryBaselineValue;
       } else {
         exerciseStats.set(entry.exerciseId, {
           exerciseId: entry.exerciseId,
@@ -1115,8 +1132,8 @@ export class MemStorage implements IStorage {
           exerciseCategory: exercise.category,
           weightFactor: exercise.weightFactor,
           count: 1,
-          totalValue: entry.value,
-          baselineValue: entry.value * exercise.weightFactor,
+          totalValue: entryTotalValue,
+          baselineValue: entryBaselineValue,
         });
       }
     }
@@ -1302,9 +1319,9 @@ export class MemStorage implements IStorage {
       const exercise = this.exercises.get(entry.exerciseId);
       if (!exercise) continue;
 
-      // 方式B：数据值 = 每组的量，总量 = 数据值 × 组数
+      // 直接使用已保存的基准值
       const baseSets = entry.sets || 1;
-      const baseVolume = entry.value * baseSets * exercise.weightFactor;
+      const baseVolume = entry.baselineValue ?? (entry.value * baseSets * exercise.weightFactor);
 
       for (const { field, name } of muscleFields) {
         const percentage = (exercise[field] as number) || 0;
@@ -1472,12 +1489,22 @@ export class DbStorage implements IStorage {
   async createWorkoutEntry(insertEntry: InsertWorkoutEntry): Promise<WorkoutEntry> {
     const date = insertEntry.date ? new Date(insertEntry.date) : new Date();
     
+    // 获取运动类型的权重系数以计算基准值
+    const exerciseResult = await this.db
+      .select({ weightFactor: exercises.weightFactor })
+      .from(exercises)
+      .where(eq(exercises.id, insertEntry.exerciseId));
+    const weightFactor = exerciseResult[0]?.weightFactor ?? 1;
+    const sets = insertEntry.sets ?? 1;
+    const baselineValue = insertEntry.value * sets * weightFactor;
+    
     const result = await this.db
       .insert(workoutEntries)
       .values({
         exerciseId: insertEntry.exerciseId,
         value: insertEntry.value,
         sets: insertEntry.sets ?? null,
+        baselineValue,
         date,
         notes: insertEntry.notes ?? null,
       })
@@ -1489,11 +1516,22 @@ export class DbStorage implements IStorage {
   async updateWorkoutEntry(id: string, insertEntry: InsertWorkoutEntry): Promise<WorkoutEntry | undefined> {
     const date = insertEntry.date ? new Date(insertEntry.date) : undefined;
     
+    // 获取运动类型的权重系数以重新计算基准值
+    const exerciseResult = await this.db
+      .select({ weightFactor: exercises.weightFactor })
+      .from(exercises)
+      .where(eq(exercises.id, insertEntry.exerciseId));
+    const weightFactor = exerciseResult[0]?.weightFactor ?? 1;
+    const sets = insertEntry.sets ?? 1;
+    const baselineValue = insertEntry.value * sets * weightFactor;
+    
     const result = await this.db
       .update(workoutEntries)
       .set({
         exerciseId: insertEntry.exerciseId,
         value: insertEntry.value,
+        sets: insertEntry.sets ?? null,
+        baselineValue,
         ...(date && { date }),
         notes: insertEntry.notes ?? null,
       })
@@ -1515,6 +1553,8 @@ export class DbStorage implements IStorage {
         id: workoutEntries.id,
         exerciseId: workoutEntries.exerciseId,
         value: workoutEntries.value,
+        sets: workoutEntries.sets,
+        baselineValue: workoutEntries.baselineValue,
         date: workoutEntries.date,
         notes: workoutEntries.notes,
         exercise: exercises,
@@ -1536,7 +1576,8 @@ export class DbStorage implements IStorage {
 
     for (const entry of entries) {
       if (entry.exercise) {
-        const baseline = entry.value * entry.exercise.weightFactor;
+        // 直接使用已保存的基准值
+        const baseline = entry.baselineValue ?? (entry.value * (entry.sets || 1) * entry.exercise.weightFactor);
         totalBaselineValue += baseline;
         entryCount++;
 
@@ -1617,7 +1658,7 @@ export class DbStorage implements IStorage {
     const weekEnd = new Date(rankingData.currentWeek.weekEnd);
 
     const result = await this.db
-      // 方式B：数据值 = 每组的量，总量 = 数据值 × 组数
+      // 直接使用已保存的基准值
       .select({
         exerciseId: exercises.id,
         exerciseName: exercises.name,
@@ -1626,7 +1667,7 @@ export class DbStorage implements IStorage {
         weightFactor: exercises.weightFactor,
         count: sql<number>`cast(count(${workoutEntries.id}) as int)`,
         totalValue: sql<number>`cast(sum(${workoutEntries.value} * coalesce(${workoutEntries.sets}, 1)) as float)`,
-        baselineValue: sql<number>`cast(sum(${workoutEntries.value} * coalesce(${workoutEntries.sets}, 1) * ${exercises.weightFactor}) as float)`,
+        baselineValue: sql<number>`cast(sum(coalesce(${workoutEntries.baselineValue}, ${workoutEntries.value} * coalesce(${workoutEntries.sets}, 1) * ${exercises.weightFactor})) as float)`,
       })
       .from(workoutEntries)
       .innerJoin(exercises, eq(workoutEntries.exerciseId, exercises.id))
@@ -2133,6 +2174,7 @@ export class DbStorage implements IStorage {
       .select({
         value: workoutEntries.value,
         sets: workoutEntries.sets,
+        baselineValue: workoutEntries.baselineValue,
         weightFactor: exercises.weightFactor,
       })
       .from(workoutEntries)
@@ -2147,9 +2189,8 @@ export class DbStorage implements IStorage {
     
     let weeklyStepsBaselineTotal = 0;
     for (const entry of weeklyStepsEntries) {
-      // 方式B：数据值 = 每组的量，总量 = 数据值 × 组数
-      const sets = entry.sets || 1;
-      weeklyStepsBaselineTotal += entry.value * sets * entry.weightFactor;
+      // 直接使用已保存的基准值
+      weeklyStepsBaselineTotal += entry.baselineValue ?? (entry.value * (entry.sets || 1) * entry.weightFactor);
     }
     const dailyStepsBaseline = weeklyStepsBaselineTotal / 7;
     
@@ -2163,6 +2204,7 @@ export class DbStorage implements IStorage {
         .select({
           value: workoutEntries.value,
           sets: workoutEntries.sets,
+          baselineValue: workoutEntries.baselineValue,
           weightFactor: exercises.weightFactor,
           exerciseName: exercises.name,
         })
@@ -2179,9 +2221,8 @@ export class DbStorage implements IStorage {
       let dayBaselineValue = dailyStepsBaseline;
       for (const entry of dayEntries) {
         if (entry.exerciseName !== '每周平均步数') {
-          // 方式B：数据值 = 每组的量，总量 = 数据值 × 组数
-          const sets = entry.sets || 1;
-          dayBaselineValue += entry.value * sets * entry.weightFactor;
+          // 直接使用已保存的基准值
+          dayBaselineValue += entry.baselineValue ?? (entry.value * (entry.sets || 1) * entry.weightFactor);
         }
       }
       
@@ -2231,6 +2272,7 @@ export class DbStorage implements IStorage {
       .select({
         value: workoutEntries.value,
         sets: workoutEntries.sets,
+        baselineValue: workoutEntries.baselineValue,
         weightFactor: exercises.weightFactor,
       })
       .from(workoutEntries)
@@ -2245,9 +2287,8 @@ export class DbStorage implements IStorage {
     
     let weeklyStepsBaselineTotal = 0;
     for (const entry of weeklyStepsEntries) {
-      // 方式B：数据值 = 每组的量，总量 = 数据值 × 组数
-      const sets = entry.sets || 1;
-      weeklyStepsBaselineTotal += entry.value * sets * entry.weightFactor;
+      // 直接使用已保存的基准值
+      weeklyStepsBaselineTotal += entry.baselineValue ?? (entry.value * (entry.sets || 1) * entry.weightFactor);
     }
     const dailyStepsBaseline = weeklyStepsBaselineTotal / 7;
     
@@ -2259,6 +2300,7 @@ export class DbStorage implements IStorage {
         exerciseCategory: exercises.category,
         value: workoutEntries.value,
         sets: workoutEntries.sets,
+        baselineValue: workoutEntries.baselineValue,
         weightFactor: exercises.weightFactor,
       })
       .from(workoutEntries)
@@ -2272,17 +2314,16 @@ export class DbStorage implements IStorage {
     
     let totalBaselineValue = 0;
     const result = entries.map(entry => {
-      // 方式B：数据值 = 每组的量，总量 = 数据值 × 组数
-      const sets = entry.sets || 1;
-      const baselineValue = entry.value * sets * entry.weightFactor;
-      totalBaselineValue += baselineValue;
+      // 直接使用已保存的基准值
+      const entryBaselineValue = entry.baselineValue ?? (entry.value * (entry.sets || 1) * entry.weightFactor);
+      totalBaselineValue += entryBaselineValue;
       return {
         id: entry.id,
         exerciseName: entry.exerciseName,
         exerciseUnit: entry.exerciseUnit,
         exerciseCategory: entry.exerciseCategory,
         value: entry.value,
-        baselineValue,
+        baselineValue: entryBaselineValue,
         weightFactor: entry.weightFactor,
       };
     });
@@ -2300,7 +2341,7 @@ export class DbStorage implements IStorage {
     const weekEnd = this.getWeekEnd(weekStart);
 
     const result = await this.db
-      // 方式B：数据值 = 每组的量，总量 = 数据值 × 组数
+      // 直接使用已保存的基准值
       .select({
         exerciseId: exercises.id,
         exerciseName: exercises.name,
@@ -2309,7 +2350,7 @@ export class DbStorage implements IStorage {
         weightFactor: exercises.weightFactor,
         count: sql<number>`cast(count(${workoutEntries.id}) as int)`,
         totalValue: sql<number>`cast(sum(${workoutEntries.value} * coalesce(${workoutEntries.sets}, 1)) as float)`,
-        baselineValue: sql<number>`cast(sum(${workoutEntries.value} * coalesce(${workoutEntries.sets}, 1) * ${exercises.weightFactor}) as float)`,
+        baselineValue: sql<number>`cast(sum(coalesce(${workoutEntries.baselineValue}, ${workoutEntries.value} * coalesce(${workoutEntries.sets}, 1) * ${exercises.weightFactor})) as float)`,
       })
       .from(workoutEntries)
       .innerJoin(exercises, eq(workoutEntries.exerciseId, exercises.id))
@@ -2534,6 +2575,7 @@ export class DbStorage implements IStorage {
       .select({
         value: workoutEntries.value,
         sets: workoutEntries.sets,
+        baselineValue: workoutEntries.baselineValue,
         weightFactor: exercises.weightFactor,
         muscleChest: exercises.muscleChest,
         muscleBack: exercises.muscleBack,
@@ -2566,9 +2608,9 @@ export class DbStorage implements IStorage {
     ] as const;
 
     for (const entry of entries) {
-      // 方式B：数据值 = 每组的量，总量 = 数据值 × 组数
+      // 直接使用已保存的基准值
       const baseSets = entry.sets || 1;
-      const baseVolume = entry.value * baseSets * entry.weightFactor;
+      const baseVolume = entry.baselineValue ?? (entry.value * baseSets * entry.weightFactor);
 
       for (const { field, name } of muscleFields) {
         const percentage = (entry[field] as number) || 0;
