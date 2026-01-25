@@ -254,7 +254,7 @@ export default function Exercises() {
                       <FormControl>
                         <Input
                           type="number"
-                          step="0.1"
+                          step="0.01"
                           placeholder="1.0"
                           {...field}
                           onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
@@ -331,7 +331,7 @@ export default function Exercises() {
                         <FormControl>
                           <Input
                             type="number"
-                            step="0.1"
+                            step="0.01"
                             min="0"
                             max="1"
                             placeholder="0.5"
@@ -564,7 +564,7 @@ export default function Exercises() {
                     <FormControl>
                       <Input
                         type="number"
-                        step="0.1"
+                        step="0.01"
                         {...field}
                         onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
                         data-testid="input-edit-weight"
@@ -637,7 +637,7 @@ export default function Exercises() {
                       <FormControl>
                         <Input
                           type="number"
-                          step="0.1"
+                          step="0.01"
                           min="0"
                           max="1"
                           {...field}

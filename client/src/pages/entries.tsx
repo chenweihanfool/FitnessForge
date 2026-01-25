@@ -373,7 +373,7 @@ export default function Entries() {
                           <FormControl>
                             <Input
                               type="number"
-                              step="0.1"
+                              step="0.01"
                               min="0"
                               placeholder="输入权重系数"
                               {...field}
@@ -407,7 +407,7 @@ export default function Entries() {
                         <FormControl>
                           <Input
                             type="number"
-                            step="0.1"
+                            step="0.01"
                             placeholder={isAverageSteps ? "输入每日平均步数" : "输入数据值"}
                             {...field}
                             onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
@@ -687,7 +687,7 @@ export default function Entries() {
                         <FormControl>
                           <Input
                             type="number"
-                            step="0.1"
+                            step="0.01"
                             min="0"
                             placeholder="输入权重系数"
                             {...field}
@@ -721,7 +721,7 @@ export default function Entries() {
                       <FormControl>
                         <Input
                           type="number"
-                          step="0.1"
+                          step="0.01"
                           placeholder={isAverageSteps ? "输入每日平均步数" : "输入数据值"}
                           {...field}
                           onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
