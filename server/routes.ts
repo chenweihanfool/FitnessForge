@@ -94,6 +94,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // 获取运动项目的记录数量
+  app.get("/api/exercises/:id/entry-count", async (req, res) => {
+    try {
+      const entries = await storage.getWorkoutEntries();
+      const count = entries.filter(e => e.exerciseId === req.params.id).length;
+      res.json({ count });
+    } catch (error) {
+      res.status(500).json({ error: "获取记录数量失败" });
+    }
+  });
+
   // 删除运动类型
   app.delete("/api/exercises/:id", async (req, res) => {
     try {

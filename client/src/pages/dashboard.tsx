@@ -342,16 +342,44 @@ export default function Dashboard() {
     const allExercisesAbove = exercisesWithAverage.length > 0 && 
       exercisesWithAverage.every(e => e.currentWeekValue >= (e.weeklyAverage || 0));
     
-    // 计算达成的里程碑数量（用于星星显示）
+    // 检查所有有训练记录的肌群是否达到维持目标（>= 4 sets）
+    // 只有在肌群数据加载完成时才进行评估
+    const muscleGroupsWithTraining = muscleGroupStats?.muscleGroups.filter(g => g.totalSets > 0) || [];
+    const muscleStatsLoaded = muscleGroupStats !== undefined;
+    const allMusclesAtMaintenance = muscleStatsLoaded && muscleGroupsWithTraining.length > 0 && 
+      muscleGroupsWithTraining.every(g => g.totalSets >= 4);
+    
+    // 第5阶段：全项目达成 = 所有运动项目超过平均 + 所有肌群达到维持目标
+    // 如果肌群数据未加载，则第5阶段无法达成
+    const fullAchievement = allExercisesAbove && allMusclesAtMaintenance;
+    
+    // 计算达成的里程碑数量（用于星星显示）- 必须按顺序达成
+    // 第1阶段：前70%
+    // 第2阶段：总分超过平均
+    // 第3阶段：三大分类都超过平均
+    // 第4阶段：前10%
+    // 第5阶段：全项目达成
     let achievedCount = 0;
-    if (inTop70) achievedCount++;
-    if (totalAbove) achievedCount++;
-    if (strengthAbove && cardioAbove && activityAbove) achievedCount++;
-    if (allExercisesAbove) achievedCount++;
-    if (inTop10) achievedCount++;
+    if (inTop70) {
+      achievedCount++;
+      if (totalAbove) {
+        achievedCount++;
+        if (strengthAbove && cardioAbove && activityAbove) {
+          achievedCount++;
+          if (inTop10) {
+            achievedCount++;
+            if (fullAchievement) {
+              achievedCount++;
+            }
+          }
+        }
+      }
+    }
     
     return {
       allAbove: allExercisesAbove,
+      allMusclesAtMaintenance,
+      fullAchievement,
       threeAbove: strengthAbove && cardioAbove && activityAbove,
       totalAbove,
       inTop70,
@@ -362,19 +390,26 @@ export default function Dashboard() {
       percentile,
       exercisesAboveCount: exercisesWithAverage.filter(e => e.currentWeekValue >= (e.weeklyAverage || 0)).length,
       exercisesTotalCount: exercisesWithAverage.length,
+      musclesAtMaintenanceCount: muscleGroupsWithTraining.filter(g => g.totalSets >= 4).length,
+      musclesTotalCount: muscleGroupsWithTraining.length,
       achievedCount,
     };
   })();
 
-  // 确定达成的最高阶段
+  // 确定达成的最高阶段（必须按顺序达成）
   const getHighestMilestone = () => {
     if (!milestones) return 0;
-    if (milestones.inTop10) return 5;
-    if (milestones.allAbove) return 4;
-    if (milestones.threeAbove) return 3;
-    if (milestones.totalAbove) return 2;
-    if (milestones.inTop70) return 1;
-    return 0;
+    // 第1阶段：前70%
+    if (!milestones.inTop70) return 0;
+    // 第2阶段：总分超过平均
+    if (!milestones.totalAbove) return 1;
+    // 第3阶段：三大分类都超过平均
+    if (!milestones.threeAbove) return 2;
+    // 第4阶段：前10%
+    if (!milestones.inTop10) return 3;
+    // 第5阶段：全项目达成
+    if (!milestones.fullAchievement) return 4;
+    return 5;
   };
 
   const highestMilestone = getHighestMilestone();
@@ -464,39 +499,44 @@ export default function Dashboard() {
 
               {/* 5个阶段性目标 */}
               <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 pt-3">
-                {/* 目标5: 前10% */}
+                {/* 目标5: 全项目达成 */}
                 <div 
-                  className={`p-3 rounded-lg border ${milestones.inTop10 ? 'bg-purple-50 dark:bg-purple-950/30 border-purple-200 dark:border-purple-800' : 'bg-muted/30 border-muted'}`}
+                  className={`p-3 rounded-lg border ${milestones.fullAchievement ? 'bg-purple-50 dark:bg-purple-950/30 border-purple-200 dark:border-purple-800' : 'bg-muted/30 border-muted'}`}
+                  data-testid="milestone-full-achievement"
+                >
+                  <div className="flex items-center gap-2 mb-1">
+                    <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${milestones.fullAchievement ? 'bg-purple-500 text-white' : 'bg-muted text-muted-foreground'}`}>
+                      5
+                    </div>
+                    <span className={`text-sm font-medium ${milestones.fullAchievement ? 'text-purple-700 dark:text-purple-300' : 'text-muted-foreground'}`}>
+                      全项达成
+                    </span>
+                  </div>
+                  <div className="text-xs text-muted-foreground ml-8 space-y-0.5">
+                    <p className="flex items-center gap-1">
+                      运动{milestones.allAbove ? <Check className="h-3 w-3 text-green-500" /> : <span>({milestones.exercisesAboveCount}/{milestones.exercisesTotalCount})</span>}
+                    </p>
+                    <p className="flex items-center gap-1">
+                      肌群{milestones.allMusclesAtMaintenance ? <Check className="h-3 w-3 text-green-500" /> : <span>({milestones.musclesAtMaintenanceCount}/{milestones.musclesTotalCount})</span>}
+                    </p>
+                  </div>
+                </div>
+
+                {/* 目标4: 前10% */}
+                <div 
+                  className={`p-3 rounded-lg border ${milestones.inTop10 ? 'bg-green-50 dark:bg-green-950/30 border-green-200 dark:border-green-800' : 'bg-muted/30 border-muted'}`}
                   data-testid="milestone-top-10"
                 >
                   <div className="flex items-center gap-2 mb-1">
-                    <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${milestones.inTop10 ? 'bg-purple-500 text-white' : 'bg-muted text-muted-foreground'}`}>
-                      5
+                    <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${milestones.inTop10 ? 'bg-green-500 text-white' : 'bg-muted text-muted-foreground'}`}>
+                      4
                     </div>
-                    <span className={`text-sm font-medium ${milestones.inTop10 ? 'text-purple-700 dark:text-purple-300' : 'text-muted-foreground'}`}>
+                    <span className={`text-sm font-medium ${milestones.inTop10 ? 'text-green-700 dark:text-green-300' : 'text-muted-foreground'}`}>
                       前10%
                     </span>
                   </div>
                   <p className="text-xs text-muted-foreground ml-8">
                     当前: 前{milestones.percentile.toFixed(0)}%
-                  </p>
-                </div>
-
-                {/* 目标4: 所有项目超过平均 */}
-                <div 
-                  className={`p-3 rounded-lg border ${milestones.allAbove ? 'bg-green-50 dark:bg-green-950/30 border-green-200 dark:border-green-800' : 'bg-muted/30 border-muted'}`}
-                  data-testid="milestone-all-above"
-                >
-                  <div className="flex items-center gap-2 mb-1">
-                    <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${milestones.allAbove ? 'bg-green-500 text-white' : 'bg-muted text-muted-foreground'}`}>
-                      4
-                    </div>
-                    <span className={`text-sm font-medium ${milestones.allAbove ? 'text-green-700 dark:text-green-300' : 'text-muted-foreground'}`}>
-                      全项超越
-                    </span>
-                  </div>
-                  <p className="text-xs text-muted-foreground ml-8">
-                    {milestones.exercisesAboveCount}/{milestones.exercisesTotalCount} 项达标
                   </p>
                 </div>
 

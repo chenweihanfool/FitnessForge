@@ -53,6 +53,13 @@ export default function Exercises() {
     queryKey: ["/api/exercises"],
   });
 
+  // 获取要删除的运动项目的记录数量
+  const { data: entryCountData } = useQuery<{ count: number }>({
+    queryKey: ["/api/exercises", deletingExercise?.id, "entry-count"],
+    enabled: !!deletingExercise,
+  });
+  const deletingEntryCount = entryCountData?.count ?? 0;
+
   const createMutation = useMutation({
     mutationFn: (data: InsertExercise) => apiRequest("POST", "/api/exercises", data),
     onSuccess: () => {
@@ -707,8 +714,16 @@ export default function Exercises() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>确认删除</AlertDialogTitle>
-            <AlertDialogDescription>
-              确定要删除"{deletingExercise?.name}"吗？这将同时删除所有相关的运动记录，此操作无法撤销。
+            <AlertDialogDescription className="space-y-3">
+              <p>确定要删除"{deletingExercise?.name}"吗？</p>
+              {deletingEntryCount > 0 && (
+                <p className="text-destructive font-medium">
+                  此运动项目有 {deletingEntryCount} 条历史记录，删除后将一并清除且无法恢复！
+                </p>
+              )}
+              <p className="text-muted-foreground text-sm border-t pt-2">
+                提示：如果只是想修改名称，请使用"编辑"功能，这样可以保留所有历史记录和统计数据。
+              </p>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -717,8 +732,9 @@ export default function Exercises() {
               onClick={() => deletingExercise && deleteMutation.mutate(deletingExercise.id)}
               disabled={deleteMutation.isPending}
               data-testid="button-confirm-delete"
+              className="bg-destructive text-destructive-foreground"
             >
-              {deleteMutation.isPending ? "删除中..." : "删除"}
+              {deleteMutation.isPending ? "删除中..." : deletingEntryCount > 0 ? `删除及 ${deletingEntryCount} 条记录` : "删除"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
