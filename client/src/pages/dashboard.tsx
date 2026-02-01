@@ -5,6 +5,7 @@ import { useLocation } from "wouter";
 import { StatsCard } from "@/components/stats-card";
 import { RankingMetricCard } from "@/components/ranking-metric-card";
 import { RankingDetailDialog } from "@/components/ranking-detail-dialog";
+import { ScaleProgressBar } from "@/components/scale-progress-bar";
 import { TrendChart } from "@/components/trend-chart";
 import { Activity, TrendingUp, Calendar, Award, X, TrendingDown, Dumbbell, Heart, Footprints, Plus, Check, Minus, Loader2, Sparkles, RefreshCw, Star } from "lucide-react";
 import { RankingData, WeeklyStats, RankingDetailResponse, Exercise } from "@shared/schema";
@@ -770,12 +771,16 @@ export default function Dashboard() {
                         )}
                       </div>
                       {ex.weeklyAverage !== null && ex.weeklyAverage > 0 && (
-                        <div className="h-1.5 w-full overflow-hidden rounded-full bg-secondary">
-                          <div
-                            className={`h-full transition-all ${
-                              isAbove ? "bg-green-500" : "bg-orange-500"
-                            }`}
-                            style={{ width: `${progressValue}%` }}
+                        <div className="pt-4">
+                          <ScaleProgressBar
+                            currentValue={ex.currentWeekValue}
+                            maxValue={Math.max(ex.currentWeekValue, ex.weeklyAverage)}
+                            markers={[
+                              { value: ex.weeklyAverage, label: '均', colorClass: 'bg-primary', textColorClass: 'text-primary' }
+                            ]}
+                            barColorClass={isAbove ? 'bg-chart-3' : 'bg-destructive'}
+                            height="h-2"
+                            showLabels={false}
                           />
                         </div>
                       )}
@@ -810,8 +815,8 @@ export default function Dashboard() {
                 };
                 
                 return muscleGroupStats.muscleGroups.map((group) => {
-                  const percentage = maxVolume > 0 ? (group.totalVolume / maxVolume) * 100 : 0;
                   const status = getSetStatus(group.totalSets);
+                  const maxSets = 20;
                   return (
                     <div key={group.muscleGroup} className="space-y-2 p-3 rounded-lg bg-muted/50" data-testid={`muscle-group-stat-${group.muscleGroup}`}>
                       <div className="flex justify-between items-center">
@@ -825,10 +830,17 @@ export default function Dashboard() {
                           </span>
                         </div>
                       </div>
-                      <div className="w-full bg-secondary rounded-full h-2">
-                        <div
-                          className={`${status.color} rounded-full h-2 transition-all`}
-                          style={{ width: `${percentage}%` }}
+                      <div className="pt-4">
+                        <ScaleProgressBar
+                          currentValue={group.totalSets}
+                          maxValue={Math.max(group.totalSets, maxSets)}
+                          markers={[
+                            { value: 4, label: '维', colorClass: 'bg-yellow-500', textColorClass: 'text-yellow-600 dark:text-yellow-400' },
+                            { value: 15, label: '优', colorClass: 'bg-chart-3', textColorClass: 'text-chart-3' }
+                          ]}
+                          barColorClass={status.color}
+                          height="h-2"
+                          showLabels={false}
                         />
                       </div>
                       <div className={`text-xs ${status.textColor}`} data-testid={`status-${group.muscleGroup}`}>
