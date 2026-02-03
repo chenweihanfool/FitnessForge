@@ -266,7 +266,7 @@ export default function Entries() {
       date: taipeiDate,
       notes: entry.notes || "",
       sets: entry.sets ?? undefined,
-      weightFactor: entry.exercise.weightFactor,
+      weightFactor: entry.weightFactor ?? entry.exercise.weightFactor,
     });
     setIsEditOpen(true);
   };

@@ -45,6 +45,7 @@ export const workoutEntries = pgTable("workout_entries", {
   exerciseId: varchar("exercise_id").notNull().references(() => exercises.id, { onDelete: "cascade" }),
   value: real("value").notNull(), // 运动数据值
   sets: real("sets"), // 组数（可选）
+  weightFactor: real("weight_factor"), // 本次记录使用的权重因子（可能与运动默认权重不同）
   baselineValue: real("baseline_value"), // 基准值（创建时计算并固定：value × sets × weightFactor）
   date: timestamp("date").notNull().defaultNow(), // 记录日期时间
   notes: text("notes"), // 可选备注
