@@ -566,7 +566,6 @@ export default function Entries() {
               </TableHeader>
               <TableBody>
                 {entries.map((entry) => {
-                  const baselineValue = entry.value * entry.exercise.weightFactor;
                   return (
                     <TableRow key={entry.id} data-testid={`row-entry-${entry.id}`}>
                       <TableCell className="font-medium">
@@ -583,7 +582,7 @@ export default function Entries() {
                       </TableCell>
                       <TableCell>
                         <Badge variant="secondary" data-testid={`badge-baseline-${entry.id}`}>
-                          {baselineValue.toFixed(2)}
+                          {(entry.baselineValue ?? 0).toFixed(2)}
                         </Badge>
                       </TableCell>
                       <TableCell>
