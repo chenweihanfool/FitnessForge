@@ -121,6 +121,31 @@ type DailyContributions = {
   weekTotal: number;
 };
 
+type MuscleGroupAverages = {
+  chestAvg: number;
+  backAvg: number;
+  legsAvg: number;
+  shouldersAvg: number;
+  armsAvg: number;
+  coreAvg: number;
+  glutesAvg: number;
+  fullBodyAvg: number;
+  weekCount: number;
+};
+
+type MuscleGroupHistoryRecord = {
+  weekStart: string;
+  chestValue: number;
+  backValue: number;
+  legsValue: number;
+  shouldersValue: number;
+  armsValue: number;
+  coreValue: number;
+  glutesValue: number;
+  fullBodyValue: number;
+  updatedAt: string;
+};
+
 type DayEntriesData = {
   date: string;
   entries: Array<{
@@ -189,6 +214,14 @@ export default function Dashboard() {
 
   const { data: dailyContributions, isLoading: dailyContributionsLoading } = useQuery<DailyContributions>({
     queryKey: ["/api/stats/daily-contributions"],
+  });
+
+  const { data: muscleGroupAverages } = useQuery<MuscleGroupAverages>({
+    queryKey: ["/api/stats/muscle-group-averages"],
+  });
+
+  const { data: muscleGroupHistory } = useQuery<MuscleGroupHistoryRecord[]>({
+    queryKey: ["/api/stats/muscle-group-history"],
   });
 
   const { data: dayEntriesData, isLoading: dayEntriesLoading } = useQuery<DayEntriesData>({
@@ -312,6 +345,29 @@ export default function Dashboard() {
     });
   };
 
+  const muscleVolumeMap = (() => {
+    const nameToAvgKey: Record<string, keyof MuscleGroupAverages> = {
+      '胸': 'chestAvg', '背': 'backAvg', '腿': 'legsAvg', '肩': 'shouldersAvg',
+      '二头肌': 'armsAvg', '核心': 'coreAvg', '臀': 'glutesAvg', '三头肌': 'fullBodyAvg',
+    };
+    const nameToHistKey: Record<string, keyof MuscleGroupHistoryRecord> = {
+      '胸': 'chestValue', '背': 'backValue', '腿': 'legsValue', '肩': 'shouldersValue',
+      '二头肌': 'armsValue', '核心': 'coreValue', '臀': 'glutesValue', '三头肌': 'fullBodyValue',
+    };
+
+    const result: Record<string, { avg: number; peak: number }> = {};
+    for (const name of Object.keys(nameToAvgKey)) {
+      const avgKey = nameToAvgKey[name];
+      const histKey = nameToHistKey[name];
+      const avg = muscleGroupAverages ? Number(muscleGroupAverages[avgKey]) || 0 : 0;
+      const peak = muscleGroupHistory && muscleGroupHistory.length > 0
+        ? Math.max(...muscleGroupHistory.map(r => Number(r[histKey]) || 0))
+        : 0;
+      result[name] = { avg, peak };
+    }
+    return result;
+  })();
+
   const milestones = (() => {
     if (!rankingData) return null;
 
@@ -330,8 +386,17 @@ export default function Dashboard() {
 
     const muscleGroupsWithTraining = muscleGroupStats?.muscleGroups.filter(g => g.totalSets > 0) || [];
     const muscleStatsLoaded = muscleGroupStats !== undefined;
+    const hasVolumeData = muscleGroupAverages !== undefined && muscleGroupAverages.weekCount > 0;
+
+    const muscleIntensityDetails = muscleGroupsWithTraining.map(g => {
+      const setsOk = g.totalSets >= 4;
+      const volData = muscleVolumeMap[g.muscleGroup];
+      const volumeOk = !hasVolumeData || (volData && volData.avg > 0 ? g.totalVolume >= volData.avg : true);
+      return { name: g.muscleGroup, setsOk, volumeOk, bothOk: setsOk && volumeOk };
+    });
+
     const allMusclesAtMaintenance = muscleStatsLoaded && muscleGroupsWithTraining.length > 0 &&
-      muscleGroupsWithTraining.every(g => g.totalSets >= 4);
+      muscleIntensityDetails.every(m => m.bothOk);
 
     const isFourWeekHigh = (() => {
       if (!trendData || trendData.length < 2) return false;
@@ -366,7 +431,10 @@ export default function Dashboard() {
       trainingDays,
       totalAbove,
       allMusclesAtMaintenance,
-      musclesAtMaintenanceCount: muscleGroupsWithTraining.filter(g => g.totalSets >= 4).length,
+      muscleIntensityDetails,
+      musclesFullyMetCount: muscleIntensityDetails.filter(m => m.bothOk).length,
+      musclesSetsOnlyCount: muscleIntensityDetails.filter(m => m.setsOk).length,
+      musclesVolumeOnlyCount: muscleIntensityDetails.filter(m => m.volumeOk).length,
       musclesTotalCount: muscleGroupsWithTraining.length,
       inTop10,
       isFourWeekHigh,
@@ -530,9 +598,16 @@ export default function Dashboard() {
                       强度
                     </span>
                   </div>
-                  <p className="text-xs text-muted-foreground ml-8">
-                    肌群维持: {milestones.musclesAtMaintenanceCount}/{milestones.musclesTotalCount}
-                  </p>
+                  <div className="text-xs text-muted-foreground ml-8 space-y-0.5">
+                    <p className="flex items-center gap-1">
+                      组数: {milestones.musclesSetsOnlyCount}/{milestones.musclesTotalCount}
+                      {milestones.musclesSetsOnlyCount >= milestones.musclesTotalCount && milestones.musclesTotalCount > 0 ? <Check className="h-3 w-3 text-green-500" /> : <Minus className="h-3 w-3" />}
+                    </p>
+                    <p className="flex items-center gap-1">
+                      容量: {milestones.musclesVolumeOnlyCount}/{milestones.musclesTotalCount}
+                      {milestones.musclesVolumeOnlyCount >= milestones.musclesTotalCount && milestones.musclesTotalCount > 0 ? <Check className="h-3 w-3 text-green-500" /> : <Minus className="h-3 w-3" />}
+                    </p>
+                  </div>
                 </div>
 
                 {/* 目标5: 突破 */}
@@ -774,6 +849,21 @@ export default function Dashboard() {
                 return muscleGroupStats.muscleGroups.map((group) => {
                   const status = getSetStatus(group.totalSets);
                   const maxSets = 20;
+                  const volData = muscleVolumeMap[group.muscleGroup];
+                  const volAvg = volData?.avg || 0;
+                  const volPeak = volData?.peak || 0;
+                  const hasVolHistory = volAvg > 0;
+                  const volumeAboveAvg = hasVolHistory && group.totalVolume >= volAvg;
+                  const volumeAbovePeak = volPeak > 0 && group.totalVolume >= volPeak;
+
+                  const getVolumeStatus = () => {
+                    if (!hasVolHistory) return { textColor: 'text-muted-foreground', label: '--' };
+                    if (volumeAbovePeak) return { textColor: 'text-green-600 dark:text-green-400', label: '超越高峰' };
+                    if (volumeAboveAvg) return { textColor: 'text-green-600 dark:text-green-400', label: '达标' };
+                    return { textColor: 'text-red-600 dark:text-red-400', label: '低于均值' };
+                  };
+                  const volStatus = getVolumeStatus();
+
                   return (
                     <div key={group.muscleGroup} className="space-y-2 p-3 rounded-lg bg-muted/50" data-testid={`muscle-group-stat-${group.muscleGroup}`}>
                       <div className="flex justify-between items-center">
@@ -800,8 +890,30 @@ export default function Dashboard() {
                           showLabels={false}
                         />
                       </div>
-                      <div className={`text-xs ${status.textColor}`} data-testid={`status-${group.muscleGroup}`}>
-                        {status.label}
+                      {hasVolHistory && (
+                        <div className="pt-2">
+                          <ScaleProgressBar
+                            currentValue={group.totalVolume}
+                            maxValue={Math.max(group.totalVolume, volPeak, volAvg * 1.5)}
+                            markers={[
+                              { value: volAvg, label: '均', colorClass: 'bg-blue-500', textColorClass: 'text-blue-600 dark:text-blue-400' },
+                              ...(volPeak > volAvg ? [{ value: volPeak, label: '冠', colorClass: 'bg-green-500', textColorClass: 'text-green-600 dark:text-green-400' }] : [])
+                            ]}
+                            barColorClass={volumeAbovePeak ? 'bg-green-500' : volumeAboveAvg ? 'bg-blue-500' : 'bg-red-500'}
+                            height="h-1.5"
+                            showLabels={false}
+                          />
+                        </div>
+                      )}
+                      <div className="flex justify-between items-center gap-1">
+                        <span className={`text-xs ${status.textColor}`} data-testid={`status-${group.muscleGroup}`}>
+                          {status.label}
+                        </span>
+                        {hasVolHistory && (
+                          <span className={`text-xs ${volStatus.textColor}`} data-testid={`volume-status-${group.muscleGroup}`}>
+                            {volStatus.label}
+                          </span>
+                        )}
                       </div>
                     </div>
                   );
