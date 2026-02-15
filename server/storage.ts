@@ -33,6 +33,9 @@ function calculateBaseline(
     return dailyScore * 7;
   }
   if (category === '有氧') {
+    if (exerciseName === '開合跳') {
+      return (value / 60) * (sets || 1) * intensityFactor;
+    }
     return value * (sets || 1) * intensityFactor;
   }
   if (category === '力量') {
