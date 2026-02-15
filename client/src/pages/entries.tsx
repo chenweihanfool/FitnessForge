@@ -283,6 +283,9 @@ export default function Entries() {
       return (dailySteps / 500) * (1 - 0.00002 * dailySteps) * 7;
     }
     if (exercise.category === '有氧') {
+      if (exercise.name === '開合跳') {
+        return (value * s * 2 * (exercise.intensityFactor ?? 1)) / 10;
+      }
       return value * s * (exercise.intensityFactor ?? 1);
     }
     if (exercise.category === '力量') {
