@@ -198,7 +198,7 @@ export interface IStorage {
     weekCount: number;
   }>;
   migrateHistoricalMuscleStats(): Promise<{ migratedWeeks: number }>;
-  recalculateAllBaselines(): Promise<{ updatedEntries: number; updatedWeeks: number }>;
+  recalculateAllBaselines(): Promise<{ updatedEntries: number; updatedWeeks: number; updatedExercises: number }>;
 
   // 用户设置
   getUserSetting(key: string): Promise<string | null>;
@@ -1574,7 +1574,7 @@ export class MemStorage implements IStorage {
     return { migratedWeeks: weekStarts.length };
   }
 
-  async recalculateAllBaselines(): Promise<{ updatedEntries: number; updatedWeeks: number }> {
+  async recalculateAllBaselines(): Promise<{ updatedEntries: number; updatedWeeks: number; updatedExercises: number }> {
     let updatedEntries = 0;
     const weekStartsSet = new Set<string>();
 
@@ -1596,7 +1596,7 @@ export class MemStorage implements IStorage {
       await this.updateWeeklyMuscleStats(ws);
     }
 
-    return { updatedEntries, updatedWeeks: weekStartsSet.size };
+    return { updatedEntries, updatedWeeks: weekStartsSet.size, updatedExercises: 0 };
   }
 
   private userSettingsMap: Map<string, string> = new Map();
@@ -3149,7 +3149,43 @@ export class DbStorage implements IStorage {
     return { migratedWeeks: weekStarts.length };
   }
 
-  async recalculateAllBaselines(): Promise<{ updatedEntries: number; updatedWeeks: number }> {
+  async recalculateAllBaselines(): Promise<{ updatedEntries: number; updatedWeeks: number; updatedExercises: number }> {
+    const exerciseCoefficients: Record<string, { movementCoefficient: number; intensityFactor: number }> = {
+      '啞鈴深蹲': { movementCoefficient: 1.2, intensityFactor: 1 },
+      '弓步蹲': { movementCoefficient: 1.2, intensityFactor: 1 },
+      '深蹲': { movementCoefficient: 1.2, intensityFactor: 1 },
+      '硬舉': { movementCoefficient: 1.2, intensityFactor: 1 },
+      '二頭肌彎舉': { movementCoefficient: 0.8, intensityFactor: 1 },
+      '捲腹': { movementCoefficient: 0.8, intensityFactor: 1 },
+      '超人式': { movementCoefficient: 0.8, intensityFactor: 1 },
+      '雙槓捲腹': { movementCoefficient: 0.8, intensityFactor: 1 },
+      '伏地起身': { movementCoefficient: 1, intensityFactor: 1 },
+      '反向划船': { movementCoefficient: 1, intensityFactor: 1 },
+      '引體吊掛': { movementCoefficient: 1, intensityFactor: 1 },
+      '站立肩推': { movementCoefficient: 1, intensityFactor: 1 },
+      '雙槓臂屈伸': { movementCoefficient: 1, intensityFactor: 1 },
+      '跑步': { movementCoefficient: 1, intensityFactor: 1 },
+      '跑步機負重': { movementCoefficient: 1, intensityFactor: 2 },
+      '開合跳': { movementCoefficient: 1, intensityFactor: 1.5 },
+      '每周平均步数': { movementCoefficient: 1, intensityFactor: 1 },
+    };
+
+    let updatedExercises = 0;
+    const allExercises = await this.db.select().from(exercises);
+    for (const ex of allExercises) {
+      const coeffs = exerciseCoefficients[ex.name];
+      if (coeffs) {
+        await this.db
+          .update(exercises)
+          .set({
+            movementCoefficient: coeffs.movementCoefficient,
+            intensityFactor: coeffs.intensityFactor,
+          })
+          .where(eq(exercises.id, ex.id));
+        updatedExercises++;
+      }
+    }
+
     const allEntries = await this.db
       .select({
         entryId: workoutEntries.id,
@@ -3172,8 +3208,9 @@ export class DbStorage implements IStorage {
     for (const entry of allEntries) {
       const wf = entry.entryWeightFactor ?? entry.exerciseWeightFactor;
       const sets = entry.sets ?? 1;
-      const mc = entry.exerciseMovementCoefficient ?? 1;
-      const intf = entry.exerciseIntensityFactor ?? 1;
+      const coeffs = exerciseCoefficients[entry.exerciseName];
+      const mc = coeffs?.movementCoefficient ?? entry.exerciseMovementCoefficient ?? 1;
+      const intf = coeffs?.intensityFactor ?? entry.exerciseIntensityFactor ?? 1;
       const newBaseline = calculateBaseline(
         entry.value, sets, wf,
         entry.exerciseCategory, mc, intf, entry.exerciseName
@@ -3193,7 +3230,7 @@ export class DbStorage implements IStorage {
       await this.updateWeeklyMuscleStats(ws);
     }
 
-    return { updatedEntries, updatedWeeks: weekStartsSet.size };
+    return { updatedEntries, updatedWeeks: weekStartsSet.size, updatedExercises };
   }
 
   async getUserSetting(key: string): Promise<string | null> {
