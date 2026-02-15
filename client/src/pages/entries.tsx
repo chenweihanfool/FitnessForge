@@ -361,13 +361,16 @@ export default function Entries() {
                     );
                   }}
                 />
-                {form.watch("exerciseId") && (
-                  <FormField
-                    control={form.control}
-                    name="weightFactor"
-                    render={({ field }) => {
-                      const selectedExercise = exercises?.find((e) => e.id === form.watch("exerciseId"));
-                      return (
+                {(() => {
+                  const selectedExercise = exercises?.find((e) => e.id === form.watch("exerciseId"));
+                  const isCardio = selectedExercise?.category === '有氧';
+                  const isActivity = selectedExercise?.category === '活动量';
+                  if (!form.watch("exerciseId") || isCardio || isActivity) return null;
+                  return (
+                    <FormField
+                      control={form.control}
+                      name="weightFactor"
+                      render={({ field }) => (
                         <FormItem>
                           <FormLabel>权重系数</FormLabel>
                           <FormControl>
@@ -387,33 +390,52 @@ export default function Entries() {
                           </FormDescription>
                           <FormMessage />
                         </FormItem>
-                      );
-                    }}
-                  />
-                )}
+                      )}
+                    />
+                  );
+                })()}
                 <FormField
                   control={form.control}
                   name="value"
                   render={({ field }) => {
                     const selectedExercise = exercises?.find((e) => e.id === form.watch("exerciseId"));
                     const isAverageSteps = selectedExercise?.name === '每周平均步数';
+                    const isCardio = selectedExercise?.category === '有氧';
                     const currentWeightFactor = form.watch("weightFactor");
+                    
+                    const valueLabel = isAverageSteps 
+                      ? '每日平均步数' 
+                      : isCardio 
+                        ? '运动时间（分钟）' 
+                        : '数据值';
+                    const valuePlaceholder = isAverageSteps 
+                      ? "输入每日平均步数" 
+                      : isCardio 
+                        ? "输入运动分钟数" 
+                        : "输入数据值";
                     
                     return (
                       <FormItem>
-                        <FormLabel>
-                          {isAverageSteps ? '每日平均步数' : '数据值'}
-                        </FormLabel>
+                        <FormLabel>{valueLabel}</FormLabel>
                         <FormControl>
                           <Input
                             type="number"
                             step="0.01"
-                            placeholder={isAverageSteps ? "输入每日平均步数" : "输入数据值"}
+                            placeholder={valuePlaceholder}
                             {...field}
                             onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
                             data-testid="input-entry-value"
                           />
                         </FormControl>
+                        {isCardio && selectedExercise && (
+                          <FormDescription className="text-xs text-muted-foreground">
+                            强度型态: {(() => {
+                              const f = selectedExercise.intensityFactor ?? 1;
+                              const labels: Record<number, string> = { 1: '普通慢跑', 1.5: '開合跳', 2: '負重行走/高強度間歇' };
+                              return labels[f] ?? `${f}`;
+                            })()} (x{selectedExercise.intensityFactor ?? 1})
+                          </FormDescription>
+                        )}
                         {field.value > 0 && form.watch("exerciseId") && (
                           <FormDescription>
                             {isAverageSteps ? (
@@ -450,7 +472,7 @@ export default function Entries() {
                     (selectedExercise.muscleGlutes ?? 0) > 0 ||
                     (selectedExercise.muscleFullBody ?? 0) > 0
                   );
-                  const showSets = hasMuscleGroup || selectedExercise?.category === "力量";
+                  const showSets = hasMuscleGroup || selectedExercise?.category === "力量" || selectedExercise?.category === "有氧";
                   return showSets ? (
                     <FormField
                       control={form.control}
@@ -674,13 +696,16 @@ export default function Entries() {
                   );
                 }}
               />
-              {editForm.watch("exerciseId") && (
-                <FormField
-                  control={editForm.control}
-                  name="weightFactor"
-                  render={({ field }) => {
-                    const selectedExercise = exercises?.find((e) => e.id === editForm.watch("exerciseId"));
-                    return (
+              {(() => {
+                const selectedExercise = exercises?.find((e) => e.id === editForm.watch("exerciseId"));
+                const isCardio = selectedExercise?.category === '有氧';
+                const isActivity = selectedExercise?.category === '活动量';
+                if (!editForm.watch("exerciseId") || isCardio || isActivity) return null;
+                return (
+                  <FormField
+                    control={editForm.control}
+                    name="weightFactor"
+                    render={({ field }) => (
                       <FormItem>
                         <FormLabel>权重系数</FormLabel>
                         <FormControl>
@@ -700,33 +725,52 @@ export default function Entries() {
                         </FormDescription>
                         <FormMessage />
                       </FormItem>
-                    );
-                  }}
-                />
-              )}
+                    )}
+                  />
+                );
+              })()}
               <FormField
                 control={editForm.control}
                 name="value"
                 render={({ field }) => {
                   const selectedExercise = exercises?.find((e) => e.id === editForm.watch("exerciseId"));
                   const isAverageSteps = selectedExercise?.name === '每周平均步数';
+                  const isCardio = selectedExercise?.category === '有氧';
                   const currentWeightFactor = editForm.watch("weightFactor");
+                  
+                  const valueLabel = isAverageSteps 
+                    ? '每日平均步数' 
+                    : isCardio 
+                      ? '运动时间（分钟）' 
+                      : '数据值';
+                  const valuePlaceholder = isAverageSteps 
+                    ? "输入每日平均步数" 
+                    : isCardio 
+                      ? "输入运动分钟数" 
+                      : "输入数据值";
                   
                   return (
                     <FormItem>
-                      <FormLabel>
-                        {isAverageSteps ? '每日平均步数' : '数据值'}
-                      </FormLabel>
+                      <FormLabel>{valueLabel}</FormLabel>
                       <FormControl>
                         <Input
                           type="number"
                           step="0.01"
-                          placeholder={isAverageSteps ? "输入每日平均步数" : "输入数据值"}
+                          placeholder={valuePlaceholder}
                           {...field}
                           onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
                           data-testid="input-entry-value"
                         />
                       </FormControl>
+                      {isCardio && selectedExercise && (
+                        <FormDescription className="text-xs text-muted-foreground">
+                          强度型态: {(() => {
+                            const f = selectedExercise.intensityFactor ?? 1;
+                            const labels: Record<number, string> = { 1: '普通慢跑', 1.5: '開合跳', 2: '負重行走/高強度間歇' };
+                            return labels[f] ?? `${f}`;
+                          })()} (x{selectedExercise.intensityFactor ?? 1})
+                        </FormDescription>
+                      )}
                       {field.value > 0 && editForm.watch("exerciseId") && (
                         <FormDescription>
                           {isAverageSteps ? (
@@ -763,7 +807,7 @@ export default function Entries() {
                   (selectedExercise.muscleGlutes ?? 0) > 0 ||
                   (selectedExercise.muscleFullBody ?? 0) > 0
                 );
-                const showSets = hasMuscleGroup || selectedExercise?.category === "力量";
+                const showSets = hasMuscleGroup || selectedExercise?.category === "力量" || selectedExercise?.category === "有氧";
                 return showSets ? (
                   <FormField
                     control={editForm.control}
