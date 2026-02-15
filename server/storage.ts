@@ -3252,7 +3252,7 @@ export class DbStorage implements IStorage {
 
       let newBaseline: number;
       if (entry.exerciseCategory === '有氧') {
-        newBaseline = (entry.value / 10) * intf;
+        newBaseline = entry.value * 10 * intf;
       } else {
         newBaseline = calculateBaseline(
           entry.value, sets, wf,
