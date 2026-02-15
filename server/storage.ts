@@ -3236,6 +3236,7 @@ export class DbStorage implements IStorage {
         exerciseMovementCoefficient: exercises.movementCoefficient,
         exerciseIntensityFactor: exercises.intensityFactor,
         exerciseName: exercises.name,
+        exerciseUnit: exercises.unit,
       })
       .from(workoutEntries)
       .innerJoin(exercises, eq(workoutEntries.exerciseId, exercises.id));
@@ -3251,7 +3252,7 @@ export class DbStorage implements IStorage {
       const intf = coeffs?.intensityFactor ?? entry.exerciseIntensityFactor ?? 1;
 
       let newBaseline: number;
-      if (entry.exerciseCategory === '有氧') {
+      if (entry.exerciseCategory === '有氧' && entry.exerciseUnit === 'KM') {
         newBaseline = entry.value * 10 * intf;
       } else {
         newBaseline = calculateBaseline(
