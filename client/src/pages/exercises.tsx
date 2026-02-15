@@ -122,6 +122,8 @@ export default function Exercises() {
       category: "none",
       splitCategory: "none",
       splitRatio: 0,
+      movementCoefficient: 1,
+      intensityFactor: 1,
       muscleChest: 0,
       muscleBack: 0,
       muscleLegs: 0,
@@ -142,6 +144,8 @@ export default function Exercises() {
       category: "none",
       splitCategory: "none",
       splitRatio: 0,
+      movementCoefficient: 1,
+      intensityFactor: 1,
       muscleChest: 0,
       muscleBack: 0,
       muscleLegs: 0,
@@ -184,6 +188,8 @@ export default function Exercises() {
       category: exercise.category || "none",
       splitCategory: exercise.splitCategory || "none",
       splitRatio: exercise.splitRatio || 0,
+      movementCoefficient: exercise.movementCoefficient ?? 1,
+      intensityFactor: exercise.intensityFactor ?? 1,
       muscleChest: exercise.muscleChest || 0,
       muscleBack: exercise.muscleBack || 0,
       muscleLegs: exercise.muscleLegs || 0,
@@ -300,6 +306,56 @@ export default function Exercises() {
                     </FormItem>
                   )}
                 />
+                {form.watch("category") === "力量" && (
+                  <FormField
+                    control={form.control}
+                    name="movementCoefficient"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>动作系数</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            step="0.1"
+                            placeholder="1.0"
+                            {...field}
+                            onChange={(e) => field.onChange(parseFloat(e.target.value) || 1)}
+                            data-testid="input-exercise-movement-coefficient"
+                          />
+                        </FormControl>
+                        <FormDescription>
+                          复合动作1.2 / 单关节0.8 / 自体重1.0
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                )}
+                {form.watch("category") === "有氧" && (
+                  <FormField
+                    control={form.control}
+                    name="intensityFactor"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>强度系数</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            step="0.1"
+                            placeholder="1.0"
+                            {...field}
+                            onChange={(e) => field.onChange(parseFloat(e.target.value) || 1)}
+                            data-testid="input-exercise-intensity-factor"
+                          />
+                        </FormControl>
+                        <FormDescription>
+                          跑步1.0 / 负重跑2.0 / 开合跳1.5
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                )}
                 <FormField
                   control={form.control}
                   name="splitCategory"
@@ -491,6 +547,22 @@ export default function Exercises() {
                       </Badge>
                     </div>
                   )}
+                  {exercise.category === '力量' && exercise.movementCoefficient != null && exercise.movementCoefficient !== 1 && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-muted-foreground">动作系数</span>
+                      <Badge variant="secondary" data-testid={`badge-movement-${exercise.id}`}>
+                        {exercise.movementCoefficient}
+                      </Badge>
+                    </div>
+                  )}
+                  {exercise.category === '有氧' && exercise.intensityFactor != null && exercise.intensityFactor !== 1 && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-muted-foreground">强度系数</span>
+                      <Badge variant="secondary" data-testid={`badge-intensity-${exercise.id}`}>
+                        {exercise.intensityFactor}
+                      </Badge>
+                    </div>
+                  )}
                   {(() => {
                     const muscles = muscleGroupLabels
                       .filter(({ field }) => (exercise[field] as number) > 0)
@@ -510,7 +582,14 @@ export default function Exercises() {
                     );
                   })()}
                   <p className="text-xs text-muted-foreground mt-2">
-                    基准值 = 数据 × {exercise.weightFactor}
+                    {exercise.category === '力量' 
+                      ? `评分 = ${exercise.weightFactor} x 次数 x 组数 x ${exercise.movementCoefficient ?? 1} / 10`
+                      : exercise.category === '有氧'
+                      ? `评分 = 分钟 x 组数 x ${exercise.intensityFactor ?? 1}`
+                      : exercise.category === '活动量'
+                      ? `评分 = ln(1+步数/1000) x 5`
+                      : `评分 = 数据 x ${exercise.weightFactor}`
+                    }
                   </p>
                 </div>
               </CardContent>
@@ -606,6 +685,56 @@ export default function Exercises() {
                   </FormItem>
                 )}
               />
+              {editForm.watch("category") === "力量" && (
+                <FormField
+                  control={editForm.control}
+                  name="movementCoefficient"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>动作系数</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="number"
+                          step="0.1"
+                          placeholder="1.0"
+                          {...field}
+                          onChange={(e) => field.onChange(parseFloat(e.target.value) || 1)}
+                          data-testid="input-edit-movement-coefficient"
+                        />
+                      </FormControl>
+                      <FormDescription>
+                        复合动作1.2 / 单关节0.8 / 自体重1.0
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              )}
+              {editForm.watch("category") === "有氧" && (
+                <FormField
+                  control={editForm.control}
+                  name="intensityFactor"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>强度系数</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="number"
+                          step="0.1"
+                          placeholder="1.0"
+                          {...field}
+                          onChange={(e) => field.onChange(parseFloat(e.target.value) || 1)}
+                          data-testid="input-edit-intensity-factor"
+                        />
+                      </FormControl>
+                      <FormDescription>
+                        跑步1.0 / 负重跑2.0 / 开合跳1.5
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              )}
               <FormField
                 control={editForm.control}
                 name="splitCategory"

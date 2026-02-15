@@ -19,6 +19,8 @@ export const exercises = pgTable("exercises", {
   muscleCore: real("muscle_core").default(0), // 核心肌群百分比 (0-100)
   muscleGlutes: real("muscle_glutes").default(0), // 臀部肌群百分比 (0-100)
   muscleFullBody: real("muscle_full_body").default(0), // 全身肌群百分比 (0-100)
+  movementCoefficient: real("movement_coefficient").default(1.0), // 动作系数（复合1.2/孤立0.8/徒手1.0）
+  intensityFactor: real("intensity_factor").default(1.0), // 强度因子（有氧用：轻松1.0/节奏1.5/高强度2.0）
 });
 
 // 定义camelCase的insert schema
@@ -37,6 +39,8 @@ export const insertExerciseSchema = z.object({
   muscleCore: z.number().min(0).max(100).default(0),
   muscleGlutes: z.number().min(0).max(100).default(0),
   muscleFullBody: z.number().min(0).max(100).default(0),
+  movementCoefficient: z.number().min(0.1).max(5).default(1.0),
+  intensityFactor: z.number().min(0.1).max(5).default(1.0),
 });
 
 // 运动记录表
@@ -131,6 +135,14 @@ export const insertWeeklyMuscleStatsSchema = z.object({
 
 export type InsertWeeklyMuscleStats = z.infer<typeof insertWeeklyMuscleStatsSchema>;
 export type WeeklyMuscleStats = typeof weeklyMuscleStats.$inferSelect;
+
+// 用户设置表（用于存储权重比例等配置）
+export const userSettings = pgTable("user_settings", {
+  key: varchar("key").primaryKey(),
+  value: text("value").notNull(),
+});
+
+export type UserSetting = typeof userSettings.$inferSelect;
 
 // 排名快照类型（用于排名详情）
 export type RankingSnapshot = {

@@ -44,6 +44,11 @@ const menuItems = [
     url: "/export",
     icon: FileDown,
   },
+  {
+    title: "设置",
+    url: "/settings",
+    icon: Settings,
+  },
 ];
 
 export function AppSidebar() {

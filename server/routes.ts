@@ -392,6 +392,45 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ==================== 用户设置 API ====================
+
+  app.get("/api/settings", async (req, res) => {
+    try {
+      const settings = await storage.getAllUserSettings();
+      res.json({
+        strengthWeight: parseFloat(settings['strengthWeight'] ?? '50'),
+        cardioWeight: parseFloat(settings['cardioWeight'] ?? '30'),
+        activityWeight: parseFloat(settings['activityWeight'] ?? '20'),
+      });
+    } catch (error) {
+      console.error("获取设置失败:", error);
+      res.status(500).json({ error: "获取设置失败" });
+    }
+  });
+
+  app.post("/api/settings", async (req, res) => {
+    try {
+      const { strengthWeight, cardioWeight, activityWeight } = req.body;
+      const s = Number(strengthWeight);
+      const c = Number(cardioWeight);
+      const a = Number(activityWeight);
+      if (isNaN(s) || isNaN(c) || isNaN(a) || s < 0 || c < 0 || a < 0) {
+        return res.status(400).json({ error: "权重必须是非负数" });
+      }
+      const total = s + c + a;
+      if (Math.abs(total - 100) > 0.01) {
+        return res.status(400).json({ error: "权重总和必须为100" });
+      }
+      await storage.setUserSetting('strengthWeight', String(s));
+      await storage.setUserSetting('cardioWeight', String(c));
+      await storage.setUserSetting('activityWeight', String(a));
+      res.json({ success: true, strengthWeight: s, cardioWeight: c, activityWeight: a });
+    } catch (error) {
+      console.error("保存设置失败:", error);
+      res.status(500).json({ error: "保存设置失败" });
+    }
+  });
+
   // ==================== CSV 导入导出 API ====================
 
   // CSV 导入
@@ -442,6 +481,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
               unit,
               weightFactor: isNaN(weightFactor) ? 1 : weightFactor,
               splitRatio: 0,
+              muscleChest: 0,
+              muscleBack: 0,
+              muscleLegs: 0,
+              muscleShoulders: 0,
+              muscleArms: 0,
+              muscleCore: 0,
+              muscleGlutes: 0,
+              muscleFullBody: 0,
+              movementCoefficient: 1,
+              intensityFactor: 1,
             });
             exerciseId = newExercise.id;
             exercisesCount++;

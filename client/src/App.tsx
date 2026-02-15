@@ -14,6 +14,7 @@ import Entries from "@/pages/entries";
 import Career from "@/pages/career";
 import ImportPage from "@/pages/import";
 import ExportPage from "@/pages/export";
+import SettingsPage from "@/pages/settings";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -25,6 +26,7 @@ function Router() {
       <Route path="/career" component={Career} />
       <Route path="/import" component={ImportPage} />
       <Route path="/export" component={ExportPage} />
+      <Route path="/settings" component={SettingsPage} />
       <Route component={NotFound} />
     </Switch>
   );

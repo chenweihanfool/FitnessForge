@@ -10,11 +10,34 @@ import {
   exercises,
   workoutEntries,
   weeklyMuscleStats,
+  userSettings,
 } from "@shared/schema";
 import { randomUUID } from "crypto";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { eq, and, gte, lte, lt, desc, sql, sum, count } from "drizzle-orm";
 import { Pool } from "pg";
+
+function calculateBaseline(
+  value: number,
+  sets: number,
+  weightFactor: number,
+  category: string | null,
+  movementCoefficient: number,
+  intensityFactor: number,
+  exerciseName: string
+): number {
+  if (exerciseName === '每周平均步数' || category === '活动量') {
+    if (value <= 0) return 0;
+    return Math.log(1 + value / 1000) * 5;
+  }
+  if (category === '有氧') {
+    return value * (sets || 1) * intensityFactor;
+  }
+  if (category === '力量') {
+    return weightFactor * value * (sets || 1) * movementCoefficient / 10;
+  }
+  return value * (sets || 1) * weightFactor;
+}
 
 export interface IStorage {
   // 运动类型 CRUD
@@ -175,6 +198,11 @@ export interface IStorage {
     weekCount: number;
   }>;
   migrateHistoricalMuscleStats(): Promise<{ migratedWeeks: number }>;
+
+  // 用户设置
+  getUserSetting(key: string): Promise<string | null>;
+  setUserSetting(key: string, value: string): Promise<void>;
+  getAllUserSettings(): Promise<Record<string, string>>;
 }
 
 type WeeklyMuscleStatsRecord = {
@@ -334,11 +362,16 @@ export class MemStorage implements IStorage {
     const id = randomUUID();
     const date = insertEntry.date ? new Date(insertEntry.date) : new Date();
     
-    // 使用传入的权重（如果有），否则使用运动类型的默认权重
     const exercise = this.exercises.get(insertEntry.exerciseId);
     const weightFactor = insertEntry.weightFactor ?? exercise?.weightFactor ?? 1;
     const sets = insertEntry.sets ?? 1;
-    const baselineValue = insertEntry.value * sets * weightFactor;
+    const baselineValue = calculateBaseline(
+      insertEntry.value, sets, weightFactor,
+      exercise?.category ?? null,
+      exercise?.movementCoefficient ?? 1,
+      exercise?.intensityFactor ?? 1,
+      exercise?.name ?? ''
+    );
     
     const entry: WorkoutEntry = {
       id,
@@ -361,11 +394,16 @@ export class MemStorage implements IStorage {
 
     const date = insertEntry.date ? new Date(insertEntry.date) : existing.date;
     
-    // 使用传入的权重（如果有），否则使用运动类型的默认权重
     const exercise = this.exercises.get(insertEntry.exerciseId);
     const weightFactor = insertEntry.weightFactor ?? exercise?.weightFactor ?? 1;
     const sets = insertEntry.sets ?? 1;
-    const baselineValue = insertEntry.value * sets * weightFactor;
+    const baselineValue = calculateBaseline(
+      insertEntry.value, sets, weightFactor,
+      exercise?.category ?? null,
+      exercise?.movementCoefficient ?? 1,
+      exercise?.intensityFactor ?? 1,
+      exercise?.name ?? ''
+    );
     
     const updated: WorkoutEntry = {
       id,
@@ -394,7 +432,6 @@ export class MemStorage implements IStorage {
         return entryDate >= weekStart && entryDate <= weekEnd;
       });
 
-    let totalBaselineValue = 0;
     let strengthValue = 0;
     let cardioValue = 0;
     let activityValue = 0;
@@ -402,16 +439,12 @@ export class MemStorage implements IStorage {
     for (const entry of entries) {
       const exercise = this.exercises.get(entry.exerciseId);
       if (exercise) {
-        // 直接使用已保存的基准值，不再动态计算
-        const baseline = entry.baselineValue ?? (entry.value * (entry.sets || 1) * exercise.weightFactor);
-        totalBaselineValue += baseline;
+        const baseline = entry.baselineValue ?? 0;
 
-        // 检查是否有分配比例（混合运动类型）
         const hasSplit = exercise.splitCategory && exercise.splitRatio && exercise.splitRatio > 0;
         const primaryRatio = hasSplit ? 1 - (exercise.splitRatio || 0) : 1;
         const secondaryRatio = hasSplit ? (exercise.splitRatio || 0) : 0;
 
-        // 分配到主分类
         if (exercise.category === '力量') {
           strengthValue += baseline * primaryRatio;
         } else if (exercise.category === '有氧') {
@@ -420,7 +453,6 @@ export class MemStorage implements IStorage {
           activityValue += baseline * primaryRatio;
         }
 
-        // 分配到次分类（如果有）
         if (hasSplit) {
           if (exercise.splitCategory === '力量') {
             strengthValue += baseline * secondaryRatio;
@@ -432,6 +464,12 @@ export class MemStorage implements IStorage {
         }
       }
     }
+
+    const settings = await this.getAllUserSettings();
+    const strengthWeight = parseFloat(settings['strengthWeight'] ?? '50') / 100;
+    const cardioWeight = parseFloat(settings['cardioWeight'] ?? '30') / 100;
+    const activityWeight = parseFloat(settings['activityWeight'] ?? '20') / 100;
+    const totalBaselineValue = strengthValue * strengthWeight + cardioValue * cardioWeight + activityValue * activityWeight;
 
     return {
       weekStart: weekStart.toISOString(),
@@ -1534,6 +1572,24 @@ export class MemStorage implements IStorage {
 
     return { migratedWeeks: weekStarts.length };
   }
+
+  private userSettingsMap: Map<string, string> = new Map();
+
+  async getUserSetting(key: string): Promise<string | null> {
+    return this.userSettingsMap.get(key) ?? null;
+  }
+
+  async setUserSetting(key: string, value: string): Promise<void> {
+    this.userSettingsMap.set(key, value);
+  }
+
+  async getAllUserSettings(): Promise<Record<string, string>> {
+    const result: Record<string, string> = {};
+    for (const [k, v] of this.userSettingsMap) {
+      result[k] = v;
+    }
+    return result;
+  }
 }
 
 export class DbStorage implements IStorage {
@@ -1689,14 +1745,26 @@ export class DbStorage implements IStorage {
   async createWorkoutEntry(insertEntry: InsertWorkoutEntry): Promise<WorkoutEntry> {
     const date = insertEntry.date ? new Date(insertEntry.date) : new Date();
     
-    // 使用传入的权重（如果有），否则使用运动类型的默认权重
     const exerciseResult = await this.db
-      .select({ weightFactor: exercises.weightFactor })
+      .select({
+        weightFactor: exercises.weightFactor,
+        category: exercises.category,
+        movementCoefficient: exercises.movementCoefficient,
+        intensityFactor: exercises.intensityFactor,
+        name: exercises.name,
+      })
       .from(exercises)
       .where(eq(exercises.id, insertEntry.exerciseId));
-    const weightFactor = insertEntry.weightFactor ?? exerciseResult[0]?.weightFactor ?? 1;
+    const ex = exerciseResult[0];
+    const weightFactor = insertEntry.weightFactor ?? ex?.weightFactor ?? 1;
     const sets = insertEntry.sets ?? 1;
-    const baselineValue = insertEntry.value * sets * weightFactor;
+    const baselineValue = calculateBaseline(
+      insertEntry.value, sets, weightFactor,
+      ex?.category ?? null,
+      ex?.movementCoefficient ?? 1,
+      ex?.intensityFactor ?? 1,
+      ex?.name ?? ''
+    );
     
     const result = await this.db
       .insert(workoutEntries)
@@ -1728,14 +1796,26 @@ export class DbStorage implements IStorage {
     
     const date = insertEntry.date ? new Date(insertEntry.date) : undefined;
     
-    // 使用传入的权重（如果有），否则使用运动类型的默认权重
     const exerciseResult = await this.db
-      .select({ weightFactor: exercises.weightFactor })
+      .select({
+        weightFactor: exercises.weightFactor,
+        category: exercises.category,
+        movementCoefficient: exercises.movementCoefficient,
+        intensityFactor: exercises.intensityFactor,
+        name: exercises.name,
+      })
       .from(exercises)
       .where(eq(exercises.id, insertEntry.exerciseId));
-    const weightFactor = insertEntry.weightFactor ?? exerciseResult[0]?.weightFactor ?? 1;
+    const ex = exerciseResult[0];
+    const weightFactor = insertEntry.weightFactor ?? ex?.weightFactor ?? 1;
     const sets = insertEntry.sets ?? 1;
-    const baselineValue = insertEntry.value * sets * weightFactor;
+    const baselineValue = calculateBaseline(
+      insertEntry.value, sets, weightFactor,
+      ex?.category ?? null,
+      ex?.movementCoefficient ?? 1,
+      ex?.intensityFactor ?? 1,
+      ex?.name ?? ''
+    );
     
     const result = await this.db
       .update(workoutEntries)
@@ -1813,7 +1893,6 @@ export class DbStorage implements IStorage {
         )
       );
 
-    let totalBaselineValue = 0;
     let strengthValue = 0;
     let cardioValue = 0;
     let activityValue = 0;
@@ -1821,17 +1900,13 @@ export class DbStorage implements IStorage {
 
     for (const entry of entries) {
       if (entry.exercise) {
-        // 直接使用已保存的基准值
-        const baseline = entry.baselineValue ?? (entry.value * (entry.sets || 1) * entry.exercise.weightFactor);
-        totalBaselineValue += baseline;
+        const baseline = entry.baselineValue ?? 0;
         entryCount++;
 
-        // 检查是否有分配比例（混合运动类型）
         const hasSplit = entry.exercise.splitCategory && entry.exercise.splitRatio && entry.exercise.splitRatio > 0;
         const primaryRatio = hasSplit ? 1 - (entry.exercise.splitRatio || 0) : 1;
         const secondaryRatio = hasSplit ? (entry.exercise.splitRatio || 0) : 0;
 
-        // 分配到主分类
         if (entry.exercise.category === '力量') {
           strengthValue += baseline * primaryRatio;
         } else if (entry.exercise.category === '有氧') {
@@ -1840,7 +1915,6 @@ export class DbStorage implements IStorage {
           activityValue += baseline * primaryRatio;
         }
 
-        // 分配到次分类（如果有）
         if (hasSplit) {
           if (entry.exercise.splitCategory === '力量') {
             strengthValue += baseline * secondaryRatio;
@@ -1852,6 +1926,12 @@ export class DbStorage implements IStorage {
         }
       }
     }
+
+    const settings = await this.getAllUserSettings();
+    const strengthWeight = parseFloat(settings['strengthWeight'] ?? '50') / 100;
+    const cardioWeight = parseFloat(settings['cardioWeight'] ?? '30') / 100;
+    const activityWeight = parseFloat(settings['activityWeight'] ?? '20') / 100;
+    const totalBaselineValue = strengthValue * strengthWeight + cardioValue * cardioWeight + activityValue * activityWeight;
 
     return {
       weekStart: weekStart.toISOString(),
@@ -3041,6 +3121,35 @@ export class DbStorage implements IStorage {
     }
 
     return { migratedWeeks: weekStarts.length };
+  }
+
+  async getUserSetting(key: string): Promise<string | null> {
+    const result = await this.db
+      .select({ value: userSettings.value })
+      .from(userSettings)
+      .where(eq(userSettings.key, key));
+    return result[0]?.value ?? null;
+  }
+
+  async setUserSetting(key: string, value: string): Promise<void> {
+    await this.db
+      .insert(userSettings)
+      .values({ key, value })
+      .onConflictDoUpdate({
+        target: userSettings.key,
+        set: { value },
+      });
+  }
+
+  async getAllUserSettings(): Promise<Record<string, string>> {
+    const result = await this.db
+      .select()
+      .from(userSettings);
+    const settings: Record<string, string> = {};
+    for (const row of result) {
+      settings[row.key] = row.value;
+    }
+    return settings;
   }
 }
 
