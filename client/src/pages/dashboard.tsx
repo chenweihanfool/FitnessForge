@@ -34,6 +34,13 @@ type WeekDetails = {
   weekStart: string;
   weekEnd: string;
   totalBaselineValue: number;
+  weightedTotal: number;
+  strengthValue: number;
+  cardioValue: number;
+  activityValue: number;
+  strengthWeight: number;
+  cardioWeight: number;
+  activityWeight: number;
   entryCount: number;
   details: Array<{
     exerciseId: string;
@@ -1236,22 +1243,36 @@ export default function Dashboard() {
           <DialogHeader>
             <DialogTitle>本周基准值计算详情</DialogTitle>
             <DialogDescription>
-              基准值 = Σ(运动数据 × 权重系数)
+              加权总分 = 力量 x {weekDetails?.strengthWeight ?? 50}% + 有氧 x {weekDetails?.cardioWeight ?? 30}% + 活动量 x {weekDetails?.activityWeight ?? 20}%
             </DialogDescription>
           </DialogHeader>
           
           {weekDetails ? (
             <div className="space-y-4">
-              <div className="rounded-lg bg-muted p-4">
-                <h3 className="font-semibold mb-2">计算公式</h3>
-                <p className="text-sm text-muted-foreground">
-                  基准值 = {weekDetails.details.map((d, i) => 
-                    `${i > 0 ? ' + ' : ''}(${d.exerciseName}: ${d.totalValue.toFixed(1)} × ${d.weightFactor})`
-                  ).join('')}
-                </p>
-                <p className="text-sm font-semibold mt-2">
-                  = {weekDetails.totalBaselineValue.toFixed(1)}
-                </p>
+              <div className="rounded-lg bg-muted p-4 space-y-3">
+                <div>
+                  <h3 className="font-semibold mb-2">加权计算公式</h3>
+                  <p className="text-sm text-muted-foreground">
+                    力量基准值合计 = {weekDetails.strengthValue.toFixed(1)}
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    有氧基准值合计 = {weekDetails.cardioValue.toFixed(1)}
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    活动量基准值合计 = {weekDetails.activityValue.toFixed(1)}
+                  </p>
+                  <p className="text-sm text-muted-foreground mt-2">
+                    加权总分 = {weekDetails.strengthValue.toFixed(1)} x {weekDetails.strengthWeight}% + {weekDetails.cardioValue.toFixed(1)} x {weekDetails.cardioWeight}% + {weekDetails.activityValue.toFixed(1)} x {weekDetails.activityWeight}%
+                  </p>
+                  <p className="text-sm font-semibold mt-1">
+                    = {weekDetails.weightedTotal.toFixed(1)}
+                  </p>
+                </div>
+                <div className="border-t pt-2">
+                  <p className="text-xs text-muted-foreground">
+                    原始基准值总和（未加权）: {weekDetails.totalBaselineValue.toFixed(1)}
+                  </p>
+                </div>
               </div>
 
               <div>
@@ -1278,12 +1299,12 @@ export default function Dashboard() {
                         </TableCell>
                         <TableCell className="text-right">{detail.count}</TableCell>
                         <TableCell className="text-right">{detail.totalValue.toFixed(1)}</TableCell>
-                        <TableCell className="text-right">× {detail.weightFactor}</TableCell>
+                        <TableCell className="text-right">x {detail.weightFactor}</TableCell>
                         <TableCell className="text-right font-semibold">
                           {detail.baselineValue.toFixed(1)}
                         </TableCell>
                         <TableCell className="text-right text-sm text-muted-foreground">
-                          {((detail.baselineValue / weekDetails.totalBaselineValue) * 100).toFixed(1)}%
+                          {weekDetails.totalBaselineValue > 0 ? ((detail.baselineValue / weekDetails.totalBaselineValue) * 100).toFixed(1) : '0.0'}%
                         </TableCell>
                       </TableRow>
                     ))}

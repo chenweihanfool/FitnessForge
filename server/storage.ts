@@ -63,6 +63,13 @@ export interface IStorage {
     weekStart: string;
     weekEnd: string;
     totalBaselineValue: number;
+    weightedTotal: number;
+    strengthValue: number;
+    cardioValue: number;
+    activityValue: number;
+    strengthWeight: number;
+    cardioWeight: number;
+    activityWeight: number;
     entryCount: number;
     details: Array<{
       exerciseId: string;
@@ -571,10 +578,23 @@ export class MemStorage implements IStorage {
 
     const totalBaselineValue = details.reduce((sum, d) => sum + d.baselineValue, 0);
 
+    const weeklyStats = await this.getWeeklyStats(weekStart, weekEnd);
+    const settings = await this.getAllUserSettings();
+    const strengthWeightPct = parseFloat(settings['strengthWeight'] ?? '50');
+    const cardioWeightPct = parseFloat(settings['cardioWeight'] ?? '30');
+    const activityWeightPct = parseFloat(settings['activityWeight'] ?? '20');
+
     return {
       weekStart: weekStart.toISOString(),
       weekEnd: weekEnd.toISOString(),
       totalBaselineValue,
+      weightedTotal: weeklyStats.totalBaselineValue,
+      strengthValue: weeklyStats.strengthValue,
+      cardioValue: weeklyStats.cardioValue,
+      activityValue: weeklyStats.activityValue,
+      strengthWeight: strengthWeightPct,
+      cardioWeight: cardioWeightPct,
+      activityWeight: activityWeightPct,
       entryCount: entries.length,
       details,
     };
@@ -2048,10 +2068,23 @@ export class DbStorage implements IStorage {
 
     const entryCount = entryCountResult[0]?.count || 0;
 
+    const weeklyStats = await this.getWeeklyStats(weekStart, weekEnd);
+    const settings = await this.getAllUserSettings();
+    const strengthWeightPct = parseFloat(settings['strengthWeight'] ?? '50');
+    const cardioWeightPct = parseFloat(settings['cardioWeight'] ?? '30');
+    const activityWeightPct = parseFloat(settings['activityWeight'] ?? '20');
+
     return {
       weekStart: weekStart.toISOString(),
       weekEnd: weekEnd.toISOString(),
       totalBaselineValue,
+      weightedTotal: weeklyStats.totalBaselineValue,
+      strengthValue: weeklyStats.strengthValue,
+      cardioValue: weeklyStats.cardioValue,
+      activityValue: weeklyStats.activityValue,
+      strengthWeight: strengthWeightPct,
+      cardioWeight: cardioWeightPct,
+      activityWeight: activityWeightPct,
       entryCount,
       details,
     };
