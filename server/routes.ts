@@ -392,6 +392,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.post("/api/admin/recalculate-baselines", async (req, res) => {
+    try {
+      const result = await storage.recalculateAllBaselines();
+      res.json({ success: true, ...result });
+    } catch (error) {
+      console.error("重新计算基线值失败:", error);
+      res.status(500).json({ error: "重新计算基线值失败" });
+    }
+  });
+
   // ==================== 用户设置 API ====================
 
   app.get("/api/settings", async (req, res) => {

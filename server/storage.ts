@@ -198,6 +198,7 @@ export interface IStorage {
     weekCount: number;
   }>;
   migrateHistoricalMuscleStats(): Promise<{ migratedWeeks: number }>;
+  recalculateAllBaselines(): Promise<{ updatedEntries: number; updatedWeeks: number }>;
 
   // 用户设置
   getUserSetting(key: string): Promise<string | null>;
@@ -1571,6 +1572,31 @@ export class MemStorage implements IStorage {
     }
 
     return { migratedWeeks: weekStarts.length };
+  }
+
+  async recalculateAllBaselines(): Promise<{ updatedEntries: number; updatedWeeks: number }> {
+    let updatedEntries = 0;
+    const weekStartsSet = new Set<string>();
+
+    for (const [id, entry] of this.workoutEntries) {
+      const exercise = this.exercises.get(entry.exerciseId);
+      if (!exercise) continue;
+      const newBaseline = calculateBaseline(
+        entry.value, entry.sets ?? 1, entry.weightFactor ?? exercise.weightFactor,
+        exercise.category, exercise.movementCoefficient ?? 1, exercise.intensityFactor ?? 1, exercise.name
+      );
+      entry.baselineValue = newBaseline;
+      this.workoutEntries.set(id, entry);
+      updatedEntries++;
+      const weekStart = this.getWeekStart(entry.date);
+      weekStartsSet.add(this.formatTaipeiDate(weekStart));
+    }
+
+    for (const ws of weekStartsSet) {
+      await this.updateWeeklyMuscleStats(ws);
+    }
+
+    return { updatedEntries, updatedWeeks: weekStartsSet.size };
   }
 
   private userSettingsMap: Map<string, string> = new Map();
@@ -3121,6 +3147,53 @@ export class DbStorage implements IStorage {
     }
 
     return { migratedWeeks: weekStarts.length };
+  }
+
+  async recalculateAllBaselines(): Promise<{ updatedEntries: number; updatedWeeks: number }> {
+    const allEntries = await this.db
+      .select({
+        entryId: workoutEntries.id,
+        value: workoutEntries.value,
+        sets: workoutEntries.sets,
+        entryWeightFactor: workoutEntries.weightFactor,
+        date: workoutEntries.date,
+        exerciseCategory: exercises.category,
+        exerciseWeightFactor: exercises.weightFactor,
+        exerciseMovementCoefficient: exercises.movementCoefficient,
+        exerciseIntensityFactor: exercises.intensityFactor,
+        exerciseName: exercises.name,
+      })
+      .from(workoutEntries)
+      .innerJoin(exercises, eq(workoutEntries.exerciseId, exercises.id));
+
+    let updatedEntries = 0;
+    const weekStartsSet = new Set<string>();
+
+    for (const entry of allEntries) {
+      const wf = entry.entryWeightFactor ?? entry.exerciseWeightFactor;
+      const sets = entry.sets ?? 1;
+      const mc = entry.exerciseMovementCoefficient ?? 1;
+      const intf = entry.exerciseIntensityFactor ?? 1;
+      const newBaseline = calculateBaseline(
+        entry.value, sets, wf,
+        entry.exerciseCategory, mc, intf, entry.exerciseName
+      );
+
+      await this.db
+        .update(workoutEntries)
+        .set({ baselineValue: newBaseline })
+        .where(eq(workoutEntries.id, entry.entryId));
+
+      updatedEntries++;
+      const weekStart = this.getWeekStart(entry.date);
+      weekStartsSet.add(this.formatTaipeiDate(weekStart));
+    }
+
+    for (const ws of weekStartsSet) {
+      await this.updateWeeklyMuscleStats(ws);
+    }
+
+    return { updatedEntries, updatedWeeks: weekStartsSet.size };
   }
 
   async getUserSetting(key: string): Promise<string | null> {
