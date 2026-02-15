@@ -48,6 +48,7 @@ type WeekDetails = {
     exerciseUnit: string;
     exerciseCategory: string | null;
     weightFactor: number;
+    intensityFactor: number;
     count: number;
     totalValue: number;
     baselineValue: number;
@@ -1283,31 +1284,37 @@ export default function Dashboard() {
                       <TableHead>运动项目</TableHead>
                       <TableHead className="text-right">记录数</TableHead>
                       <TableHead className="text-right">总数值</TableHead>
-                      <TableHead className="text-right">权重系数</TableHead>
+                      <TableHead className="text-right">系数</TableHead>
                       <TableHead className="text-right">基准值</TableHead>
                       <TableHead className="text-right">占比</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {weekDetails.details.map((detail, index) => (
-                      <TableRow key={index}>
-                        <TableCell className="font-medium">
-                          {detail.exerciseName}
-                          <span className="text-xs text-muted-foreground ml-2">
-                            ({detail.exerciseUnit})
-                          </span>
-                        </TableCell>
-                        <TableCell className="text-right">{detail.count}</TableCell>
-                        <TableCell className="text-right">{detail.totalValue.toFixed(1)}</TableCell>
-                        <TableCell className="text-right">x {detail.weightFactor}</TableCell>
-                        <TableCell className="text-right font-semibold">
-                          {detail.baselineValue.toFixed(1)}
-                        </TableCell>
-                        <TableCell className="text-right text-sm text-muted-foreground">
-                          {weekDetails.totalBaselineValue > 0 ? ((detail.baselineValue / weekDetails.totalBaselineValue) * 100).toFixed(1) : '0.0'}%
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                    {weekDetails.details.map((detail, index) => {
+                      const isCardioOrActivity = detail.exerciseCategory === '有氧' || detail.exerciseCategory === '活动量';
+                      const factorLabel = isCardioOrActivity 
+                        ? `强度 ${detail.intensityFactor ?? 1}` 
+                        : `x ${detail.weightFactor}`;
+                      return (
+                        <TableRow key={index}>
+                          <TableCell className="font-medium">
+                            {detail.exerciseName}
+                            <span className="text-xs text-muted-foreground ml-2">
+                              ({detail.exerciseUnit})
+                            </span>
+                          </TableCell>
+                          <TableCell className="text-right">{detail.count}</TableCell>
+                          <TableCell className="text-right">{detail.totalValue.toFixed(1)}</TableCell>
+                          <TableCell className="text-right">{factorLabel}</TableCell>
+                          <TableCell className="text-right font-semibold">
+                            {detail.baselineValue.toFixed(1)}
+                          </TableCell>
+                          <TableCell className="text-right text-sm text-muted-foreground">
+                            {weekDetails.totalBaselineValue > 0 ? ((detail.baselineValue / weekDetails.totalBaselineValue) * 100).toFixed(1) : '0.0'}%
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
                     <TableRow className="font-bold bg-muted/50">
                       <TableCell>合计</TableCell>
                       <TableCell className="text-right">{weekDetails.entryCount}</TableCell>

@@ -28,7 +28,9 @@ function calculateBaseline(
 ): number {
   if (exerciseName === '每周平均步数' || category === '活动量') {
     if (value <= 0) return 0;
-    return Math.log(1 + value / 1000) * 5;
+    const dailySteps = exerciseName === '每周平均步数' ? value / 7 : value;
+    const dailyScore = (dailySteps / 500) * (1 - 0.00002 * dailySteps);
+    return dailyScore * 7;
   }
   if (category === '有氧') {
     return value * (sets || 1) * intensityFactor;
@@ -77,6 +79,7 @@ export interface IStorage {
       exerciseUnit: string;
       exerciseCategory: string | null;
       weightFactor: number;
+      intensityFactor: number;
       count: number;
       totalValue: number;
       baselineValue: number;
@@ -540,6 +543,7 @@ export class MemStorage implements IStorage {
       exerciseUnit: string;
       exerciseCategory: string | null;
       weightFactor: number;
+      intensityFactor: number;
       count: number;
       totalValue: number;
       baselineValue: number;
@@ -549,7 +553,6 @@ export class MemStorage implements IStorage {
       const exercise = this.exercises.get(entry.exerciseId);
       if (!exercise) continue;
 
-      // 直接使用已保存的基准值
       const sets = entry.sets || 1;
       const entryTotal = entry.value * sets;
       const entryBaseline = entry.baselineValue ?? (entryTotal * exercise.weightFactor);
@@ -566,6 +569,7 @@ export class MemStorage implements IStorage {
           exerciseUnit: exercise.unit,
           exerciseCategory: exercise.category,
           weightFactor: exercise.weightFactor,
+          intensityFactor: exercise.intensityFactor ?? 1,
           count: 1,
           totalValue: entryTotal,
           baselineValue: entryBaseline,
@@ -2023,19 +2027,18 @@ export class DbStorage implements IStorage {
   }
 
   async getCurrentWeekDetails() {
-    // 获取排名数据以获得"当前周"（实际上是最后一周有数据的周）
     const rankingData = await this.getRankingData();
     const weekStart = new Date(rankingData.currentWeek.weekStart);
     const weekEnd = new Date(rankingData.currentWeek.weekEnd);
 
     const result = await this.db
-      // 直接使用已保存的基准值
       .select({
         exerciseId: exercises.id,
         exerciseName: exercises.name,
         exerciseUnit: exercises.unit,
         exerciseCategory: exercises.category,
         weightFactor: exercises.weightFactor,
+        intensityFactor: exercises.intensityFactor,
         count: sql<number>`cast(count(${workoutEntries.id}) as int)`,
         totalValue: sql<number>`cast(sum(${workoutEntries.value} * coalesce(${workoutEntries.sets}, 1)) as float)`,
         baselineValue: sql<number>`cast(sum(coalesce(${workoutEntries.baselineValue}, ${workoutEntries.value} * coalesce(${workoutEntries.sets}, 1) * ${exercises.weightFactor})) as float)`,
@@ -2048,9 +2051,11 @@ export class DbStorage implements IStorage {
           lte(workoutEntries.date, weekEnd)
         )
       )
-      .groupBy(exercises.id, exercises.name, exercises.unit, exercises.category, exercises.weightFactor);
+      .groupBy(exercises.id, exercises.name, exercises.unit, exercises.category, exercises.weightFactor, exercises.intensityFactor);
 
-    const details = result.sort((a, b) => b.baselineValue - a.baselineValue);
+    const details = result
+      .map(r => ({ ...r, intensityFactor: r.intensityFactor ?? 1 }))
+      .sort((a, b) => b.baselineValue - a.baselineValue);
 
     const totalBaselineValue = details.reduce((sum, d) => sum + d.baselineValue, 0);
 
@@ -3244,10 +3249,16 @@ export class DbStorage implements IStorage {
       const coeffs = exerciseCoefficients[entry.exerciseName];
       const mc = coeffs?.movementCoefficient ?? entry.exerciseMovementCoefficient ?? 1;
       const intf = coeffs?.intensityFactor ?? entry.exerciseIntensityFactor ?? 1;
-      const newBaseline = calculateBaseline(
-        entry.value, sets, wf,
-        entry.exerciseCategory, mc, intf, entry.exerciseName
-      );
+
+      let newBaseline: number;
+      if (entry.exerciseCategory === '有氧') {
+        newBaseline = (entry.value / 10) * intf;
+      } else {
+        newBaseline = calculateBaseline(
+          entry.value, sets, wf,
+          entry.exerciseCategory, mc, intf, entry.exerciseName
+        );
+      }
 
       await this.db
         .update(workoutEntries)

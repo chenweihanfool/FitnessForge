@@ -271,11 +271,24 @@ export default function Entries() {
     setIsEditOpen(true);
   };
 
-  const calculateBaselineValue = (value: number, exerciseId: string, customWeightFactor?: number) => {
+  const calculateBaselineValue = (value: number, exerciseId: string, customWeightFactor?: number, sets?: number) => {
     const exercise = exercises?.find((e) => e.id === exerciseId);
     if (!exercise) return 0;
     const weightFactor = customWeightFactor ?? exercise.weightFactor;
-    return value * weightFactor;
+    const s = sets || 1;
+
+    if (exercise.name === '每周平均步数' || exercise.category === '活动量') {
+      if (value <= 0) return 0;
+      const dailySteps = exercise.name === '每周平均步数' ? value / 7 : value;
+      return (dailySteps / 500) * (1 - 0.00002 * dailySteps) * 7;
+    }
+    if (exercise.category === '有氧') {
+      return value * s * (exercise.intensityFactor ?? 1);
+    }
+    if (exercise.category === '力量') {
+      return weightFactor * value * s * (exercise.movementCoefficient ?? 1) / 10;
+    }
+    return value * s * weightFactor;
   };
 
   return (
@@ -441,11 +454,11 @@ export default function Entries() {
                             {isAverageSteps ? (
                               <>
                                 每周总步数: {(field.value * 7).toFixed(0)} 步 | 
-                                基准值: {calculateBaselineValue(field.value * 7, form.watch("exerciseId"), currentWeightFactor).toFixed(2)}
+                                基准值: {calculateBaselineValue(field.value * 7, form.watch("exerciseId"), currentWeightFactor, form.watch("sets")).toFixed(2)}
                               </>
                             ) : (
                               <>
-                                基准值: {calculateBaselineValue(field.value, form.watch("exerciseId"), currentWeightFactor).toFixed(2)}
+                                基准值: {calculateBaselineValue(field.value, form.watch("exerciseId"), currentWeightFactor, form.watch("sets")).toFixed(2)}
                               </>
                             )}
                           </FormDescription>
@@ -776,11 +789,11 @@ export default function Entries() {
                           {isAverageSteps ? (
                             <>
                               每周总步数: {(field.value * 7).toFixed(0)} 步 | 
-                              基准值: {calculateBaselineValue(field.value * 7, editForm.watch("exerciseId"), currentWeightFactor).toFixed(2)}
+                              基准值: {calculateBaselineValue(field.value * 7, editForm.watch("exerciseId"), currentWeightFactor, editForm.watch("sets")).toFixed(2)}
                             </>
                           ) : (
                             <>
-                              基准值: {calculateBaselineValue(field.value, editForm.watch("exerciseId"), currentWeightFactor).toFixed(2)}
+                              基准值: {calculateBaselineValue(field.value, editForm.watch("exerciseId"), currentWeightFactor, editForm.watch("sets")).toFixed(2)}
                             </>
                           )}
                         </FormDescription>

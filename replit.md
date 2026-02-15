@@ -30,7 +30,7 @@ The frontend uses TanStack Query for server state management with optimistic upd
 - **Category-Specific Scoring Formulas**: Each exercise category uses a distinct scoring formula stored as `baselineValue` at entry creation:
   - **Strength (力量)**: `weightFactor × value × sets × movementCoefficient / 10` — where movementCoefficient reflects exercise complexity (compound=1.2, isolation=0.8, bodyweight=1.0, core=0.8).
   - **Cardio (有氧)**: `value(minutes) × sets × intensityFactor` — where intensityFactor reflects effort level (running=1.0, weighted treadmill=2.0, jumping jacks=1.5).
-  - **Activity (活动量)**: `ln(1 + steps/1000) × 5` — logarithmic diminishing returns for step counts.
+  - **Activity (活动量)**: `(dailySteps/500) × (1 - 0.00002 × dailySteps) × 7` — diminishing returns formula for step counts. For "每周平均步数" entries, value is divided by 7 to get daily steps first. Old cardio entries (distance-based) are converted via `distance(KM)/10 × intensityFactor`.
   - **Other categories**: `value × sets × weightFactor` — generic formula for flexibility/core/balance/other.
 - **Weighted Composite Total**: Weekly total score is computed as `strengthValue × S% + cardioValue × C% + activityValue × A%` where weights are user-configurable (default 50/30/20). Settings stored in `user_settings` table. API: `GET/POST /api/settings`.
 - **Fixed Baseline Value Storage**: Baseline values are calculated and stored in the database at the time of entry creation. Once stored, all statistics queries use the saved baseline value, ensuring historical data remains unchanged even if exercise parameters are modified later. This provides data integrity and accurate historical tracking.
