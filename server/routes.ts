@@ -237,27 +237,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const weekEnd = new Date(rankingData.currentWeek.weekEnd);
       const weeklyStats = await storage.getWeeklyStats(weekStart, weekEnd);
       
-      // 使用getWeeklyStats返回的分类值（已应用split ratio逻辑）
+      const rawSum = weeklyStats.strengthValue + weeklyStats.cardioValue + weeklyStats.activityValue;
       const breakdown = [
         {
           category: "力量",
           value: weeklyStats.strengthValue,
-          percentage: weeklyStats.totalBaselineValue > 0 
-            ? (weeklyStats.strengthValue / weeklyStats.totalBaselineValue) * 100 
+          percentage: rawSum > 0 
+            ? (weeklyStats.strengthValue / rawSum) * 100 
             : 0,
         },
         {
           category: "有氧",
           value: weeklyStats.cardioValue,
-          percentage: weeklyStats.totalBaselineValue > 0 
-            ? (weeklyStats.cardioValue / weeklyStats.totalBaselineValue) * 100 
+          percentage: rawSum > 0 
+            ? (weeklyStats.cardioValue / rawSum) * 100 
             : 0,
         },
         {
           category: "活动量",
           value: weeklyStats.activityValue,
-          percentage: weeklyStats.totalBaselineValue > 0 
-            ? (weeklyStats.activityValue / weeklyStats.totalBaselineValue) * 100 
+          percentage: rawSum > 0 
+            ? (weeklyStats.activityValue / rawSum) * 100 
             : 0,
         },
       ]
