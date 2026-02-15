@@ -1163,10 +1163,10 @@ export default function Dashboard() {
                           {cat.percentage.toFixed(1)}%
                         </span>
                       </div>
-                      <div className="w-full bg-muted rounded-full h-2">
+                      <div className="w-full bg-muted rounded-full h-2 overflow-hidden">
                         <div
                           className="bg-primary rounded-full h-2 transition-all"
-                          style={{ width: `${cat.percentage}%` }}
+                          style={{ width: `${Math.min(cat.percentage, 100)}%` }}
                         />
                       </div>
                       <p className="text-xs text-muted-foreground" data-testid={`value-${cat.category}`}>
