@@ -34,7 +34,7 @@ function calculateBaseline(
   }
   if (category === '有氧') {
     if (exerciseName === '開合跳') {
-      return (value * (sets || 1) * 85 * 0.15) / 10;
+      return (value * (sets || 1) * 2 * intensityFactor) / 10;
     }
     return value * (sets || 1) * intensityFactor;
   }
