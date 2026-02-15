@@ -3256,7 +3256,8 @@ export class DbStorage implements IStorage {
 
       let newBaseline: number;
       if (entry.exerciseCategory === '有氧' && entry.exerciseUnit === 'KM') {
-        newBaseline = entry.value * 10 * intf;
+        const kmMultiplier = entry.exerciseName === '跑步機負重' ? 20 : 10;
+        newBaseline = entry.value * kmMultiplier * intf;
       } else {
         newBaseline = calculateBaseline(
           entry.value, sets, wf,
