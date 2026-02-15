@@ -41,6 +41,16 @@ import { Badge } from "@/components/ui/badge";
 
 const CATEGORIES = ["力量", "有氧", "柔韧性", "核心", "平衡", "活动量", "其他"];
 const MUSCLE_GROUPS = ["胸", "背", "腿", "肩", "二头肌", "核心", "臀", "三头肌"];
+const INTENSITY_OPTIONS = [
+  { value: 1.0, label: "普通慢跑" },
+  { value: 1.5, label: "開合跳" },
+  { value: 2.0, label: "負重行走 / 高強度間歇" },
+];
+
+function getIntensityLabel(factor: number): string {
+  const option = INTENSITY_OPTIONS.find(o => o.value === factor);
+  return option ? option.label : `${factor}`;
+}
 
 export default function Exercises() {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
@@ -337,19 +347,26 @@ export default function Exercises() {
                     name="intensityFactor"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>强度系数</FormLabel>
-                        <FormControl>
-                          <Input
-                            type="number"
-                            step="0.1"
-                            placeholder="1.0"
-                            {...field}
-                            onChange={(e) => field.onChange(parseFloat(e.target.value) || 1)}
-                            data-testid="input-exercise-intensity-factor"
-                          />
-                        </FormControl>
+                        <FormLabel>强度型态</FormLabel>
+                        <Select
+                          onValueChange={(v) => field.onChange(parseFloat(v))}
+                          value={String(field.value ?? 1)}
+                        >
+                          <FormControl>
+                            <SelectTrigger data-testid="select-exercise-intensity-factor">
+                              <SelectValue placeholder="选择强度型态" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {INTENSITY_OPTIONS.map((opt) => (
+                              <SelectItem key={opt.value} value={String(opt.value)} data-testid={`intensity-option-${opt.value}`}>
+                                {opt.label} ({opt.value})
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
                         <FormDescription>
-                          跑步1.0 / 负重跑2.0 / 开合跳1.5
+                          有氧评分 = 分钟 x 组数 x 强度系数
                         </FormDescription>
                         <FormMessage />
                       </FormItem>
@@ -555,11 +572,11 @@ export default function Exercises() {
                       </Badge>
                     </div>
                   )}
-                  {exercise.category === '有氧' && exercise.intensityFactor != null && exercise.intensityFactor !== 1 && (
+                  {exercise.category === '有氧' && exercise.intensityFactor != null && (
                     <div className="flex items-center justify-between">
-                      <span className="text-sm text-muted-foreground">强度系数</span>
+                      <span className="text-sm text-muted-foreground">强度型态</span>
                       <Badge variant="secondary" data-testid={`badge-intensity-${exercise.id}`}>
-                        {exercise.intensityFactor}
+                        {getIntensityLabel(exercise.intensityFactor)} ({exercise.intensityFactor})
                       </Badge>
                     </div>
                   )}
@@ -585,7 +602,7 @@ export default function Exercises() {
                     {exercise.category === '力量' 
                       ? `评分 = ${exercise.weightFactor} x 次数 x 组数 x ${exercise.movementCoefficient ?? 1} / 10`
                       : exercise.category === '有氧'
-                      ? `评分 = 分钟 x 组数 x ${exercise.intensityFactor ?? 1}`
+                      ? `评分 = 分钟 x 组数 x ${exercise.intensityFactor ?? 1} (${getIntensityLabel(exercise.intensityFactor ?? 1)})`
                       : exercise.category === '活动量'
                       ? `评分 = ln(1+步数/1000) x 5`
                       : `评分 = 数据 x ${exercise.weightFactor}`
@@ -716,19 +733,26 @@ export default function Exercises() {
                   name="intensityFactor"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>强度系数</FormLabel>
-                      <FormControl>
-                        <Input
-                          type="number"
-                          step="0.1"
-                          placeholder="1.0"
-                          {...field}
-                          onChange={(e) => field.onChange(parseFloat(e.target.value) || 1)}
-                          data-testid="input-edit-intensity-factor"
-                        />
-                      </FormControl>
+                      <FormLabel>强度型态</FormLabel>
+                      <Select
+                        onValueChange={(v) => field.onChange(parseFloat(v))}
+                        value={String(field.value ?? 1)}
+                      >
+                        <FormControl>
+                          <SelectTrigger data-testid="select-edit-intensity-factor">
+                            <SelectValue placeholder="选择强度型态" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {INTENSITY_OPTIONS.map((opt) => (
+                            <SelectItem key={opt.value} value={String(opt.value)} data-testid={`edit-intensity-option-${opt.value}`}>
+                              {opt.label} ({opt.value})
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                       <FormDescription>
-                        跑步1.0 / 负重跑2.0 / 开合跳1.5
+                        有氧评分 = 分钟 x 组数 x 强度系数
                       </FormDescription>
                       <FormMessage />
                     </FormItem>
