@@ -414,18 +414,23 @@ export default function Entries() {
                     const selectedExercise = exercises?.find((e) => e.id === form.watch("exerciseId"));
                     const isAverageSteps = selectedExercise?.name === '每周平均步数';
                     const isCardio = selectedExercise?.category === '有氧';
+                    const isJumpingJacks = selectedExercise?.name === '開合跳';
                     const currentWeightFactor = form.watch("weightFactor");
                     
                     const valueLabel = isAverageSteps 
                       ? '每日平均步数' 
-                      : isCardio 
-                        ? '运动时间（分钟）' 
-                        : '数据值';
+                      : isJumpingJacks
+                        ? '次数'
+                        : isCardio 
+                          ? '运动时间（分钟）' 
+                          : '数据值';
                     const valuePlaceholder = isAverageSteps 
                       ? "输入每日平均步数" 
-                      : isCardio 
-                        ? "输入运动分钟数" 
-                        : "输入数据值";
+                      : isJumpingJacks
+                        ? "输入次数"
+                        : isCardio 
+                          ? "输入运动分钟数" 
+                          : "输入数据值";
                     
                     return (
                       <FormItem>
@@ -749,18 +754,23 @@ export default function Entries() {
                   const selectedExercise = exercises?.find((e) => e.id === editForm.watch("exerciseId"));
                   const isAverageSteps = selectedExercise?.name === '每周平均步数';
                   const isCardio = selectedExercise?.category === '有氧';
+                  const isJumpingJacks = selectedExercise?.name === '開合跳';
                   const currentWeightFactor = editForm.watch("weightFactor");
                   
                   const valueLabel = isAverageSteps 
                     ? '每日平均步数' 
-                    : isCardio 
-                      ? '运动时间（分钟）' 
-                      : '数据值';
+                    : isJumpingJacks
+                      ? '次数'
+                      : isCardio 
+                        ? '运动时间（分钟）' 
+                        : '数据值';
                   const valuePlaceholder = isAverageSteps 
                     ? "输入每日平均步数" 
-                    : isCardio 
-                      ? "输入运动分钟数" 
-                      : "输入数据值";
+                    : isJumpingJacks
+                      ? "输入次数"
+                      : isCardio 
+                        ? "输入运动分钟数" 
+                        : "输入数据值";
                   
                   return (
                     <FormItem>
