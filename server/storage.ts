@@ -30,13 +30,13 @@ function calculateBaseline(
     if (value <= 0) return 0;
     const dailySteps = exerciseName === '每周平均步数' ? value / 7 : value;
     const dailyScore = (dailySteps / 500) * (1 - 0.00002 * dailySteps);
-    return dailyScore * 7;
+    return dailyScore * 7 * 2.4;
   }
   if (category === '有氧') {
     if (exerciseName === '開合跳') {
-      return (value * (sets || 1) * 2 * intensityFactor) / 10;
+      return (value * (sets || 1) * 2 * intensityFactor) / 10 * 2.2;
     }
-    return value * (sets || 1) * intensityFactor;
+    return value * (sets || 1) * intensityFactor * 2.2;
   }
   if (category === '力量') {
     return weightFactor * value * (sets || 1) * movementCoefficient / 10;
@@ -3257,7 +3257,7 @@ export class DbStorage implements IStorage {
       let newBaseline: number;
       if (entry.exerciseCategory === '有氧' && entry.exerciseUnit === 'KM') {
         const kmMultiplier = entry.exerciseName === '跑步機負重' ? 20 : 10;
-        newBaseline = entry.value * kmMultiplier * intf;
+        newBaseline = entry.value * kmMultiplier * intf * 2.2;
       } else {
         newBaseline = calculateBaseline(
           entry.value, sets, wf,
