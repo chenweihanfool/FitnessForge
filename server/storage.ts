@@ -212,6 +212,7 @@ export interface IStorage {
   }>;
   migrateHistoricalMuscleStats(): Promise<{ migratedWeeks: number }>;
   recalculateAllBaselines(): Promise<{ updatedEntries: number; updatedWeeks: number; updatedExercises: number }>;
+  convertExerciseUnit(exerciseName: string, newUnit: string, valueMultiplier: number): Promise<{ updatedExercise: boolean; updatedEntries: number }>;
 
   // 用户设置
   getUserSetting(key: string): Promise<string | null>;
@@ -1642,6 +1643,10 @@ export class MemStorage implements IStorage {
       result[k] = v;
     }
     return result;
+  }
+
+  async convertExerciseUnit(exerciseName: string, newUnit: string, valueMultiplier: number): Promise<{ updatedExercise: boolean; updatedEntries: number }> {
+    return { updatedExercise: false, updatedEntries: 0 };
   }
 }
 
@@ -3280,6 +3285,38 @@ export class DbStorage implements IStorage {
     }
 
     return { updatedEntries, updatedWeeks: weekStartsSet.size, updatedExercises };
+  }
+
+  async convertExerciseUnit(exerciseName: string, newUnit: string, valueMultiplier: number): Promise<{ updatedExercise: boolean, updatedEntries: number }> {
+    const exerciseList = await this.db
+      .select()
+      .from(exercises)
+      .where(eq(exercises.name, exerciseName));
+
+    if (exerciseList.length === 0) {
+      throw new Error(`Exercise not found: ${exerciseName}`);
+    }
+
+    const exercise = exerciseList[0];
+
+    await this.db
+      .update(exercises)
+      .set({ unit: newUnit })
+      .where(eq(exercises.id, exercise.id));
+
+    const entries = await this.db
+      .select({ id: workoutEntries.id, value: workoutEntries.value })
+      .from(workoutEntries)
+      .where(eq(workoutEntries.exerciseId, exercise.id));
+
+    for (const entry of entries) {
+      await this.db
+        .update(workoutEntries)
+        .set({ value: entry.value * valueMultiplier })
+        .where(eq(workoutEntries.id, entry.id));
+    }
+
+    return { updatedExercise: true, updatedEntries: entries.length };
   }
 
   async getUserSetting(key: string): Promise<string | null> {

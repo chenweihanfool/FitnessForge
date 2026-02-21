@@ -402,6 +402,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.post("/api/admin/convert-exercise-unit", async (req, res) => {
+    try {
+      const { exerciseName, newUnit, valueMultiplier } = req.body;
+      if (!exerciseName || !newUnit || !valueMultiplier) {
+        return res.status(400).json({ error: "Missing exerciseName, newUnit, or valueMultiplier" });
+      }
+      const result = await storage.convertExerciseUnit(exerciseName, newUnit, valueMultiplier);
+      res.json({ success: true, ...result });
+    } catch (error) {
+      console.error("转换运动单位失败:", error);
+      res.status(500).json({ error: "转换运动单位失败" });
+    }
+  });
+
   // ==================== 用户设置 API ====================
 
   app.get("/api/settings", async (req, res) => {
