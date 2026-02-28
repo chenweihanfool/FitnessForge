@@ -286,6 +286,17 @@ export default function Entries() {
       if (exercise.name === '開合跳') {
         return (value * s * 2 * (exercise.intensityFactor ?? 1)) / 10 * 2.2;
       }
+      if (exercise.name === '跑步' || exercise.name === '跑步機負重') {
+        const minutes = value;
+        let km: number;
+        if (sets && sets > 0) {
+          km = sets;
+        } else {
+          const defaultPace = exercise.name === '跑步' ? 12 : 20;
+          km = minutes / defaultPace;
+        }
+        return (minutes + km * 16) * (exercise.intensityFactor ?? 1) * 2.2;
+      }
       return value * s * (exercise.intensityFactor ?? 1) * 2.2;
     }
     if (exercise.category === '力量') {

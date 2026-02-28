@@ -36,6 +36,17 @@ function calculateBaseline(
     if (exerciseName === '開合跳') {
       return (value * (sets || 1) * 2 * intensityFactor) / 10 * 2.2;
     }
+    if (exerciseName === '跑步' || exerciseName === '跑步機負重') {
+      const minutes = value;
+      let km: number;
+      if (sets && sets > 0) {
+        km = sets;
+      } else {
+        const defaultPace = exerciseName === '跑步' ? 12 : 20;
+        km = minutes / defaultPace;
+      }
+      return (minutes + km * 16) * intensityFactor * 2.2;
+    }
     return value * (sets || 1) * intensityFactor * 2.2;
   }
   if (category === '力量') {
