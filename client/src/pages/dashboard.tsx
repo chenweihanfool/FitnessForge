@@ -1692,8 +1692,12 @@ export default function Dashboard() {
                   <div className="flex flex-col items-end gap-0.5">
                     <span className="font-semibold">
                       {entry.value} {entry.exerciseUnit}
-                      {entry.sets && entry.sets > 1 && (
-                        <span className="text-muted-foreground font-normal"> x {entry.sets}组</span>
+                      {entry.sets && entry.sets > 0 && (
+                        <span className="text-muted-foreground font-normal">
+                          {(entry.exerciseName === '跑步' || entry.exerciseName === '跑步機負重')
+                            ? ` / ${entry.sets}km`
+                            : entry.sets > 1 ? ` x ${entry.sets}组` : ''}
+                        </span>
                       )}
                     </span>
                     <span className="text-xs text-muted-foreground">

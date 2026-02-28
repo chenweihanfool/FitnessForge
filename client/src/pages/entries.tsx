@@ -295,7 +295,7 @@ export default function Entries() {
           const defaultPace = exercise.name === '跑步' ? 12 : 20;
           km = minutes / defaultPace;
         }
-        return (minutes + km * 16) * (exercise.intensityFactor ?? 1) * 2.2;
+        return (minutes + km * 10) * (exercise.intensityFactor ?? 1) * 1.83;
       }
       return value * s * (exercise.intensityFactor ?? 1) * 2.2;
     }
@@ -504,6 +504,7 @@ export default function Entries() {
                     (selectedExercise.muscleGlutes ?? 0) > 0 ||
                     (selectedExercise.muscleFullBody ?? 0) > 0
                   );
+                  const isRunning = selectedExercise?.name === '跑步' || selectedExercise?.name === '跑步機負重';
                   const showSets = hasMuscleGroup || selectedExercise?.category === "力量" || selectedExercise?.category === "有氧";
                   return showSets ? (
                     <FormField
@@ -511,21 +512,23 @@ export default function Entries() {
                       name="sets"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>组数（可选）</FormLabel>
+                          <FormLabel>{isRunning ? "距離（公里，可选）" : "组数（可选）"}</FormLabel>
                           <FormControl>
                             <Input
                               type="number"
-                              step="1"
-                              min="1"
-                              placeholder="输入组数"
+                              step={isRunning ? "0.01" : "1"}
+                              min={isRunning ? "0" : "1"}
+                              placeholder={isRunning ? "输入跑步距離（公里）" : "输入组数"}
                               {...field}
                               value={field.value ?? ""}
-                              onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value) : undefined)}
+                              onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)}
                               data-testid="input-entry-sets"
                             />
                           </FormControl>
                           <FormDescription>
-                            记录本次训练的组数，用于追踪各肌群训练量
+                            {isRunning
+                              ? "留空将根据预设配速估算距離"
+                              : "记录本次训练的组数，用于追踪各肌群训练量"}
                           </FormDescription>
                           <FormMessage />
                         </FormItem>
@@ -632,7 +635,11 @@ export default function Entries() {
                         {entry.value} {entry.exercise.unit}
                       </TableCell>
                       <TableCell data-testid={`sets-${entry.id}`}>
-                        {entry.sets ? `${entry.sets} 组` : "-"}
+                        {entry.sets
+                          ? (entry.exercise.name === '跑步' || entry.exercise.name === '跑步機負重')
+                            ? `${entry.sets} 公里`
+                            : `${entry.sets} 组`
+                          : "-"}
                       </TableCell>
                       <TableCell>
                         <Badge variant="secondary" data-testid={`badge-baseline-${entry.id}`}>
@@ -844,6 +851,7 @@ export default function Entries() {
                   (selectedExercise.muscleGlutes ?? 0) > 0 ||
                   (selectedExercise.muscleFullBody ?? 0) > 0
                 );
+                const isRunning = selectedExercise?.name === '跑步' || selectedExercise?.name === '跑步機負重';
                 const showSets = hasMuscleGroup || selectedExercise?.category === "力量" || selectedExercise?.category === "有氧";
                 return showSets ? (
                   <FormField
@@ -851,21 +859,23 @@ export default function Entries() {
                     name="sets"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>组数（可选）</FormLabel>
+                        <FormLabel>{isRunning ? "距離（公里，可选）" : "组数（可选）"}</FormLabel>
                         <FormControl>
                           <Input
                             type="number"
-                            step="1"
-                            min="1"
-                            placeholder="输入组数"
+                            step={isRunning ? "0.01" : "1"}
+                            min={isRunning ? "0" : "1"}
+                            placeholder={isRunning ? "输入跑步距離（公里）" : "输入组数"}
                             {...field}
                             value={field.value ?? ""}
-                            onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value) : undefined)}
+                            onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)}
                             data-testid="input-entry-sets"
                           />
                         </FormControl>
                         <FormDescription>
-                          记录本次训练的组数，用于追踪各肌群训练量
+                          {isRunning
+                            ? "留空将根据预设配速估算距離"
+                            : "记录本次训练的组数，用于追踪各肌群训练量"}
                         </FormDescription>
                         <FormMessage />
                       </FormItem>

@@ -45,7 +45,7 @@ function calculateBaseline(
         const defaultPace = exerciseName === '跑步' ? 12 : 20;
         km = minutes / defaultPace;
       }
-      return (minutes + km * 16) * intensityFactor * 2.2;
+      return (minutes + km * 10) * intensityFactor * 1.83;
     }
     return value * (sets || 1) * intensityFactor * 2.2;
   }
