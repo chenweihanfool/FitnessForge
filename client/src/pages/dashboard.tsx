@@ -106,6 +106,9 @@ type WeeklyProgress = {
     difference: number | null;
     differencePercentage: number | null;
     daysSinceLastWorkout: number | null;
+    currentWeekKm: number | null;
+    weeklyAverageKm: number | null;
+    bestWeekKm: number | null;
   }>;
   recommendations: Array<{
     exerciseId: string;
@@ -791,7 +794,7 @@ export default function Dashboard() {
                         </div>
                       )}
                       <div className="flex items-center justify-between text-xs text-muted-foreground">
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
                           <span>
                             本周: {ex.currentWeekValue.toFixed(1)} {ex.exerciseUnit}
                           </span>
@@ -810,6 +813,25 @@ export default function Dashboard() {
                           </span>
                         )}
                       </div>
+                      {ex.currentWeekKm !== null && (
+                        <div className="flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
+                          <span>
+                            本周: {ex.currentWeekKm.toFixed(1)} km
+                          </span>
+                          {ex.weeklyAverageKm !== null && ex.weeklyAverageKm > 0 && (
+                            <>
+                              <span>|</span>
+                              <span>平均: {ex.weeklyAverageKm.toFixed(1)} km</span>
+                            </>
+                          )}
+                          {ex.bestWeekKm !== null && ex.bestWeekKm > 0 && (
+                            <>
+                              <span>|</span>
+                              <span className="text-primary/80">冠: {ex.bestWeekKm.toFixed(1)} km</span>
+                            </>
+                          )}
+                        </div>
+                      )}
                       {ex.weeklyAverage !== null && ex.weeklyAverage > 0 && (
                         <div className="pt-4">
                           <ScaleProgressBar

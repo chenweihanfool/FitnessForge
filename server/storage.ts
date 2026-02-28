@@ -113,6 +113,9 @@ export interface IStorage {
       difference: number | null;
       differencePercentage: number | null;
       daysSinceLastWorkout: number | null;
+      currentWeekKm: number | null;
+      weeklyAverageKm: number | null;
+      bestWeekKm: number | null;
     }>;
     recommendations: Array<{
       exerciseId: string;
@@ -880,6 +883,9 @@ export class MemStorage implements IStorage {
       difference: number | null;
       differencePercentage: number | null;
       daysSinceLastWorkout: number | null;
+      currentWeekKm: number | null;
+      weeklyAverageKm: number | null;
+      bestWeekKm: number | null;
     }> = [];
     
     for (const exercise of allExercises) {
@@ -912,6 +918,34 @@ export class MemStorage implements IStorage {
         daysSinceLastWorkout = Math.floor((nowDateOnly.getTime() - lastDateOnly.getTime()) / (24 * 60 * 60 * 1000));
       }
       
+      let currentWeekKm: number | null = null;
+      let weeklyAverageKm: number | null = null;
+      let bestWeekKm: number | null = null;
+      
+      const isRunningExercise = exercise.name === '跑步' || exercise.name === '跑步機負重';
+      if (isRunningExercise) {
+        const weekStart = new Date(weekDetails.weekStart);
+        const weekEnd = new Date(weekDetails.weekEnd);
+        const thisWeekEntries = exerciseEntries.filter(e => {
+          const d = new Date(e.date);
+          return d >= weekStart && d <= weekEnd;
+        });
+        currentWeekKm = thisWeekEntries.reduce((sum, e) => sum + (e.sets || 0), 0);
+        
+        const weeklyKmTotals = new Map<string, number>();
+        for (const entry of exerciseEntries) {
+          const entryDate = new Date(entry.date);
+          const ws = this.getWeekStart(entryDate);
+          const weekKey = ws.toISOString();
+          weeklyKmTotals.set(weekKey, (weeklyKmTotals.get(weekKey) || 0) + (entry.sets || 0));
+        }
+        if (weeklyKmTotals.size > 0) {
+          const kmValues = Array.from(weeklyKmTotals.values());
+          weeklyAverageKm = kmValues.reduce((a, b) => a + b, 0) / kmValues.length;
+          bestWeekKm = Math.max(...kmValues);
+        }
+      }
+      
       exercisesProgress.push({
         exerciseId: exercise.id,
         exerciseName: exercise.name,
@@ -922,6 +956,9 @@ export class MemStorage implements IStorage {
         difference,
         differencePercentage,
         daysSinceLastWorkout,
+        currentWeekKm,
+        weeklyAverageKm,
+        bestWeekKm,
       });
     }
     
@@ -2378,6 +2415,9 @@ export class DbStorage implements IStorage {
       difference: number | null;
       differencePercentage: number | null;
       daysSinceLastWorkout: number | null;
+      currentWeekKm: number | null;
+      weeklyAverageKm: number | null;
+      bestWeekKm: number | null;
     }> = [];
     
     for (const exercise of allExercises) {
@@ -2413,6 +2453,39 @@ export class DbStorage implements IStorage {
         daysSinceLastWorkout = Math.floor((nowDateOnly.getTime() - lastDateOnly.getTime()) / (24 * 60 * 60 * 1000));
       }
       
+      let currentWeekKm: number | null = null;
+      let weeklyAverageKm: number | null = null;
+      let bestWeekKm: number | null = null;
+      
+      const isRunningExercise = exercise.name === '跑步' || exercise.name === '跑步機負重';
+      if (isRunningExercise) {
+        const weekStart = new Date(weekDetails.weekStart);
+        const weekEnd = new Date(weekDetails.weekEnd);
+        const allEntries = await this.db
+          .select()
+          .from(workoutEntries)
+          .where(eq(workoutEntries.exerciseId, exercise.id));
+        
+        const thisWeekEntries = allEntries.filter(e => {
+          const d = new Date(e.date);
+          return d >= weekStart && d <= weekEnd;
+        });
+        currentWeekKm = thisWeekEntries.reduce((sum, e) => sum + (e.sets || 0), 0);
+        
+        const weeklyKmTotals = new Map<string, number>();
+        for (const entry of allEntries) {
+          const entryDate = new Date(entry.date);
+          const ws = this.getWeekStart(entryDate);
+          const weekKey = ws.toISOString();
+          weeklyKmTotals.set(weekKey, (weeklyKmTotals.get(weekKey) || 0) + (entry.sets || 0));
+        }
+        if (weeklyKmTotals.size > 0) {
+          const kmValues = Array.from(weeklyKmTotals.values());
+          weeklyAverageKm = kmValues.reduce((a, b) => a + b, 0) / kmValues.length;
+          bestWeekKm = Math.max(...kmValues);
+        }
+      }
+      
       exercisesProgress.push({
         exerciseId: exercise.id,
         exerciseName: exercise.name,
@@ -2423,6 +2496,9 @@ export class DbStorage implements IStorage {
         difference,
         differencePercentage,
         daysSinceLastWorkout,
+        currentWeekKm,
+        weeklyAverageKm,
+        bestWeekKm,
       });
     }
     
