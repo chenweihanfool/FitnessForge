@@ -924,20 +924,24 @@ export class MemStorage implements IStorage {
       
       const isRunningExercise = exercise.name === '跑步' || exercise.name === '跑步機負重';
       if (isRunningExercise) {
+        const defaultPace = exercise.name === '跑步' ? 12 : 20;
+        const getKm = (entry: { sets: number | null; value: number }) =>
+          (entry.sets && entry.sets > 0) ? entry.sets : entry.value / defaultPace;
+        
         const weekStart = new Date(weekDetails.weekStart);
         const weekEnd = new Date(weekDetails.weekEnd);
         const thisWeekEntries = exerciseEntries.filter(e => {
           const d = new Date(e.date);
           return d >= weekStart && d <= weekEnd;
         });
-        currentWeekKm = thisWeekEntries.reduce((sum, e) => sum + (e.sets || 0), 0);
+        currentWeekKm = thisWeekEntries.reduce((sum, e) => sum + getKm(e), 0);
         
         const weeklyKmTotals = new Map<string, number>();
         for (const entry of exerciseEntries) {
           const entryDate = new Date(entry.date);
           const ws = this.getWeekStart(entryDate);
           const weekKey = ws.toISOString();
-          weeklyKmTotals.set(weekKey, (weeklyKmTotals.get(weekKey) || 0) + (entry.sets || 0));
+          weeklyKmTotals.set(weekKey, (weeklyKmTotals.get(weekKey) || 0) + getKm(entry));
         }
         if (weeklyKmTotals.size > 0) {
           const kmValues = Array.from(weeklyKmTotals.values());
@@ -2459,6 +2463,10 @@ export class DbStorage implements IStorage {
       
       const isRunningExercise = exercise.name === '跑步' || exercise.name === '跑步機負重';
       if (isRunningExercise) {
+        const defaultPace = exercise.name === '跑步' ? 12 : 20;
+        const getKm = (entry: { sets: number | null; value: number }) =>
+          (entry.sets && entry.sets > 0) ? entry.sets : entry.value / defaultPace;
+        
         const weekStart = new Date(weekDetails.weekStart);
         const weekEnd = new Date(weekDetails.weekEnd);
         const allEntries = await this.db
@@ -2470,14 +2478,14 @@ export class DbStorage implements IStorage {
           const d = new Date(e.date);
           return d >= weekStart && d <= weekEnd;
         });
-        currentWeekKm = thisWeekEntries.reduce((sum, e) => sum + (e.sets || 0), 0);
+        currentWeekKm = thisWeekEntries.reduce((sum, e) => sum + getKm(e), 0);
         
         const weeklyKmTotals = new Map<string, number>();
         for (const entry of allEntries) {
           const entryDate = new Date(entry.date);
           const ws = this.getWeekStart(entryDate);
           const weekKey = ws.toISOString();
-          weeklyKmTotals.set(weekKey, (weeklyKmTotals.get(weekKey) || 0) + (entry.sets || 0));
+          weeklyKmTotals.set(weekKey, (weeklyKmTotals.get(weekKey) || 0) + getKm(entry));
         }
         if (weeklyKmTotals.size > 0) {
           const kmValues = Array.from(weeklyKmTotals.values());
