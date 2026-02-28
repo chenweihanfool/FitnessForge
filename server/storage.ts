@@ -568,8 +568,9 @@ export class MemStorage implements IStorage {
       const exercise = this.exercises.get(entry.exerciseId);
       if (!exercise) continue;
 
+      const isRunningExercise = exercise.name === '跑步' || exercise.name === '跑步機負重';
       const sets = entry.sets || 1;
-      const entryTotal = entry.value * sets;
+      const entryTotal = isRunningExercise ? entry.value : entry.value * sets;
       const entryBaseline = entry.baselineValue ?? (entryTotal * exercise.weightFactor);
 
       const existing = exerciseStats.get(entry.exerciseId);
@@ -1242,8 +1243,9 @@ export class MemStorage implements IStorage {
       if (!exercise) continue;
 
       // 直接使用已保存的基准值
+      const isRunning = exercise.name === '跑步' || exercise.name === '跑步機負重';
       const entryBaselineValue = entry.baselineValue ?? (entry.value * (entry.sets || 1) * exercise.weightFactor);
-      const entryTotalValue = entry.value * (entry.sets || 1);
+      const entryTotalValue = isRunning ? entry.value : entry.value * (entry.sets || 1);
       
       const existing = exerciseStats.get(entry.exerciseId);
       if (existing) {
@@ -2059,7 +2061,7 @@ export class DbStorage implements IStorage {
         weightFactor: exercises.weightFactor,
         intensityFactor: exercises.intensityFactor,
         count: sql<number>`cast(count(${workoutEntries.id}) as int)`,
-        totalValue: sql<number>`cast(sum(${workoutEntries.value} * coalesce(${workoutEntries.sets}, 1)) as float)`,
+        totalValue: sql<number>`cast(sum(case when ${exercises.name} in ('跑步', '跑步機負重') then ${workoutEntries.value} else ${workoutEntries.value} * coalesce(${workoutEntries.sets}, 1) end) as float)`,
         baselineValue: sql<number>`cast(sum(coalesce(${workoutEntries.baselineValue}, ${workoutEntries.value} * coalesce(${workoutEntries.sets}, 1) * ${exercises.weightFactor})) as float)`,
       })
       .from(workoutEntries)
@@ -2758,7 +2760,7 @@ export class DbStorage implements IStorage {
         exerciseCategory: exercises.category,
         weightFactor: exercises.weightFactor,
         count: sql<number>`cast(count(${workoutEntries.id}) as int)`,
-        totalValue: sql<number>`cast(sum(${workoutEntries.value} * coalesce(${workoutEntries.sets}, 1)) as float)`,
+        totalValue: sql<number>`cast(sum(case when ${exercises.name} in ('跑步', '跑步機負重') then ${workoutEntries.value} else ${workoutEntries.value} * coalesce(${workoutEntries.sets}, 1) end) as float)`,
         baselineValue: sql<number>`cast(sum(coalesce(${workoutEntries.baselineValue}, ${workoutEntries.value} * coalesce(${workoutEntries.sets}, 1) * ${exercises.weightFactor})) as float)`,
       })
       .from(workoutEntries)
