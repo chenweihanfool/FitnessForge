@@ -406,8 +406,10 @@ export default function Dashboard() {
       return { name: g.muscleGroup, setsOk, volumeOk, bothOk: setsOk && volumeOk };
     });
 
+    const musclesMetCount = muscleIntensityDetails.filter(m => m.bothOk).length;
+    const muscleMetRatio = muscleGroupsWithTraining.length > 0 ? musclesMetCount / muscleGroupsWithTraining.length : 0;
     const allMusclesAtMaintenance = muscleStatsLoaded && muscleGroupsWithTraining.length > 0 &&
-      muscleIntensityDetails.every(m => m.bothOk);
+      muscleMetRatio >= 0.5;
 
     const isFourWeekHigh = (() => {
       if (!trendData || trendData.length < 2) return false;
@@ -611,12 +613,12 @@ export default function Dashboard() {
                   </div>
                   <div className="text-xs text-muted-foreground ml-8 space-y-0.5">
                     <p className="flex items-center gap-1">
-                      组数: {milestones.musclesSetsOnlyCount}/{milestones.musclesTotalCount}
-                      {milestones.musclesSetsOnlyCount >= milestones.musclesTotalCount && milestones.musclesTotalCount > 0 ? <Check className="h-3 w-3 text-green-500" /> : <Minus className="h-3 w-3" />}
+                      达标: {milestones.musclesFullyMetCount}/{milestones.musclesTotalCount} 肌群
+                      ({milestones.musclesTotalCount > 0 ? Math.round(milestones.musclesFullyMetCount / milestones.musclesTotalCount * 100) : 0}%)
+                      {milestones.allMusclesAtMaintenance ? <Check className="h-3 w-3 text-green-500" /> : <Minus className="h-3 w-3" />}
                     </p>
-                    <p className="flex items-center gap-1">
-                      容量: {milestones.musclesVolumeOnlyCount}/{milestones.musclesTotalCount}
-                      {milestones.musclesVolumeOnlyCount >= milestones.musclesTotalCount && milestones.musclesTotalCount > 0 ? <Check className="h-3 w-3 text-green-500" /> : <Minus className="h-3 w-3" />}
+                    <p className="text-muted-foreground/70">
+                      门槛: 50% 肌群组数及容量达标
                     </p>
                   </div>
                 </div>
