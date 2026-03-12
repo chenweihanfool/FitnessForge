@@ -30,7 +30,7 @@ import {
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Plus, Activity, Trash2, Calendar, Edit } from "lucide-react";
+import { Plus, Activity, Trash2, Calendar, Edit, ChevronDown, ChevronUp } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -86,6 +86,12 @@ export default function Entries() {
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [editingEntry, setEditingEntry] = useState<WorkoutEntryWithExercise | null>(null);
   const [deletingEntry, setDeletingEntry] = useState<WorkoutEntryWithExercise | null>(null);
+
+  // Progressive weight mode state (for strength exercises)
+  const [progressiveMode, setProgressiveMode] = useState(false);
+  const [progStartWeight, setProgStartWeight] = useState<number | "">("");
+  const [progIncrement, setProgIncrement] = useState<number | "">(2.5);
+  const [progNumSets, setProgNumSets] = useState<number | "">(4);
   const { toast } = useToast();
 
   const { data: exercises } = useQuery<Exercise[]>({
@@ -114,6 +120,10 @@ export default function Entries() {
       queryClient.invalidateQueries({ queryKey: ["/api/stats/muscle-group-weekly"] });
       setIsCreateOpen(false);
       form.reset();
+      setProgressiveMode(false);
+      setProgStartWeight("");
+      setProgIncrement(2.5);
+      setProgNumSets(4);
       toast({
         title: "成功",
         description: "运动记录已添加",
@@ -208,6 +218,36 @@ export default function Entries() {
     queryKey: selectedExerciseId ? [`/api/stats/exercise-average/${selectedExerciseId}`] : [],
     enabled: !!selectedExerciseId,
   });
+
+  // Compute progressive weight average and auto-fill form
+  const computeProgressiveWeights = (start: number, increment: number, numSets: number) => {
+    const weights: number[] = [];
+    for (let i = 0; i < numSets; i++) {
+      weights.push(start + i * increment);
+    }
+    const avg = weights.reduce((a, b) => a + b, 0) / weights.length;
+    return { weights, avg };
+  };
+
+  // Reset progressive mode when exercise changes
+  useEffect(() => {
+    setProgressiveMode(false);
+    setProgStartWeight("");
+    setProgIncrement(2.5);
+    setProgNumSets(4);
+  }, [selectedExerciseId]);
+
+  useEffect(() => {
+    if (!progressiveMode) return;
+    const start = typeof progStartWeight === 'number' ? progStartWeight : 0;
+    const incr = typeof progIncrement === 'number' ? progIncrement : 0;
+    const n = typeof progNumSets === 'number' ? progNumSets : 0;
+    if (start > 0 && n > 0) {
+      const { avg } = computeProgressiveWeights(start, incr, n);
+      form.setValue('value', parseFloat(avg.toFixed(2)));
+      form.setValue('sets', n);
+    }
+  }, [progressiveMode, progStartWeight, progIncrement, progNumSets]);
 
   const onSubmit = (data: InsertWorkoutEntry) => {
     // 用户输入的时间是台北时间（UTC+8）
@@ -312,7 +352,15 @@ export default function Entries() {
           <h1 className="text-3xl font-bold">数据记录</h1>
           <p className="text-muted-foreground mt-2">记录您的运动数据</p>
         </div>
-        <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
+        <Dialog open={isCreateOpen} onOpenChange={(open) => {
+          setIsCreateOpen(open);
+          if (!open) {
+            setProgressiveMode(false);
+            setProgStartWeight("");
+            setProgIncrement(2.5);
+            setProgNumSets(4);
+          }
+        }}>
           <DialogTrigger asChild>
             <Button data-testid="button-create-entry">
               <Plus className="mr-2 h-4 w-4" />
@@ -426,36 +474,130 @@ export default function Entries() {
                   name="value"
                   render={({ field }) => {
                     const selectedExercise = exercises?.find((e) => e.id === form.watch("exerciseId"));
+                    const isStrength = selectedExercise?.category === '力量';
                     const isAverageSteps = selectedExercise?.name === '每周平均步数';
                     const isCardio = selectedExercise?.category === '有氧';
                     const isJumpingJacks = selectedExercise?.name === '開合跳';
                     const currentWeightFactor = form.watch("weightFactor");
-                    
-                    const valueLabel = isAverageSteps 
-                      ? '每日平均步数' 
+                    const currentSets = form.watch("sets");
+
+                    const valueLabel = isAverageSteps
+                      ? '每日平均步数'
                       : isJumpingJacks
                         ? '次数'
-                        : isCardio 
-                          ? '运动时间（分钟）' 
-                          : '数据值';
-                    const valuePlaceholder = isAverageSteps 
-                      ? "输入每日平均步数" 
+                        : isCardio
+                          ? '运动时间（分钟）'
+                          : isStrength
+                            ? (progressiveMode ? '重量（自动计算平均值）' : '重量（公斤）')
+                            : '数据值';
+                    const valuePlaceholder = isAverageSteps
+                      ? "输入每日平均步数"
                       : isJumpingJacks
                         ? "输入次数"
-                        : isCardio 
-                          ? "输入运动分钟数" 
-                          : "输入数据值";
-                    
+                        : isCardio
+                          ? "输入运动分钟数"
+                          : isStrength
+                            ? "输入重量（公斤）"
+                            : "输入数据值";
+
                     return (
                       <FormItem>
-                        <FormLabel>{valueLabel}</FormLabel>
+                        <div className="flex items-center justify-between">
+                          <FormLabel>{valueLabel}</FormLabel>
+                          {isStrength && (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                const next = !progressiveMode;
+                                setProgressiveMode(next);
+                                if (!next) {
+                                  setProgStartWeight("");
+                                }
+                              }}
+                              data-testid="button-progressive-mode"
+                            >
+                              {progressiveMode
+                                ? <><ChevronUp className="h-3 w-3 mr-1" />關閉遞增</>
+                                : <><ChevronDown className="h-3 w-3 mr-1" />逐組遞增</>}
+                            </Button>
+                          )}
+                        </div>
+                        {isStrength && progressiveMode && (
+                          <div className="rounded-lg border bg-muted/30 p-3 space-y-3">
+                            <p className="text-xs font-medium text-muted-foreground">逐組遞增設定</p>
+                            <div className="grid grid-cols-3 gap-2">
+                              <div>
+                                <label className="text-xs text-muted-foreground mb-1 block">起始重量 (kg)</label>
+                                <Input
+                                  type="number"
+                                  step="0.5"
+                                  min="0"
+                                  placeholder="起始重量"
+                                  value={progStartWeight}
+                                  onChange={(e) => setProgStartWeight(e.target.value ? parseFloat(e.target.value) : "")}
+                                  data-testid="input-prog-start-weight"
+                                />
+                              </div>
+                              <div>
+                                <label className="text-xs text-muted-foreground mb-1 block">每組遞增 (kg)</label>
+                                <Input
+                                  type="number"
+                                  step="0.5"
+                                  min="0"
+                                  placeholder="遞增值"
+                                  value={progIncrement}
+                                  onChange={(e) => setProgIncrement(e.target.value ? parseFloat(e.target.value) : "")}
+                                  data-testid="input-prog-increment"
+                                />
+                              </div>
+                              <div>
+                                <label className="text-xs text-muted-foreground mb-1 block">總組數</label>
+                                <Input
+                                  type="number"
+                                  step="1"
+                                  min="1"
+                                  placeholder="組數"
+                                  value={progNumSets}
+                                  onChange={(e) => setProgNumSets(e.target.value ? parseInt(e.target.value) : "")}
+                                  data-testid="input-prog-num-sets"
+                                />
+                              </div>
+                            </div>
+                            {typeof progStartWeight === 'number' && progStartWeight > 0 && typeof progNumSets === 'number' && progNumSets > 0 && (
+                              <div className="text-xs text-muted-foreground">
+                                {(() => {
+                                  const { weights, avg } = computeProgressiveWeights(
+                                    progStartWeight,
+                                    typeof progIncrement === 'number' ? progIncrement : 0,
+                                    progNumSets
+                                  );
+                                  return (
+                                    <>
+                                      <span className="font-medium">各組重量: </span>
+                                      {weights.map((w) => `${w}kg`).join(' → ')}
+                                      <span className="ml-2 text-foreground font-medium">| 平均: {avg.toFixed(1)}kg</span>
+                                    </>
+                                  );
+                                })()}
+                              </div>
+                            )}
+                          </div>
+                        )}
                         <FormControl>
                           <Input
                             type="number"
                             step="0.01"
                             placeholder={valuePlaceholder}
                             {...field}
-                            onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
+                            readOnly={isStrength && progressiveMode}
+                            className={isStrength && progressiveMode ? "bg-muted" : ""}
+                            onChange={(e) => {
+                              if (!(isStrength && progressiveMode)) {
+                                field.onChange(parseFloat(e.target.value) || 0);
+                              }
+                            }}
                             data-testid="input-entry-value"
                           />
                         </FormControl>
@@ -472,15 +614,32 @@ export default function Entries() {
                           <FormDescription>
                             {isAverageSteps ? (
                               <>
-                                每周总步数: {(field.value * 7).toFixed(0)} 步 | 
-                                基准值: {calculateBaselineValue(field.value * 7, form.watch("exerciseId"), currentWeightFactor, form.watch("sets")).toFixed(2)}
+                                每周总步数: {(field.value * 7).toFixed(0)} 步 |{" "}
+                                基准值: {calculateBaselineValue(field.value * 7, form.watch("exerciseId"), currentWeightFactor, currentSets).toFixed(2)}
                               </>
                             ) : (
                               <>
-                                基准值: {calculateBaselineValue(field.value, form.watch("exerciseId"), currentWeightFactor, form.watch("sets")).toFixed(2)}
+                                基准值: {calculateBaselineValue(field.value, form.watch("exerciseId"), currentWeightFactor, currentSets).toFixed(2)}
                               </>
                             )}
                           </FormDescription>
+                        )}
+                        {isStrength && field.value > 0 && selectedExercise && (
+                          <div className="rounded-md bg-muted/30 border px-3 py-2 text-xs space-y-1">
+                            <p className="font-medium text-muted-foreground">重量换算参考（{currentSets || 1}组）</p>
+                            <div className="flex flex-wrap gap-x-3 gap-y-0.5">
+                              {[-20, -10, -5, 0, 5, 10, 20].map((delta) => {
+                                const refWeight = field.value + delta;
+                                if (refWeight <= 0) return null;
+                                const baseline = calculateBaselineValue(refWeight, form.watch("exerciseId"), currentWeightFactor, currentSets || 1);
+                                return (
+                                  <span key={delta} className={delta === 0 ? "font-semibold text-foreground" : "text-muted-foreground"}>
+                                    {refWeight}kg={baseline.toFixed(0)}
+                                  </span>
+                                );
+                              })}
+                            </div>
+                          </div>
                         )}
                         {isAverageSteps && (
                           <FormDescription className="text-xs text-muted-foreground">
@@ -505,7 +664,8 @@ export default function Entries() {
                     (selectedExercise.muscleFullBody ?? 0) > 0
                   );
                   const isRunning = selectedExercise?.name === '跑步' || selectedExercise?.name === '跑步機負重';
-                  const showSets = hasMuscleGroup || selectedExercise?.category === "力量" || selectedExercise?.category === "有氧";
+                  const isStrengthExercise = selectedExercise?.category === "力量";
+                  const showSets = hasMuscleGroup || isStrengthExercise || selectedExercise?.category === "有氧";
                   return showSets ? (
                     <FormField
                       control={form.control}
@@ -521,14 +681,22 @@ export default function Entries() {
                               placeholder={isRunning ? "输入跑步距離（公里）" : "输入组数"}
                               {...field}
                               value={field.value ?? ""}
-                              onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)}
+                              readOnly={isStrengthExercise && progressiveMode}
+                              className={isStrengthExercise && progressiveMode ? "bg-muted" : ""}
+                              onChange={(e) => {
+                                if (!(isStrengthExercise && progressiveMode)) {
+                                  field.onChange(e.target.value ? parseFloat(e.target.value) : undefined);
+                                }
+                              }}
                               data-testid="input-entry-sets"
                             />
                           </FormControl>
                           <FormDescription>
                             {isRunning
                               ? "留空将根据预设配速估算距離"
-                              : "记录本次训练的组数，用于追踪各肌群训练量"}
+                              : isStrengthExercise && progressiveMode
+                                ? "已由逐組遞增自動填入"
+                                : "记录本次训练的组数，用于追踪各肌群训练量"}
                           </FormDescription>
                           <FormMessage />
                         </FormItem>
