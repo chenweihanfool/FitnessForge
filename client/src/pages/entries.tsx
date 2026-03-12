@@ -89,6 +89,7 @@ export default function Entries() {
 
   // Progressive weight mode state (for strength exercises)
   const [progressiveMode, setProgressiveMode] = useState(false);
+  const [progRepsPerSet, setProgRepsPerSet] = useState<number | "">(5);
   const [progStartWeight, setProgStartWeight] = useState<number | "">("");
   const [progIncrement, setProgIncrement] = useState<number | "">(2.5);
   const [progNumSets, setProgNumSets] = useState<number | "">(4);
@@ -121,6 +122,7 @@ export default function Entries() {
       setIsCreateOpen(false);
       form.reset();
       setProgressiveMode(false);
+      setProgRepsPerSet(5);
       setProgStartWeight("");
       setProgIncrement(2.5);
       setProgNumSets(4);
@@ -232,6 +234,7 @@ export default function Entries() {
   // Reset progressive mode when exercise changes
   useEffect(() => {
     setProgressiveMode(false);
+    setProgRepsPerSet(5);
     setProgStartWeight("");
     setProgIncrement(2.5);
     setProgNumSets(4);
@@ -242,12 +245,15 @@ export default function Entries() {
     const start = typeof progStartWeight === 'number' ? progStartWeight : 0;
     const incr = typeof progIncrement === 'number' ? progIncrement : 0;
     const n = typeof progNumSets === 'number' ? progNumSets : 0;
-    if (start > 0 && n > 0) {
+    const reps = typeof progRepsPerSet === 'number' ? progRepsPerSet : 1;
+    if (start > 0 && n > 0 && reps > 0) {
       const { avg } = computeProgressiveWeights(start, incr, n);
-      form.setValue('value', parseFloat(avg.toFixed(2)));
+      // For strength: value = reps per set, sets = num sets, weightFactor = avg weight (kg)
+      form.setValue('value', reps);
       form.setValue('sets', n);
+      form.setValue('weightFactor', parseFloat(avg.toFixed(2)));
     }
-  }, [progressiveMode, progStartWeight, progIncrement, progNumSets]);
+  }, [progressiveMode, progRepsPerSet, progStartWeight, progIncrement, progNumSets]);
 
   const onSubmit = (data: InsertWorkoutEntry) => {
     // 用户输入的时间是台北时间（UTC+8）
@@ -356,6 +362,7 @@ export default function Entries() {
           setIsCreateOpen(open);
           if (!open) {
             setProgressiveMode(false);
+            setProgRepsPerSet(5);
             setProgStartWeight("");
             setProgIncrement(2.5);
             setProgNumSets(4);
@@ -445,27 +452,39 @@ export default function Entries() {
                     <FormField
                       control={form.control}
                       name="weightFactor"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>权重系数</FormLabel>
-                          <FormControl>
-                            <Input
-                              type="number"
-                              step="0.01"
-                              min="0"
-                              placeholder="输入权重系数"
-                              {...field}
-                              value={field.value ?? selectedExercise?.weightFactor ?? 1}
-                              onChange={(e) => field.onChange(parseFloat(e.target.value) || 1)}
-                              data-testid="input-entry-weight-factor"
-                            />
-                          </FormControl>
-                          <FormDescription className="text-xs text-muted-foreground">
-                            默认值: {selectedExercise?.weightFactor ?? 1}（可临时修改本次记录的权重）
-                          </FormDescription>
-                          <FormMessage />
-                        </FormItem>
-                      )}
+                      render={({ field }) => {
+                        const isStrengthEx = selectedExercise?.category === '力量';
+                        const isProgReadOnly = isStrengthEx && progressiveMode;
+                        return (
+                          <FormItem>
+                            <FormLabel>{isStrengthEx ? '使用重量（公斤）' : '权重系数'}</FormLabel>
+                            <FormControl>
+                              <Input
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                placeholder={isStrengthEx ? "输入使用重量（公斤）" : "输入权重系数"}
+                                {...field}
+                                value={field.value ?? selectedExercise?.weightFactor ?? 1}
+                                readOnly={isProgReadOnly}
+                                className={isProgReadOnly ? "bg-muted" : ""}
+                                onChange={(e) => {
+                                  if (!isProgReadOnly) field.onChange(parseFloat(e.target.value) || 1);
+                                }}
+                                data-testid="input-entry-weight-factor"
+                              />
+                            </FormControl>
+                            <FormDescription className="text-xs text-muted-foreground">
+                              {isProgReadOnly
+                                ? "已由逐組遞增自動填入平均重量"
+                                : isStrengthEx
+                                  ? `预设: ${selectedExercise?.weightFactor ?? 1}kg（可修改本次使用重量）`
+                                  : `默认值: ${selectedExercise?.weightFactor ?? 1}（可临时修改本次记录的权重）`}
+                            </FormDescription>
+                            <FormMessage />
+                          </FormItem>
+                        );
+                      }}
                     />
                   );
                 })()}
@@ -488,7 +507,7 @@ export default function Entries() {
                         : isCardio
                           ? '运动时间（分钟）'
                           : isStrength
-                            ? (progressiveMode ? '重量（自动计算平均值）' : '重量（公斤）')
+                            ? (progressiveMode ? '次数（已自動填入）' : '次数（下）')
                             : '数据值';
                     const valuePlaceholder = isAverageSteps
                       ? "输入每日平均步数"
@@ -497,7 +516,7 @@ export default function Entries() {
                         : isCardio
                           ? "输入运动分钟数"
                           : isStrength
-                            ? "输入重量（公斤）"
+                            ? "输入每組次數（下）"
                             : "输入数据值";
 
                     return (
@@ -526,8 +545,20 @@ export default function Entries() {
                         </div>
                         {isStrength && progressiveMode && (
                           <div className="rounded-lg border bg-muted/30 p-3 space-y-3">
-                            <p className="text-xs font-medium text-muted-foreground">逐組遞增設定</p>
-                            <div className="grid grid-cols-3 gap-2">
+                            <p className="text-xs font-medium text-muted-foreground">逐組遞增設定（重量自動填入权重系数）</p>
+                            <div className="grid grid-cols-2 gap-2">
+                              <div>
+                                <label className="text-xs text-muted-foreground mb-1 block">每組次數（下）</label>
+                                <Input
+                                  type="number"
+                                  step="1"
+                                  min="1"
+                                  placeholder="每組次數"
+                                  value={progRepsPerSet}
+                                  onChange={(e) => setProgRepsPerSet(e.target.value ? parseInt(e.target.value) : "")}
+                                  data-testid="input-prog-reps"
+                                />
+                              </div>
                               <div>
                                 <label className="text-xs text-muted-foreground mb-1 block">起始重量 (kg)</label>
                                 <Input
@@ -566,18 +597,25 @@ export default function Entries() {
                               </div>
                             </div>
                             {typeof progStartWeight === 'number' && progStartWeight > 0 && typeof progNumSets === 'number' && progNumSets > 0 && (
-                              <div className="text-xs text-muted-foreground">
+                              <div className="text-xs space-y-0.5">
                                 {(() => {
                                   const { weights, avg } = computeProgressiveWeights(
                                     progStartWeight,
                                     typeof progIncrement === 'number' ? progIncrement : 0,
                                     progNumSets
                                   );
+                                  const reps = typeof progRepsPerSet === 'number' ? progRepsPerSet : 1;
+                                  const baseline = calculateBaselineValue(reps, form.watch("exerciseId"), avg, progNumSets as number);
                                   return (
                                     <>
-                                      <span className="font-medium">各組重量: </span>
-                                      {weights.map((w) => `${w}kg`).join(' → ')}
-                                      <span className="ml-2 text-foreground font-medium">| 平均: {avg.toFixed(1)}kg</span>
+                                      <p className="text-muted-foreground">
+                                        <span className="font-medium">各組重量: </span>
+                                        {weights.map((w) => `${w}kg`).join(' → ')}
+                                        <span className="ml-2 font-medium text-foreground">| 平均: {avg.toFixed(1)}kg</span>
+                                      </p>
+                                      <p className="text-foreground font-medium">
+                                        預估基準值: {baseline.toFixed(1)}
+                                      </p>
                                     </>
                                   );
                                 })()}
@@ -626,15 +664,16 @@ export default function Entries() {
                         )}
                         {isStrength && field.value > 0 && selectedExercise && (
                           <div className="rounded-md bg-muted/30 border px-3 py-2 text-xs space-y-1">
-                            <p className="font-medium text-muted-foreground">重量换算参考（{currentSets || 1}组）</p>
+                            <p className="font-medium text-muted-foreground">重量换算参考（{field.value}下 × {currentSets || 1}组）</p>
                             <div className="flex flex-wrap gap-x-3 gap-y-0.5">
                               {[-20, -10, -5, 0, 5, 10, 20].map((delta) => {
-                                const refWeight = field.value + delta;
-                                if (refWeight <= 0) return null;
-                                const baseline = calculateBaselineValue(refWeight, form.watch("exerciseId"), currentWeightFactor, currentSets || 1);
+                                const baseWF = currentWeightFactor ?? selectedExercise.weightFactor;
+                                const refWF = baseWF + delta;
+                                if (refWF <= 0) return null;
+                                const baseline = calculateBaselineValue(field.value, form.watch("exerciseId"), refWF, currentSets || 1);
                                 return (
                                   <span key={delta} className={delta === 0 ? "font-semibold text-foreground" : "text-muted-foreground"}>
-                                    {refWeight}kg={baseline.toFixed(0)}
+                                    {refWF}kg={baseline.toFixed(0)}
                                   </span>
                                 );
                               })}
