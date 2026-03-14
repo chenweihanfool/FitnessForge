@@ -653,6 +653,50 @@ export default function Dashboard() {
         </Card>
       )}
 
+      {stepsLoaded && stepsExerciseId && (
+        <Card data-testid="card-steps-quick-update">
+          <CardContent className="flex items-center justify-between gap-4 py-3 px-4">
+            <div className="flex items-center gap-2">
+              <Footprints className="h-4 w-4 text-muted-foreground" />
+              <span className="text-sm text-muted-foreground">本周每日平均步数</span>
+            </div>
+            <div className="flex items-center gap-2">
+              {stepsData ? (
+                <>
+                  <span className="text-sm font-medium" data-testid="text-steps-daily-avg">
+                    {stepsData.dailyAverage.toLocaleString()} 步/天
+                  </span>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    onClick={() => {
+                      setStepsInput(String(stepsData.dailyAverage));
+                      setShowStepsDialog(true);
+                    }}
+                    data-testid="button-steps-quick-edit"
+                  >
+                    <Pencil className="h-4 w-4" />
+                  </Button>
+                </>
+              ) : (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setStepsInput("");
+                    setShowStepsDialog(true);
+                  }}
+                  data-testid="button-steps-quick-edit"
+                >
+                  <Plus className="h-4 w-4 mr-1" />
+                  記錄步數
+                </Button>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* 本周訓練計畫 */}
       <Card data-testid="card-training-plan">
         <CardHeader className="pb-3">
@@ -1047,8 +1091,8 @@ export default function Dashboard() {
         </Card>
       )}
 
-      {/* 本周肌群训练量 - 紧跟本周训练进度 */}
-      {!muscleGroupLoading && muscleGroupStats && muscleGroupStats.muscleGroups.length > 0 && (
+      {/* 本周肌群训练量 - 始终显示所有8个肌群 */}
+      {!muscleGroupLoading && (
         <Card data-testid="card-muscle-group-stats">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -1059,7 +1103,14 @@ export default function Dashboard() {
           <CardContent>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               {(() => {
+                const ALL_MUSCLES = ['胸', '背', '腿', '肩', '二头肌', '核心', '臀', '三头肌'];
+
+                const weekMap = new Map(
+                  (muscleGroupStats?.muscleGroups || []).map(g => [g.muscleGroup, g])
+                );
+
                 const getSetStatus = (sets: number) => {
+                  if (sets === 0) return { color: 'bg-muted-foreground/20', textColor: 'text-muted-foreground', label: '未訓練' };
                   if (sets < 4) return { color: 'bg-red-500', textColor: 'text-red-600 dark:text-red-400', label: '低于维持量' };
                   if (sets <= 8) return { color: 'bg-yellow-500', textColor: 'text-yellow-600 dark:text-yellow-400', label: '维持中' };
                   if (sets <= 15) return { color: 'bg-green-500', textColor: 'text-green-600 dark:text-green-400', label: '最佳区间' };
@@ -1067,57 +1118,61 @@ export default function Dashboard() {
                   return { color: 'bg-purple-500', textColor: 'text-purple-600 dark:text-purple-400', label: '超量警示' };
                 };
 
-                const getCombinedStatus = (setsOk: boolean, volumeOk: boolean, hasHistory: boolean) => {
+                const getCombinedStatus = (sets: number, setsOk: boolean, volumeOk: boolean, hasHistory: boolean) => {
+                  if (sets === 0) return { label: '--', badgeClass: 'bg-muted text-muted-foreground', tintClass: '' };
                   if (!hasHistory) return { label: '--', badgeClass: 'bg-muted text-muted-foreground', tintClass: '' };
                   if (setsOk && volumeOk) return { label: '全達標', badgeClass: 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400', tintClass: 'bg-green-50 dark:bg-green-950/20 border border-green-200/50 dark:border-green-800/30' };
                   if (!setsOk && volumeOk) return { label: '缺組數', badgeClass: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400', tintClass: 'bg-amber-50/50 dark:bg-amber-950/10 border border-amber-200/40 dark:border-amber-800/20' };
                   if (setsOk && !volumeOk) return { label: '缺容量', badgeClass: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400', tintClass: 'bg-amber-50/50 dark:bg-amber-950/10 border border-amber-200/40 dark:border-amber-800/20' };
                   return { label: '未達標', badgeClass: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400', tintClass: 'bg-red-50/50 dark:bg-red-950/10 border border-red-200/40 dark:border-red-800/20' };
                 };
-                
-                return muscleGroupStats.muscleGroups.map((group) => {
-                  const status = getSetStatus(group.totalSets);
+
+                return ALL_MUSCLES.map((muscleName) => {
+                  const group = weekMap.get(muscleName);
+                  const totalSets = group?.totalSets || 0;
+                  const totalVolume = group?.totalVolume || 0;
+                  const status = getSetStatus(totalSets);
                   const maxSets = 20;
-                  const volData = muscleVolumeMap[group.muscleGroup];
+                  const volData = muscleVolumeMap[muscleName];
                   const volAvg = volData?.avg || 0;
                   const hasVolHistory = volAvg > 0;
-                  const setsOk = group.totalSets >= 4;
-                  const volumeOk = hasVolHistory && group.totalVolume >= volAvg;
+                  const setsOk = totalSets >= 4;
+                  const volumeOk = hasVolHistory && totalVolume >= volAvg;
 
-                  const combined = getCombinedStatus(setsOk, volumeOk, hasVolHistory);
+                  const combined = getCombinedStatus(totalSets, setsOk, volumeOk, hasVolHistory);
 
-                  const volDiffPercent = hasVolHistory && volAvg > 0
-                    ? Math.round(((group.totalVolume - volAvg) / volAvg) * 100)
+                  const volDiffPercent = hasVolHistory && volAvg > 0 && totalSets > 0
+                    ? Math.round(((totalVolume - volAvg) / volAvg) * 100)
                     : 0;
 
                   return (
                     <div
-                      key={group.muscleGroup}
+                      key={muscleName}
                       className={`space-y-2 p-3 rounded-lg ${combined.tintClass || 'bg-muted/50'}`}
-                      data-testid={`muscle-group-stat-${group.muscleGroup}`}
+                      data-testid={`muscle-group-stat-${muscleName}`}
                     >
                       <div className="flex justify-between items-center gap-1">
-                        <span className="text-sm font-medium">{group.muscleGroup}</span>
+                        <span className="text-sm font-medium">{muscleName}</span>
                         <Badge
                           variant="secondary"
                           className={`text-[10px] px-1.5 py-0 h-5 no-default-hover-elevate no-default-active-elevate ${combined.badgeClass}`}
-                          data-testid={`combined-status-${group.muscleGroup}`}
+                          data-testid={`combined-status-${muscleName}`}
                         >
                           {combined.label}
                         </Badge>
                       </div>
                       <div className="flex justify-between items-center gap-2">
-                        <span className="text-xs text-muted-foreground" data-testid={`sets-${group.muscleGroup}`}>
-                          {group.totalSets} 组
+                        <span className="text-xs text-muted-foreground" data-testid={`sets-${muscleName}`}>
+                          {totalSets} 组
                         </span>
-                        <span className="text-sm font-bold" data-testid={`volume-${group.muscleGroup}`}>
-                          {group.totalVolume.toFixed(1)}
+                        <span className="text-sm font-bold" data-testid={`volume-${muscleName}`}>
+                          {totalVolume.toFixed(1)}
                         </span>
                       </div>
                       <div className="pt-4">
                         <ScaleProgressBar
-                          currentValue={group.totalSets}
-                          maxValue={Math.max(group.totalSets, maxSets)}
+                          currentValue={totalSets}
+                          maxValue={Math.max(totalSets, maxSets)}
                           markers={[
                             { value: 4, label: '维', colorClass: 'bg-yellow-500', textColorClass: 'text-yellow-600 dark:text-yellow-400' },
                             { value: 15, label: '优', colorClass: 'bg-chart-3', textColorClass: 'text-chart-3' }
@@ -1128,19 +1183,19 @@ export default function Dashboard() {
                         />
                       </div>
                       <div className="flex justify-between items-center gap-1">
-                        <span className={`text-xs ${status.textColor}`} data-testid={`status-${group.muscleGroup}`}>
+                        <span className={`text-xs ${status.textColor}`} data-testid={`status-${muscleName}`}>
                           {status.label}
                         </span>
-                        {hasVolHistory ? (
+                        {hasVolHistory && totalSets > 0 ? (
                           <span
                             className={`text-xs ${volDiffPercent >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}
-                            data-testid={`volume-status-${group.muscleGroup}`}
+                            data-testid={`volume-status-${muscleName}`}
                           >
-                            容量 {group.totalVolume.toFixed(0)} / 均 {volAvg.toFixed(0)} ({volDiffPercent >= 0 ? '+' : ''}{volDiffPercent}%)
+                            容量 {totalVolume.toFixed(0)} / 均 {volAvg.toFixed(0)} ({volDiffPercent >= 0 ? '+' : ''}{volDiffPercent}%)
                           </span>
                         ) : (
-                          <span className="text-xs text-muted-foreground" data-testid={`volume-status-${group.muscleGroup}`}>
-                            --
+                          <span className="text-xs text-muted-foreground" data-testid={`volume-status-${muscleName}`}>
+                            {hasVolHistory ? `均 ${volAvg.toFixed(0)}` : '--'}
                           </span>
                         )}
                       </div>
@@ -1296,50 +1351,6 @@ export default function Dashboard() {
           </div>
         </CollapsibleContent>
       </Collapsible>
-
-      {stepsLoaded && stepsExerciseId && (
-        <Card data-testid="card-steps-quick-update">
-          <CardContent className="flex items-center justify-between gap-4 py-3 px-4">
-            <div className="flex items-center gap-2">
-              <Footprints className="h-4 w-4 text-muted-foreground" />
-              <span className="text-sm text-muted-foreground">本周每日平均步数</span>
-            </div>
-            <div className="flex items-center gap-2">
-              {stepsData ? (
-                <>
-                  <span className="text-sm font-medium" data-testid="text-steps-daily-avg">
-                    {stepsData.dailyAverage.toLocaleString()} 步/天
-                  </span>
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    onClick={() => {
-                      setStepsInput(String(stepsData.dailyAverage));
-                      setShowStepsDialog(true);
-                    }}
-                    data-testid="button-steps-quick-edit"
-                  >
-                    <Pencil className="h-4 w-4" />
-                  </Button>
-                </>
-              ) : (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => {
-                    setStepsInput("");
-                    setShowStepsDialog(true);
-                  }}
-                  data-testid="button-steps-quick-edit"
-                >
-                  <Plus className="h-4 w-4 mr-1" />
-                  記錄步數
-                </Button>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      )}
 
       <Dialog open={showStepsDialog} onOpenChange={setShowStepsDialog}>
         <DialogContent className="sm:max-w-[360px]">
