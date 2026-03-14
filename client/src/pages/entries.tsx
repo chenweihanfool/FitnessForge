@@ -457,13 +457,13 @@ export default function Entries() {
                         const isProgReadOnly = isStrengthEx && progressiveMode;
                         return (
                           <FormItem>
-                            <FormLabel>{isStrengthEx ? '使用重量（公斤）' : '权重系数'}</FormLabel>
+                            <FormLabel>{isStrengthEx ? '強度系數 / 使用重量' : '权重系数'}</FormLabel>
                             <FormControl>
                               <Input
                                 type="number"
                                 step="0.01"
                                 min="0"
-                                placeholder={isStrengthEx ? "输入使用重量（公斤）" : "输入权重系数"}
+                                placeholder={isStrengthEx ? "输入強度系數或使用重量" : "输入权重系数"}
                                 {...field}
                                 value={field.value ?? selectedExercise?.weightFactor ?? 1}
                                 readOnly={isProgReadOnly}
@@ -478,7 +478,7 @@ export default function Entries() {
                               {isProgReadOnly
                                 ? "已由逐組遞增自動填入平均重量"
                                 : isStrengthEx
-                                  ? `预设: ${selectedExercise?.weightFactor ?? 1}kg（可修改本次使用重量）`
+                                  ? `預設 ${selectedExercise?.weightFactor ?? 1}（空手訓練強度當量）。如有額外負重，請填入 預設值 + 附加公斤數`
                                   : `默认值: ${selectedExercise?.weightFactor ?? 1}（可临时修改本次记录的权重）`}
                             </FormDescription>
                             <FormMessage />
@@ -664,7 +664,7 @@ export default function Entries() {
                         )}
                         {isStrength && field.value > 0 && selectedExercise && (
                           <div className="rounded-md bg-muted/30 border px-3 py-2 text-xs space-y-1">
-                            <p className="font-medium text-muted-foreground">重量换算参考（{field.value}下 × {currentSets || 1}组）</p>
+                            <p className="font-medium text-muted-foreground">強度系數換算參考（{field.value}下 × {currentSets || 1}组）</p>
                             <div className="flex flex-wrap gap-x-3 gap-y-0.5">
                               {[-20, -10, -5, 0, 5, 10, 20].map((delta) => {
                                 const baseWF = currentWeightFactor ?? selectedExercise.weightFactor;
@@ -673,7 +673,7 @@ export default function Entries() {
                                 const baseline = calculateBaselineValue(field.value, form.watch("exerciseId"), refWF, currentSets || 1);
                                 return (
                                   <span key={delta} className={delta === 0 ? "font-semibold text-foreground" : "text-muted-foreground"}>
-                                    {refWF}kg={baseline.toFixed(0)}
+                                    {refWF}={baseline.toFixed(0)}
                                   </span>
                                 );
                               })}
@@ -953,13 +953,13 @@ export default function Entries() {
                     name="weightFactor"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>权重系数</FormLabel>
+                        <FormLabel>{selectedExercise?.category === '力量' ? '強度系數 / 使用重量' : '权重系数'}</FormLabel>
                         <FormControl>
                           <Input
                             type="number"
                             step="0.01"
                             min="0"
-                            placeholder="输入权重系数"
+                            placeholder={selectedExercise?.category === '力量' ? "输入強度系數或使用重量" : "输入权重系数"}
                             {...field}
                             value={field.value ?? selectedExercise?.weightFactor ?? 1}
                             onChange={(e) => field.onChange(parseFloat(e.target.value) || 1)}
@@ -967,7 +967,9 @@ export default function Entries() {
                           />
                         </FormControl>
                         <FormDescription className="text-xs text-muted-foreground">
-                          默认值: {selectedExercise?.weightFactor ?? 1}（可临时修改本次记录的权重）
+                          {selectedExercise?.category === '力量'
+                            ? `預設 ${selectedExercise?.weightFactor ?? 1}（空手訓練強度當量）。如有額外負重，請填入 預設值 + 附加公斤數`
+                            : `默认值: ${selectedExercise?.weightFactor ?? 1}（可临时修改本次记录的权重）`}
                         </FormDescription>
                         <FormMessage />
                       </FormItem>
