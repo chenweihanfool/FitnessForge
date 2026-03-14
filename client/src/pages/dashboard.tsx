@@ -758,33 +758,60 @@ export default function Dashboard() {
               {modeRecommendation && (
                 <div className="space-y-2" data-testid="section-mode-recommendation">
                   <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">系統建議依據</p>
-                  <div className="space-y-1.5">
+                  {/* Metrics summary */}
+                  <div className="grid grid-cols-3 gap-1.5 text-xs">
                     {[
-                      {
-                        id: 1,
-                        result: '恢復週',
-                        label: `近4週均分 > 近${modeRecommendation.rollingWeeks}週滾動均值 × 112%`,
-                        detail: `近4週均分 ${modeRecommendation.recent4Avg}，滾動均值 ${modeRecommendation.rollingAvg}（差距 ${modeRecommendation.diffPct > 0 ? '+' : ''}${modeRecommendation.diffPct}%）`,
-                      },
-                      {
-                        id: 2,
-                        result: '恢復週',
-                        label: '近4週中 ≥ 3 週超滾動均值，且上週表現突出',
-                        detail: `近4週有 ${modeRecommendation.aboveAvgCount} 週超過滾動均值，上週得分 ${modeRecommendation.lastWeekTotal}（門檻：${Math.round(modeRecommendation.rollingAvg * 1.1)}）`,
-                      },
-                      {
-                        id: 3,
-                        result: '正常週',
-                        label: `近4週均分 < 近${modeRecommendation.rollingWeeks}週滾動均值 × 85%`,
-                        detail: `近4週均分 ${modeRecommendation.recent4Avg}，滾動均值 ${modeRecommendation.rollingAvg}（差距 ${modeRecommendation.diffPct > 0 ? '+' : ''}${modeRecommendation.diffPct}%）`,
-                      },
-                      {
-                        id: 4,
-                        result: '正常週',
-                        label: '其餘情況（訓練量穩定正常）',
-                        detail: `以上條件均不符合，近期訓練穩定，維持正常週節奏`,
-                      },
-                    ].map(cond => {
+                      { label: `滾動均值（近${modeRecommendation.rollingWeeks}週）`, value: modeRecommendation.rollingAvg },
+                      { label: '近4週均分', value: modeRecommendation.recent4Avg },
+                      { label: '差距', value: `${modeRecommendation.diffPct > 0 ? '+' : ''}${modeRecommendation.diffPct}%` },
+                      { label: '近4週超均次數', value: `${modeRecommendation.aboveAvgCount} / 4` },
+                      { label: '上週總分', value: modeRecommendation.lastWeekTotal },
+                      { label: '超均門檻 (×110%)', value: Math.round(modeRecommendation.rollingAvg * 1.1) },
+                    ].map(m => (
+                      <div key={m.label} className="rounded-md bg-muted/50 px-2 py-1.5 flex flex-col gap-0.5">
+                        <span className="text-muted-foreground leading-tight">{m.label}</span>
+                        <span className="font-semibold text-foreground tabular-nums">{m.value}</span>
+                      </div>
+                    ))}
+                  </div>
+                  {/* Conditions */}
+                  <div className="space-y-1.5">
+                    {(() => {
+                      const r = modeRecommendation;
+                      const c1 = r.recent4Avg > r.rollingAvg * 1.12;
+                      const c2 = r.aboveAvgCount >= 3 && r.lastWeekTotal > r.rollingAvg * 1.1;
+                      const c3 = r.recent4Avg < r.rollingAvg * 0.85;
+                      return [
+                        {
+                          id: 1,
+                          result: '恢復週',
+                          label: `近4週均分 > 滾動均值 × 112%（門檻 ${Math.round(r.rollingAvg * 1.12)}）`,
+                          detail: `近4週均分 ${r.recent4Avg} ${c1 ? '>' : '≤'} 門檻 ${Math.round(r.rollingAvg * 1.12)}`,
+                          condMet: c1,
+                        },
+                        {
+                          id: 2,
+                          result: '恢復週',
+                          label: `近4週 ≥ 3 週超均 且 上週 > 滾動均值 × 110%（門檻 ${Math.round(r.rollingAvg * 1.1)}）`,
+                          detail: `超均次數 ${r.aboveAvgCount}/4（需≥3），上週 ${r.lastWeekTotal} ${r.lastWeekTotal > r.rollingAvg * 1.1 ? '>' : '≤'} 門檻 ${Math.round(r.rollingAvg * 1.1)}`,
+                          condMet: c2,
+                        },
+                        {
+                          id: 3,
+                          result: '正常週',
+                          label: `近4週均分 < 滾動均值 × 85%（門檻 ${Math.round(r.rollingAvg * 0.85)}）`,
+                          detail: `近4週均分 ${r.recent4Avg} ${c3 ? '<' : '≥'} 門檻 ${Math.round(r.rollingAvg * 0.85)}`,
+                          condMet: c3,
+                        },
+                        {
+                          id: 4,
+                          result: '正常週',
+                          label: '以上條件均不符合（訓練量穩定）',
+                          detail: `條件 1/2/3 均不符合，維持正常週節奏`,
+                          condMet: !c1 && !c2 && !c3,
+                        },
+                      ];
+                    })().map(cond => {
                       const isMatched = modeRecommendation.matchedCondition === cond.id;
                       return (
                         <div
@@ -797,26 +824,29 @@ export default function Dashboard() {
                           data-testid={`condition-${cond.id}${isMatched ? '-matched' : ''}`}
                         >
                           <div className="flex items-start justify-between gap-2 flex-wrap">
-                            <div className="flex items-start gap-2">
+                            <div className="flex items-start gap-2 flex-1 min-w-0">
                               <span className={`mt-0.5 shrink-0 text-xs font-bold ${isMatched ? 'text-primary' : 'text-muted-foreground'}`}>
                                 {isMatched ? '▶' : `${cond.id}.`}
                               </span>
-                              <div>
+                              <div className="min-w-0">
                                 <span className={`font-medium ${isMatched ? 'text-foreground' : 'text-muted-foreground'}`}>
                                   {cond.label}
                                 </span>
-                                {isMatched && (
-                                  <p className="text-xs text-muted-foreground mt-0.5">{cond.detail}</p>
-                                )}
+                                <p className="text-xs text-muted-foreground mt-0.5">{cond.detail}</p>
                               </div>
                             </div>
-                            <span className={`shrink-0 text-xs px-1.5 py-0.5 rounded font-medium ${
-                              cond.result === '恢復週'
-                                ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300'
-                                : 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300'
-                            }`}>
-                              → {cond.result}
-                            </span>
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              <span className={`text-xs font-semibold ${cond.condMet ? 'text-green-600 dark:text-green-400' : 'text-muted-foreground'}`}>
+                                {cond.condMet ? '符合' : '不符合'}
+                              </span>
+                              <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${
+                                cond.result === '恢復週'
+                                  ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300'
+                                  : 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300'
+                              }`}>
+                                {cond.result}
+                              </span>
+                            </div>
                           </div>
                         </div>
                       );
@@ -958,57 +988,91 @@ export default function Dashboard() {
                     <span className="text-muted-foreground/70">（查看判斷依據）</span>
                   </button>
                   {showModeLogic && (
-                    <div className="space-y-1.5" data-testid="section-mode-logic-expanded">
-                      {([
-                        {
-                          id: 1,
-                          result: '恢復週',
-                          label: `近4週均分 > 近${modeRecommendation.rollingWeeks}週滾動均值 × 112%`,
-                          detail: `近4週均分 ${modeRecommendation.recent4Avg}，滾動均值 ${modeRecommendation.rollingAvg}（差距 ${modeRecommendation.diffPct > 0 ? '+' : ''}${modeRecommendation.diffPct}%，門檻：滾動均值 × 112% = ${Math.round(modeRecommendation.rollingAvg * 1.12)}）`,
-                        },
-                        {
-                          id: 2,
-                          result: '恢復週',
-                          label: '近4週中 ≥ 3 週超滾動均值，且上週得分 > 滾動均值 × 110%',
-                          detail: `近4週有 ${modeRecommendation.aboveAvgCount} 週超滾動均值，上週 ${modeRecommendation.lastWeekTotal}（門檻：${Math.round(modeRecommendation.rollingAvg * 1.1)}）`,
-                        },
-                        {
-                          id: 3,
-                          result: '正常週',
-                          label: `近4週均分 < 近${modeRecommendation.rollingWeeks}週滾動均值 × 85%`,
-                          detail: `近4週均分 ${modeRecommendation.recent4Avg}，門檻：${Math.round(modeRecommendation.rollingAvg * 0.85)}`,
-                        },
-                        {
-                          id: 4,
-                          result: '正常週',
-                          label: '其餘情況（訓練量穩定正常）',
-                          detail: '以上條件均不符合，訓練穩定，維持正常週節奏',
-                        },
-                      ] as { id: number; result: string; label: string; detail: string }[]).map(cond => {
-                        const isMatched = modeRecommendation.matchedCondition === cond.id;
-                        return (
-                          <div
-                            key={cond.id}
-                            className={`rounded-md border px-3 py-2 text-sm ${isMatched ? 'border-primary bg-primary/5' : 'border-border bg-muted/30 opacity-60'}`}
-                            data-testid={`replan-condition-${cond.id}${isMatched ? '-matched' : ''}`}
-                          >
-                            <div className="flex items-start justify-between gap-2 flex-wrap">
-                              <div className="flex items-start gap-2">
-                                <span className={`mt-0.5 shrink-0 text-xs font-bold ${isMatched ? 'text-primary' : 'text-muted-foreground'}`}>
-                                  {isMatched ? '▶' : `${cond.id}.`}
-                                </span>
-                                <div>
-                                  <span className={`font-medium ${isMatched ? 'text-foreground' : 'text-muted-foreground'}`}>{cond.label}</span>
-                                  {isMatched && <p className="text-xs text-muted-foreground mt-0.5">{cond.detail}</p>}
+                    <div className="space-y-2" data-testid="section-mode-logic-expanded">
+                      {/* Metrics summary */}
+                      <div className="grid grid-cols-3 gap-1.5 text-xs">
+                        {[
+                          { label: `滾動均值（近${modeRecommendation.rollingWeeks}週）`, value: modeRecommendation.rollingAvg },
+                          { label: '近4週均分', value: modeRecommendation.recent4Avg },
+                          { label: '差距', value: `${modeRecommendation.diffPct > 0 ? '+' : ''}${modeRecommendation.diffPct}%` },
+                          { label: '近4週超均次數', value: `${modeRecommendation.aboveAvgCount} / 4` },
+                          { label: '上週總分', value: modeRecommendation.lastWeekTotal },
+                          { label: '超均門檻 (×110%)', value: Math.round(modeRecommendation.rollingAvg * 1.1) },
+                        ].map(m => (
+                          <div key={m.label} className="rounded-md bg-muted/50 px-2 py-1.5 flex flex-col gap-0.5">
+                            <span className="text-muted-foreground leading-tight">{m.label}</span>
+                            <span className="font-semibold text-foreground tabular-nums">{m.value}</span>
+                          </div>
+                        ))}
+                      </div>
+                      {/* Conditions */}
+                      <div className="space-y-1.5">
+                        {(() => {
+                          const r = modeRecommendation;
+                          const c1 = r.recent4Avg > r.rollingAvg * 1.12;
+                          const c2 = r.aboveAvgCount >= 3 && r.lastWeekTotal > r.rollingAvg * 1.1;
+                          const c3 = r.recent4Avg < r.rollingAvg * 0.85;
+                          return [
+                            {
+                              id: 1,
+                              result: '恢復週',
+                              label: `近4週均分 > 滾動均值 × 112%（門檻 ${Math.round(r.rollingAvg * 1.12)}）`,
+                              detail: `近4週均分 ${r.recent4Avg} ${c1 ? '>' : '≤'} 門檻 ${Math.round(r.rollingAvg * 1.12)}`,
+                              condMet: c1,
+                            },
+                            {
+                              id: 2,
+                              result: '恢復週',
+                              label: `近4週 ≥ 3 週超均 且 上週 > 滾動均值 × 110%（門檻 ${Math.round(r.rollingAvg * 1.1)}）`,
+                              detail: `超均次數 ${r.aboveAvgCount}/4（需≥3），上週 ${r.lastWeekTotal} ${r.lastWeekTotal > r.rollingAvg * 1.1 ? '>' : '≤'} 門檻 ${Math.round(r.rollingAvg * 1.1)}`,
+                              condMet: c2,
+                            },
+                            {
+                              id: 3,
+                              result: '正常週',
+                              label: `近4週均分 < 滾動均值 × 85%（門檻 ${Math.round(r.rollingAvg * 0.85)}）`,
+                              detail: `近4週均分 ${r.recent4Avg} ${c3 ? '<' : '≥'} 門檻 ${Math.round(r.rollingAvg * 0.85)}`,
+                              condMet: c3,
+                            },
+                            {
+                              id: 4,
+                              result: '正常週',
+                              label: '以上條件均不符合（訓練量穩定）',
+                              detail: '條件 1/2/3 均不符合，維持正常週節奏',
+                              condMet: !c1 && !c2 && !c3,
+                            },
+                          ];
+                        })().map(cond => {
+                          const isMatched = modeRecommendation.matchedCondition === cond.id;
+                          return (
+                            <div
+                              key={cond.id}
+                              className={`rounded-md border px-3 py-2 text-sm ${isMatched ? 'border-primary bg-primary/5' : 'border-border bg-muted/30 opacity-60'}`}
+                              data-testid={`replan-condition-${cond.id}${isMatched ? '-matched' : ''}`}
+                            >
+                              <div className="flex items-start justify-between gap-2 flex-wrap">
+                                <div className="flex items-start gap-2 flex-1 min-w-0">
+                                  <span className={`mt-0.5 shrink-0 text-xs font-bold ${isMatched ? 'text-primary' : 'text-muted-foreground'}`}>
+                                    {isMatched ? '▶' : `${cond.id}.`}
+                                  </span>
+                                  <div className="min-w-0">
+                                    <span className={`font-medium ${isMatched ? 'text-foreground' : 'text-muted-foreground'}`}>{cond.label}</span>
+                                    <p className="text-xs text-muted-foreground mt-0.5">{cond.detail}</p>
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-1.5 shrink-0">
+                                  <span className={`text-xs font-semibold ${cond.condMet ? 'text-green-600 dark:text-green-400' : 'text-muted-foreground'}`}>
+                                    {cond.condMet ? '符合' : '不符合'}
+                                  </span>
+                                  <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${cond.result === '恢復週' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300' : 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300'}`}>
+                                    {cond.result}
+                                  </span>
                                 </div>
                               </div>
-                              <span className={`shrink-0 text-xs px-1.5 py-0.5 rounded font-medium ${cond.result === '恢復週' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300' : 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300'}`}>
-                                → {cond.result}
-                              </span>
                             </div>
-                          </div>
-                        );
-                      })}
+                          );
+                        })}
+                      </div>
                     </div>
                   )}
                 </div>
