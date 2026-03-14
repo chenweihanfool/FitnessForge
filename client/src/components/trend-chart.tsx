@@ -14,6 +14,7 @@ import { parseISO, getISOWeek, getISOWeekYear } from "date-fns";
 
 interface TrendChartProps {
   data: WeeklyStats[];
+  title?: string;
 }
 
 // 计算线性回归
@@ -43,7 +44,7 @@ function calculateLinearRegression(data: number[]): { slope: number; intercept: 
   return { slope, intercept };
 }
 
-export function TrendChart({ data }: TrendChartProps) {
+export function TrendChart({ data, title }: TrendChartProps) {
   // 计算回归线
   const values = data.map(week => week.totalBaselineValue);
   const { slope, intercept } = calculateLinearRegression(values);
@@ -64,7 +65,7 @@ export function TrendChart({ data }: TrendChartProps) {
   return (
     <Card data-testid="card-trend-chart">
       <CardHeader>
-        <CardTitle>趋势分析</CardTitle>
+        <CardTitle>{title || '趋势分析'}</CardTitle>
         <CardDescription>每周基准值变化趋势</CardDescription>
       </CardHeader>
       <CardContent>

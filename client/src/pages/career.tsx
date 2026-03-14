@@ -279,7 +279,7 @@ export default function Career() {
       )}
 
       {trendData && trendData.length > 0 && (
-        <TrendChart data={trendData} />
+        <TrendChart data={trendData} title="歷史趨勢" />
       )}
 
       <Card data-testid="card-weekly-history">
