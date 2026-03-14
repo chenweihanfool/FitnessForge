@@ -530,7 +530,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const ROLLING_WEEKS = 8;
       const allStats = await storage.getAllWeeklyStats();
       if (allStats.length < 4) {
-        return res.json({ recommendation: 'normal', reason: '歷史週數不足，建議先按正常週累積數據。', matchedCondition: 4, recent4Avg: 0, rollingAvg: 0, aboveAvgCount: 0, lastWeekTotal: 0, diffPct: 0 });
+        return res.json({ recommendation: 'normal', reason: '歷史週數不足，建議先按正常週累積數據。', matchedCondition: 4, recent4Avg: 0, rollingAvg: 0, rollingWeeks: 0, aboveAvgCount: 0, lastWeekTotal: 0, diffPct: 0 });
       }
 
       const currentWeekStart = getCurrentWeekStart();
@@ -539,7 +539,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         .sort((a, b) => a.weekStart.localeCompare(b.weekStart));
 
       if (completed.length < 4) {
-        return res.json({ recommendation: 'normal', reason: '完成週數不足，建議按正常週訓練。', matchedCondition: 4, recent4Avg: 0, rollingAvg: 0, aboveAvgCount: 0, lastWeekTotal: 0, diffPct: 0 });
+        return res.json({ recommendation: 'normal', reason: '完成週數不足，建議按正常週訓練。', matchedCondition: 4, recent4Avg: 0, rollingAvg: 0, rollingWeeks: 0, aboveAvgCount: 0, lastWeekTotal: 0, diffPct: 0 });
       }
 
       const rollingWindow = completed.slice(-ROLLING_WEEKS);
