@@ -105,6 +105,7 @@ export interface IStorage {
   }>;
   getExerciseWeeklyAverage(exerciseId: string): Promise<number | null>;
   getExerciseRollingAverage(exerciseId: string, weeks: number): Promise<number | null>;
+  getRollingTotalStats(weeks: number): Promise<{ avg: number; weekCount: number } | null>;
   getWeeklyProgress(): Promise<{
     weekStart: string;
     weekEnd: string;
@@ -898,6 +899,30 @@ export class MemStorage implements IStorage {
     if (weeklyTotals.size === 0) return null;
     const sum = Array.from(weeklyTotals.values()).reduce((s, v) => s + v, 0);
     return sum / weeklyTotals.size;
+  }
+
+  async getRollingTotalStats(weeks: number): Promise<{ avg: number; weekCount: number } | null> {
+    const allEntries = Array.from(this.workoutEntries.values());
+    if (allEntries.length === 0) return null;
+
+    const now = new Date();
+    const currentWeekStart = this.getWeekStart(now);
+    const cutoff = new Date(currentWeekStart);
+    cutoff.setDate(cutoff.getDate() - weeks * 7);
+
+    const weeklyTotals = new Map<string, number>();
+    for (const entry of allEntries) {
+      const entryDate = new Date(entry.date);
+      const weekStart = this.getWeekStart(entryDate);
+      if (weekStart >= cutoff && weekStart < currentWeekStart) {
+        const weekKey = weekStart.toISOString();
+        weeklyTotals.set(weekKey, (weeklyTotals.get(weekKey) || 0) + (entry.baselineValue ?? entry.value));
+      }
+    }
+
+    if (weeklyTotals.size === 0) return null;
+    const sum = Array.from(weeklyTotals.values()).reduce((s, v) => s + v, 0);
+    return { avg: Math.round(sum / weeklyTotals.size), weekCount: weeklyTotals.size };
   }
 
   async getWeeklyProgress() {
@@ -2476,6 +2501,30 @@ export class DbStorage implements IStorage {
     if (weeklyTotals.size === 0) return null;
     const sum = Array.from(weeklyTotals.values()).reduce((s, v) => s + v, 0);
     return sum / weeklyTotals.size;
+  }
+
+  async getRollingTotalStats(weeks: number): Promise<{ avg: number; weekCount: number } | null> {
+    const allEntries = await this.db.select().from(workoutEntries);
+    if (allEntries.length === 0) return null;
+
+    const now = new Date();
+    const currentWeekStart = this.getWeekStart(now);
+    const cutoff = new Date(currentWeekStart);
+    cutoff.setDate(cutoff.getDate() - weeks * 7);
+
+    const weeklyTotals = new Map<string, number>();
+    for (const entry of allEntries) {
+      const entryDate = new Date(entry.date);
+      const weekStart = this.getWeekStart(entryDate);
+      if (weekStart >= cutoff && weekStart < currentWeekStart) {
+        const weekKey = weekStart.toISOString();
+        weeklyTotals.set(weekKey, (weeklyTotals.get(weekKey) || 0) + (entry.baselineValue ?? entry.value));
+      }
+    }
+
+    if (weeklyTotals.size === 0) return null;
+    const sum = Array.from(weeklyTotals.values()).reduce((s, v) => s + v, 0);
+    return { avg: Math.round(sum / weeklyTotals.size), weekCount: weeklyTotals.size };
   }
 
   async getWeeklyProgress() {

@@ -601,44 +601,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const ROLLING_WEEKS = 8;
+      const MIN_ROLLING_WEEKS = 4;
       const allExercises = await storage.getExercises();
-      const weeklyProgress = await storage.getWeeklyProgress();
       const allEntries = await storage.getWorkoutEntries();
 
-      // Compute rolling 8-week cutoff date for per-exercise rolling averages
-      const currentWeekStartDate = new Date(getCurrentWeekStart());
-      const rollingCutoff = new Date(currentWeekStartDate);
-      rollingCutoff.setDate(rollingCutoff.getDate() - ROLLING_WEEKS * 7);
+      const rollingTotalStats = await storage.getRollingTotalStats(ROLLING_WEEKS);
+      if (!rollingTotalStats || rollingTotalStats.weekCount < MIN_ROLLING_WEEKS) {
+        return res.status(400).json({ error: `需要至少 ${MIN_ROLLING_WEEKS} 週完成的訓練數據才能生成計畫。目前有 ${rollingTotalStats?.weekCount ?? 0} 週數據。` });
+      }
 
-      // Compute per-exercise typical session structure and rolling weekly averages
       const entryMap = new Map<string, { values: number[]; sets: number[] }>();
-      const rollingEntryMap = new Map<string, Map<string, number>>();
       for (const entry of allEntries) {
         if (!entryMap.has(entry.exerciseId)) entryMap.set(entry.exerciseId, { values: [], sets: [] });
         const rec = entryMap.get(entry.exerciseId)!;
         if (entry.value > 0) rec.values.push(entry.value);
         if (entry.sets != null && entry.sets > 0) rec.sets.push(entry.sets);
-
-        const entryDate = new Date(entry.date);
-        if (entryDate >= rollingCutoff && entryDate < currentWeekStartDate) {
-          if (!rollingEntryMap.has(entry.exerciseId)) rollingEntryMap.set(entry.exerciseId, new Map());
-          const weekMap = rollingEntryMap.get(entry.exerciseId)!;
-          const weekKey = entry.date.substring(0, 10);
-          const adjustedDate = new Date(entryDate);
-          const day = adjustedDate.getUTCDay();
-          const diff = day === 0 ? -6 : 1 - day;
-          adjustedDate.setUTCDate(adjustedDate.getUTCDate() + diff);
-          const wk = adjustedDate.toISOString().substring(0, 10);
-          weekMap.set(wk, (weekMap.get(wk) || 0) + (entry.baselineValue ?? entry.value));
-        }
       }
-
-      const getRollingAvg = (exerciseId: string): number | null => {
-        const weekMap = rollingEntryMap.get(exerciseId);
-        if (!weekMap || weekMap.size === 0) return null;
-        const vals = Array.from(weekMap.values());
-        return vals.reduce((a, b) => a + b, 0) / vals.length;
-      };
 
       const median = (arr: number[]) => {
         if (!arr.length) return null;
@@ -653,30 +631,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
         ['muscleCore', '核心'], ['muscleGlutes', '臀'], ['muscleFullBody', '全身'],
       ];
 
-      const exerciseData = allExercises
-        .filter(e => e.name !== '每周平均步数')
-        .map(e => {
-          const prog = weeklyProgress.exercises.find(p => p.exerciseId === e.id);
-          const hist = entryMap.get(e.id);
-          const typicalValue = hist ? median(hist.values) : null;
-          const typicalSets = hist ? median(hist.sets) : null;
-          const muscles = muscleLabels
-            .filter(([key]) => ((e as Record<string, unknown>)[key] as number ?? 0) > 0)
-            .map(([key, label]) => `${label}${ (e as Record<string, unknown>)[key] }%`)
-            .join('/');
-          const rollingAvg = getRollingAvg(e.id);
-          return {
-            id: e.id,
-            name: e.name,
-            unit: e.unit,
-            category: e.category,
-            weeklyAverage: rollingAvg ?? 0,
-            typicalValue,
-            typicalSets,
-            muscles,
-          };
-        })
-        .filter(e => e.weeklyAverage > 0);
+      const exerciseRollingAvgs = await Promise.all(
+        allExercises
+          .filter(e => e.name !== '每周平均步数')
+          .map(async e => {
+            const rollingAvg = await storage.getExerciseRollingAverage(e.id, ROLLING_WEEKS);
+            const hist = entryMap.get(e.id);
+            const typicalValue = hist ? median(hist.values) : null;
+            const typicalSets = hist ? median(hist.sets) : null;
+            const muscles = muscleLabels
+              .filter(([key]) => ((e as Record<string, unknown>)[key] as number ?? 0) > 0)
+              .map(([key, label]) => `${label}${ (e as Record<string, unknown>)[key] }%`)
+              .join('/');
+            return {
+              id: e.id,
+              name: e.name,
+              unit: e.unit,
+              category: e.category,
+              weeklyAverage: rollingAvg ?? 0,
+              typicalValue,
+              typicalSets,
+              muscles,
+            };
+          })
+      );
+
+      const exerciseData = exerciseRollingAvgs.filter(e => e.weeklyAverage > 0);
 
       if (exerciseData.length === 0) {
         return res.status(400).json({ error: "没有足够的历史数据来生成训练计划。请先记录一些训练数据。" });
