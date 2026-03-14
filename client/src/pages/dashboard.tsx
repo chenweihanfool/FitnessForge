@@ -426,23 +426,25 @@ export default function Dashboard() {
                   ))}
                   <span className="text-sm font-medium ml-1" data-testid="text-milestone-count">{milestones.achievedCount}/5</span>
                 </div>
-                {trendDirection !== 'stable' && (
-                  <Badge 
-                    variant="secondary"
-                    className={
-                      trendDirection === 'up' 
-                        ? 'bg-green-100 dark:bg-green-950/40 text-green-700 dark:text-green-400' 
-                        : 'bg-red-100 dark:bg-red-950/40 text-red-700 dark:text-red-400'
-                    }
-                    data-testid="badge-trend-direction"
-                  >
-                    {trendDirection === 'up' ? (
-                      <span className="flex items-center gap-1"><TrendingUp className="h-3 w-3" />连续上升</span>
-                    ) : (
-                      <span className="flex items-center gap-1"><TrendingDown className="h-3 w-3" />连续下降</span>
-                    )}
-                  </Badge>
-                )}
+                <Badge 
+                  variant="secondary"
+                  className={
+                    trendDirection === 'up' 
+                      ? 'bg-green-100 dark:bg-green-950/40 text-green-700 dark:text-green-400' 
+                      : trendDirection === 'down'
+                        ? 'bg-red-100 dark:bg-red-950/40 text-red-700 dark:text-red-400'
+                        : ''
+                  }
+                  data-testid="badge-trend-direction"
+                >
+                  {trendDirection === 'up' ? (
+                    <span className="flex items-center gap-1"><TrendingUp className="h-3 w-3" />连续上升</span>
+                  ) : trendDirection === 'down' ? (
+                    <span className="flex items-center gap-1"><TrendingDown className="h-3 w-3" />连续下降</span>
+                  ) : (
+                    <span className="flex items-center gap-1"><Minus className="h-3 w-3" />持平</span>
+                  )}
+                </Badge>
               </div>
             </CardTitle>
           </CardHeader>
