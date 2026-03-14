@@ -666,42 +666,43 @@ Use the exact exerciseId and exerciseName from the list above.`;
         exerciseActuals.set(entry.exerciseId, existing);
       }
 
-      const exerciseTotalPlanned = new Map<string, number>();
+      const exerciseTotalPlannedVolume = new Map<string, number>();
       for (const day of planDays) {
         for (const ex of day.exercises) {
-          const prev = exerciseTotalPlanned.get(ex.exerciseId) || 0;
-          exerciseTotalPlanned.set(ex.exerciseId, prev + ex.targetValue * ex.targetSets);
+          const prev = exerciseTotalPlannedVolume.get(ex.exerciseId) || 0;
+          exerciseTotalPlannedVolume.set(ex.exerciseId, prev + ex.targetValue * ex.targetSets);
         }
       }
 
-      const exerciseMet = new Map<string, boolean>();
-      for (const [exId, totalTarget] of exerciseTotalPlanned.entries()) {
-        const actual = exerciseActuals.get(exId) || { totalVolume: 0, totalSets: 0 };
-        exerciseMet.set(exId, actual.totalVolume >= totalTarget * 0.8);
-      }
-
-      const uniqueExerciseIds = new Set<string>();
-      for (const day of planDays) {
-        for (const ex of day.exercises) {
-          uniqueExerciseIds.add(ex.exerciseId);
-        }
-      }
-      const totalPlanned = uniqueExerciseIds.size;
+      let totalPlanned = 0;
       let totalMet = 0;
-      for (const exId of uniqueExerciseIds) {
-        if (exerciseMet.get(exId)) totalMet++;
-      }
 
       const daysWithProgress = planDays.map(day => ({
         ...day,
         exercises: day.exercises.map(ex => {
+          totalPlanned++;
+          const itemTarget = ex.targetValue * ex.targetSets;
+          const totalTarget = exerciseTotalPlannedVolume.get(ex.exerciseId) || itemTarget;
           const actual = exerciseActuals.get(ex.exerciseId) || { totalVolume: 0, totalSets: 0 };
-          const met = exerciseMet.get(ex.exerciseId) || false;
+          const itemProportion = totalTarget > 0 ? itemTarget / totalTarget : 1;
+          const itemActual = actual.totalVolume * itemProportion;
+          const itemActualSets = Math.round(actual.totalSets * itemProportion);
+
+          let status: 'met' | 'partial' | 'not_met';
+          if (itemActual >= itemTarget * 0.8) {
+            status = 'met';
+            totalMet++;
+          } else if (itemActual > 0) {
+            status = 'partial';
+          } else {
+            status = 'not_met';
+          }
+
           return {
             ...ex,
-            actualValue: actual.totalVolume,
-            actualSets: actual.totalSets,
-            met,
+            actualValue: Math.round(itemActual * 10) / 10,
+            actualSets: itemActualSets,
+            status,
           };
         }),
       }));

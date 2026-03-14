@@ -174,6 +174,8 @@ export type PlanDayItem = {
   }>;
 };
 
+export type PlanItemStatus = 'met' | 'partial' | 'not_met';
+
 export type PlanProgress = {
   weekStart: string;
   mode: string;
@@ -188,7 +190,7 @@ export type PlanProgress = {
       category: string | null;
       actualValue: number;
       actualSets: number;
-      met: boolean;
+      status: PlanItemStatus;
     }>;
   }>;
   totalPlanned: number;

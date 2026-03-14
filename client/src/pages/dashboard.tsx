@@ -7,7 +7,7 @@ import { RankingDetailDialog } from "@/components/ranking-detail-dialog";
 import { ScaleProgressBar } from "@/components/scale-progress-bar";
 import { TrendChart } from "@/components/trend-chart";
 import { Activity, TrendingUp, Calendar, Award, X, TrendingDown, Dumbbell, Heart, Footprints, Plus, Check, Minus, Star, Pencil, ClipboardList, RefreshCw, Loader2 } from "lucide-react";
-import { RankingData, WeeklyStats, RankingDetailResponse, Exercise, PlanProgress } from "@shared/schema";
+import { RankingData, WeeklyStats, RankingDetailResponse, Exercise, PlanProgress, PlanItemStatus } from "@shared/schema";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
@@ -726,7 +726,7 @@ export default function Dashboard() {
                     <div className="flex items-center gap-2">
                       <Badge variant="outline" className="text-xs">{day.dayName}</Badge>
                       <span className="text-xs text-muted-foreground">
-                        {day.exercises.filter(e => e.met).length}/{day.exercises.length} 完成
+                        {day.exercises.filter(e => e.status === 'met').length}/{day.exercises.length} 完成
                       </span>
                     </div>
                     <div className="grid gap-1.5 pl-2">
@@ -740,13 +740,15 @@ export default function Dashboard() {
                             data-testid={`plan-exercise-${day.day}-${idx}`}
                           >
                             <div className="w-4 h-4 flex items-center justify-center flex-shrink-0">
-                              {ex.met ? (
+                              {ex.status === 'met' ? (
                                 <Check className="h-4 w-4 text-green-600 dark:text-green-400" />
+                              ) : ex.status === 'partial' ? (
+                                <div className="w-3 h-3 rounded-full border-2 border-primary bg-primary/30" />
                               ) : (
                                 <div className="w-3 h-3 rounded-full border-2 border-muted-foreground/30" />
                               )}
                             </div>
-                            <span className={`flex-shrink-0 ${ex.met ? 'text-muted-foreground line-through' : ''}`}>
+                            <span className={`flex-shrink-0 ${ex.status === 'met' ? 'text-muted-foreground line-through' : ''}`}>
                               {ex.exerciseName}
                             </span>
                             <span className="text-xs text-muted-foreground flex-shrink-0">
@@ -754,7 +756,7 @@ export default function Dashboard() {
                             </span>
                             <div className="flex-1 min-w-12 h-1.5 bg-muted rounded-full overflow-hidden">
                               <div
-                                className={`h-full rounded-full transition-all ${ex.met ? 'bg-green-500' : 'bg-primary/60'}`}
+                                className={`h-full rounded-full transition-all ${ex.status === 'met' ? 'bg-green-500' : ex.status === 'partial' ? 'bg-primary/60' : 'bg-muted-foreground/20'}`}
                                 style={{ width: `${progress}%` }}
                               />
                             </div>
