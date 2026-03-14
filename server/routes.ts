@@ -434,6 +434,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // ==================== 用户设置 API ====================
 
+  const DEFAULT_PLAN_CUSTOM_RULES = `Monday–Thursday are workdays so keep intensity moderate-to-light on those days — shorter sessions, fewer sets, or lighter cardio/core work. 1-2 rest days among Mon-Thu is fine but do NOT skip all four. Friday–Sunday are free days so these can have higher volume and heavier strength exercises, but still within reason (do not stack everything here). Aim for a natural intensity curve that rises toward the weekend.`;
+
   app.get("/api/settings", async (req, res) => {
     try {
       const settings = await storage.getAllUserSettings();
@@ -441,6 +443,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         strengthWeight: parseFloat(settings['strengthWeight'] ?? '50'),
         cardioWeight: parseFloat(settings['cardioWeight'] ?? '30'),
         activityWeight: parseFloat(settings['activityWeight'] ?? '20'),
+        planCustomRules: settings['planCustomRules'] ?? DEFAULT_PLAN_CUSTOM_RULES,
       });
     } catch (error) {
       console.error("获取设置失败:", error);
@@ -468,6 +471,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("保存设置失败:", error);
       res.status(500).json({ error: "保存设置失败" });
+    }
+  });
+
+  app.post("/api/settings/plan-rules", async (req, res) => {
+    try {
+      const { planCustomRules } = req.body;
+      if (typeof planCustomRules !== 'string') {
+        return res.status(400).json({ error: "planCustomRules 必须是字串" });
+      }
+      await storage.setUserSetting('planCustomRules', planCustomRules.trim() || DEFAULT_PLAN_CUSTOM_RULES);
+      res.json({ success: true, planCustomRules: planCustomRules.trim() || DEFAULT_PLAN_CUSTOM_RULES });
+    } catch (error) {
+      console.error("保存計畫規則失敗:", error);
+      res.status(500).json({ error: "保存計畫規則失敗" });
     }
   });
 
@@ -539,6 +556,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const dayNames = ['週一', '週二', '週三', '週四', '週五', '週六', '週日'];
       const targetMultiplier = mode === 'recovery' ? 1.0 : 1.15;
 
+      const allSettings = await storage.getAllUserSettings();
+      const customRules = allSettings['planCustomRules'] ?? DEFAULT_PLAN_CUSTOM_RULES;
+
       const prompt = `You are a fitness training planner. Generate a weekly training schedule in JSON format.
 
 The user has the following exercises with their weekly averages:
@@ -555,7 +575,7 @@ Rules:
 5. Group exercises logically by category (strength together, cardio together)
 6. Don't include the same exercise on consecutive days
 7. Balance the total baseline load across training days
-8. WEEKDAY vs WEEKEND intensity balance: Monday–Thursday are workdays so keep intensity moderate-to-light on those days — shorter sessions, fewer sets, or lighter cardio/core work. 1-2 rest days among Mon-Thu is fine but do NOT skip all four. Friday–Sunday are free days so these can have higher volume and heavier strength exercises, but still within reason (do not stack everything here). Aim for a natural intensity curve that rises toward the weekend.
+8. User scheduling preference: ${customRules}
 
 Respond ONLY with a JSON array (no markdown, no explanation). Each element represents a day:
 [
