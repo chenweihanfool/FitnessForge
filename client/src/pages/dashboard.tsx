@@ -1,12 +1,10 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
-import { StatsCard } from "@/components/stats-card";
 import { RankingMetricCard } from "@/components/ranking-metric-card";
 import { RankingDetailDialog } from "@/components/ranking-detail-dialog";
 import { ScaleProgressBar } from "@/components/scale-progress-bar";
-import { TrendChart } from "@/components/trend-chart";
-import { Activity, TrendingUp, Calendar, Award, X, TrendingDown, Dumbbell, Heart, Footprints, Plus, Check, Minus, Star, Pencil, ClipboardList, RefreshCw, Loader2 } from "lucide-react";
+import { Activity, TrendingUp, Calendar, Award, X, TrendingDown, Dumbbell, Heart, Footprints, Plus, Check, Minus, Star, Pencil, ClipboardList, RefreshCw, Loader2, ChevronDown } from "lucide-react";
 import { RankingData, WeeklyStats, RankingDetailResponse, Exercise, PlanProgress, PlanItemStatus } from "@shared/schema";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -21,6 +19,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useToast } from "@/hooks/use-toast";
 import {
   Table,
@@ -301,6 +301,7 @@ export default function Dashboard() {
   });
 
   const [selectedPlanMode, setSelectedPlanMode] = useState<'recovery' | 'normal'>('normal');
+  const [rankingOpen, setRankingOpen] = useState(false);
 
   const generatePlanMutation = useMutation({
     mutationFn: async (mode: 'recovery' | 'normal') => {
@@ -350,14 +351,6 @@ export default function Dashboard() {
       </div>
     );
   }
-
-  const currentWeekValue = rankingData?.currentWeek?.totalBaselineValue || 0;
-  const previousWeekValue = trendData && trendData.length > 1 
-    ? trendData[trendData.length - 2].totalBaselineValue 
-    : 0;
-  const weeklyChange = previousWeekValue > 0
-    ? ((currentWeekValue - previousWeekValue) / previousWeekValue) * 100
-    : 0;
 
   const prefetchRankingDetail = (metric: 'total' | 'strength' | 'cardio' | 'activity') => {
     queryClient.prefetchQuery({
@@ -525,7 +518,7 @@ export default function Dashboard() {
           <CardContent>
             <div className="space-y-4">
               {/* 综合得分 vs 均值 */}
-              <div className="space-y-2" data-testid="section-composite-score">
+              <div className="space-y-2 cursor-pointer hover-elevate rounded-md p-1 -m-1" data-testid="section-composite-score" onClick={() => setShowDetailsDialog(true)}>
                 <div className="flex items-center justify-between gap-2 flex-wrap">
                   <span className="text-sm text-muted-foreground">综合得分</span>
                   <div className="flex items-center gap-2">
@@ -594,27 +587,64 @@ export default function Dashboard() {
                 })}
               </div>
 
-              {/* 排名 + 里程碑简要 */}
-              <div className="flex items-center justify-between gap-2 pt-2 border-t flex-wrap" data-testid="section-rank-milestones">
+              {/* 里程碑阶段 */}
+              <div className="flex items-center gap-2 pt-2 border-t flex-wrap" data-testid="section-milestone-stages">
+                {[
+                  { stage: 1, name: '参与', achieved: milestones.hasEntry, detail: '至少1次训练记录', status: milestones.hasEntry ? '已达成' : '未达成' },
+                  { stage: 2, name: '纪律', achieved: milestones.hasDiscipline, detail: `训练天数 ≥ 3（目前 ${milestones.trainingDays} 天）`, status: milestones.hasDiscipline ? '已达成' : `${milestones.trainingDays}/3 天` },
+                  { stage: 3, name: '容量', achieved: milestones.totalAbove, detail: `总分超过生涯均值（均 ${milestones.avgTotal.toFixed(0)}）`, status: milestones.totalAbove ? '已达成' : `${milestones.currentTotal.toFixed(0)} / ${milestones.avgTotal.toFixed(0)}` },
+                  { stage: 4, name: '强度', achieved: milestones.allMusclesAtMaintenance, detail: `≥50% 肌群达维持量+容量（${milestones.musclesFullyMetCount}/${milestones.musclesTotalCount}）`, status: milestones.allMusclesAtMaintenance ? '已达成' : `${milestones.musclesFullyMetCount}/${milestones.musclesTotalCount} 肌群` },
+                  { stage: 5, name: '突破', achieved: milestones.breakthrough, detail: '前10% 或 4周新高', status: milestones.breakthrough ? '已达成' : milestones.inTop10 ? '前10%' : milestones.isFourWeekHigh ? '4周新高' : '未达成' },
+                ].map((m) => (
+                  <Popover key={m.stage}>
+                    <PopoverTrigger asChild>
+                      <button
+                        className={`flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-medium transition-colors cursor-pointer ${
+                          m.achieved
+                            ? 'bg-green-100 dark:bg-green-950/40 text-green-700 dark:text-green-400'
+                            : 'bg-muted text-muted-foreground'
+                        }`}
+                        data-testid={`milestone-badge-${m.stage}`}
+                      >
+                        <span className={`flex items-center justify-center w-4 h-4 rounded-full text-[10px] font-bold ${
+                          m.achieved
+                            ? 'bg-green-600 text-white dark:bg-green-500'
+                            : 'bg-muted-foreground/20 text-muted-foreground'
+                        }`}>
+                          {m.stage}
+                        </span>
+                        {m.name}
+                      </button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-48 p-3" side="bottom">
+                      <div className="space-y-1">
+                        <p className="text-sm font-medium">{m.stage}. {m.name}</p>
+                        <p className="text-xs text-muted-foreground">{m.detail}</p>
+                        <p className={`text-xs font-medium ${m.achieved ? 'text-green-600 dark:text-green-400' : 'text-muted-foreground'}`}>
+                          {m.status}
+                        </p>
+                      </div>
+                    </PopoverContent>
+                  </Popover>
+                ))}
+              </div>
+
+              {/* 排名 + 快捷连结 */}
+              <div className="flex items-center justify-between gap-2 flex-wrap" data-testid="section-rank-milestones">
                 <div className="flex items-center gap-3">
                   <span className="text-sm text-muted-foreground">本周排名</span>
                   <span className="text-sm font-bold" data-testid="text-current-rank">
                     #{rankingData.rank} / {rankingData.totalWeeks} 周
                   </span>
                 </div>
-                <div className="text-xs text-muted-foreground" data-testid="text-next-milestone">
-                  {milestones.achievedCount < 5 ? (
-                    <span>
-                      下一阶段: {
-                        milestones.achievedCount === 0 ? '参与 (记录1次训练)'
-                        : milestones.achievedCount === 1 ? `纪律 (训练${milestones.trainingDays}/3天)`
-                        : milestones.achievedCount === 2 ? '容量 (总分超过均值)'
-                        : milestones.achievedCount === 3 ? `强度 (${milestones.musclesFullyMetCount}/${milestones.musclesTotalCount}肌群达标)`
-                        : '突破 (前10%或4周新高)'
-                      }
-                    </span>
-                  ) : (
-                    <span className="text-green-600 dark:text-green-400 font-medium">全部达成</span>
+                <div className="flex items-center gap-1">
+                  <Button variant="ghost" size="sm" onClick={() => setShowWeekRecordsDialog(true)} data-testid="button-view-week-records">
+                    本周记录
+                  </Button>
+                  {rankingData.bestWeek && (
+                    <Button variant="ghost" size="sm" onClick={() => setShowBestWeekDialog(true)} data-testid="button-view-best-week">
+                      历史最佳
+                    </Button>
                   )}
                 </div>
               </div>
@@ -1194,41 +1224,17 @@ export default function Dashboard() {
         })()
       }
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <StatsCard
-          title="本周基准值"
-          value={currentWeekValue.toFixed(1)}
-          subtitle="数据 × 重量系数总和"
-          icon={Activity}
-          trend={{
-            value: Math.abs(weeklyChange),
-            isPositive: weeklyChange >= 0,
-          }}
-          testId="card-current-week"
-          clickable={true}
-          onClick={() => setShowDetailsDialog(true)}
-        />
-        <StatsCard
-          title="本周记录数"
-          value={rankingData?.currentWeek?.entryCount || 0}
-          subtitle="运动记录次数"
-          icon={Calendar}
-          testId="card-entry-count"
-          clickable={true}
-          onClick={() => setShowWeekRecordsDialog(true)}
-        />
-        <StatsCard
-          title="历史最佳"
-          value={rankingData?.bestWeek?.totalBaselineValue?.toFixed(1) || "暂无"}
-          subtitle="个人最高周总值"
-          icon={TrendingUp}
-          testId="card-best-record"
-          clickable={!!rankingData?.bestWeek}
-          onClick={() => rankingData?.bestWeek && setShowBestWeekDialog(true)}
-        />
-      </div>
-
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <Collapsible open={rankingOpen} onOpenChange={setRankingOpen}>
+        <div className="flex items-center gap-2">
+          <CollapsibleTrigger asChild>
+            <Button variant="ghost" size="sm" className="gap-1" data-testid="button-toggle-ranking">
+              <ChevronDown className={`h-4 w-4 transition-transform ${rankingOpen ? 'rotate-180' : ''}`} />
+              排名詳情
+            </Button>
+          </CollapsibleTrigger>
+        </div>
+        <CollapsibleContent>
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mt-3">
         {rankingData && rankingData.totalWeeks > 0 && (
           <>
             <RankingMetricCard
@@ -1281,7 +1287,9 @@ export default function Dashboard() {
             />
           </>
         )}
-      </div>
+          </div>
+        </CollapsibleContent>
+      </Collapsible>
 
       {stepsLoaded && stepsExerciseId && (
         <Card data-testid="card-steps-quick-update">
@@ -1367,24 +1375,7 @@ export default function Dashboard() {
         </DialogContent>
       </Dialog>
 
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-        <div className="lg:col-span-2">
-          {trendData && trendData.length > 0 ? (
-            <TrendChart data={trendData} />
-          ) : (
-            <Card>
-              <CardHeader>
-                <CardTitle>趋势分析</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="flex h-[300px] items-center justify-center text-muted-foreground">
-                  暂无数据，开始记录您的运动吧！
-                </div>
-              </CardContent>
-            </Card>
-          )}
-        </div>
-        
+      <div className="grid gap-6 md:grid-cols-2">
         <div className="space-y-6">
           {!categoryLoading && categoryBreakdown && (
             <Card data-testid="card-category-breakdown">

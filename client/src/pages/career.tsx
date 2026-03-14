@@ -2,6 +2,8 @@ import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Trophy, Star, TrendingUp, Calendar, BarChart3 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
+import { TrendChart } from "@/components/trend-chart";
+import { WeeklyStats } from "@shared/schema";
 import {
   Table,
   TableBody,
@@ -53,6 +55,10 @@ interface CareerOverview {
 export default function Career() {
   const { data, isLoading } = useQuery<CareerOverview>({
     queryKey: ["/api/stats/career-overview"],
+  });
+
+  const { data: trendData } = useQuery<WeeklyStats[]>({
+    queryKey: ["/api/stats/trends"],
   });
 
   if (isLoading) {
@@ -270,6 +276,10 @@ export default function Career() {
             </div>
           </CardContent>
         </Card>
+      )}
+
+      {trendData && trendData.length > 0 && (
+        <TrendChart data={trendData} />
       )}
 
       <Card data-testid="card-weekly-history">
