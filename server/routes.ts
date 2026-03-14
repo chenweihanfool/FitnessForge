@@ -525,6 +525,53 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.get("/api/plan/recommend-mode", async (req, res) => {
+    try {
+      const allStats = await storage.getAllWeeklyStats();
+      if (allStats.length < 4) {
+        return res.json({ recommendation: 'normal', reason: '歷史週數不足，建議先按正常週累積數據。' });
+      }
+
+      const currentWeekStart = getCurrentWeekStart();
+      // Exclude current (possibly incomplete) week
+      const completed = allStats
+        .filter(w => w.weekStart !== currentWeekStart)
+        .sort((a, b) => a.weekStart.localeCompare(b.weekStart));
+
+      if (completed.length < 4) {
+        return res.json({ recommendation: 'normal', reason: '完成週數不足，建議按正常週訓練。' });
+      }
+
+      const careerAvg = completed.reduce((s, w) => s + w.totalBaselineValue, 0) / completed.length;
+      const recent4 = completed.slice(-4);
+      const recent4Avg = recent4.reduce((s, w) => s + w.totalBaselineValue, 0) / 4;
+      const lastWeek = completed[completed.length - 1];
+      const aboveAvgCount = recent4.filter(w => w.totalBaselineValue > careerAvg).length;
+
+      let recommendation: 'recovery' | 'normal';
+      let reason: string;
+
+      if (recent4Avg > careerAvg * 1.12) {
+        recommendation = 'recovery';
+        reason = `近4週平均分數（${recent4Avg.toFixed(0)}）高於生涯均值（${careerAvg.toFixed(0)}）約 ${Math.round((recent4Avg / careerAvg - 1) * 100)}%，建議安排恢復週讓身體適應。`;
+      } else if (aboveAvgCount >= 3 && lastWeek.totalBaselineValue > careerAvg * 1.1) {
+        recommendation = 'recovery';
+        reason = `近4週中有 ${aboveAvgCount} 週超過生涯均值，且上週表現特別突出（${lastWeek.totalBaselineValue.toFixed(0)}），適合安排恢復週。`;
+      } else if (recent4Avg < careerAvg * 0.85) {
+        recommendation = 'normal';
+        reason = `近4週均分（${recent4Avg.toFixed(0)}）低於生涯均值（${careerAvg.toFixed(0)}），建議正常週維持訓練量。`;
+      } else {
+        recommendation = 'normal';
+        reason = `近期訓練量穩定正常（均值 ${recent4Avg.toFixed(0)}，生涯均 ${careerAvg.toFixed(0)}），建議維持正常週節奏。`;
+      }
+
+      res.json({ recommendation, reason, recent4Avg: Math.round(recent4Avg), careerAvg: Math.round(careerAvg) });
+    } catch (error) {
+      console.error("取得週建議失敗:", error);
+      res.status(500).json({ error: "取得建議失敗" });
+    }
+  });
+
   app.post("/api/plan/generate", async (req, res) => {
     try {
       const { mode } = req.body;
@@ -552,6 +599,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return s.length % 2 === 0 ? (s[m - 1] + s[m]) / 2 : s[m];
       };
 
+      const muscleLabels: Array<[string, string]> = [
+        ['muscleChest', '胸'], ['muscleBack', '背'], ['muscleLegs', '腿'],
+        ['muscleShoulders', '肩'], ['muscleArms', '二頭/三頭'],
+        ['muscleCore', '核心'], ['muscleGlutes', '臀'], ['muscleFullBody', '全身'],
+      ];
+
       const exerciseData = allExercises
         .filter(e => e.name !== '每周平均步数')
         .map(e => {
@@ -559,6 +612,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const hist = entryMap.get(e.id);
           const typicalValue = hist ? median(hist.values) : null;
           const typicalSets = hist ? median(hist.sets) : null;
+          const muscles = muscleLabels
+            .filter(([key]) => ((e as Record<string, unknown>)[key] as number ?? 0) > 0)
+            .map(([key, label]) => `${label}${ (e as Record<string, unknown>)[key] }%`)
+            .join('/');
           return {
             id: e.id,
             name: e.name,
@@ -567,6 +624,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             weeklyAverage: prog?.weeklyAverage ?? 0,
             typicalValue,
             typicalSets,
+            muscles,
           };
         })
         .filter(e => e.weeklyAverage > 0);
@@ -585,13 +643,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         let line = `- ${e.name} (unit: ${e.unit}, category: ${e.category || 'other'}, weekly avg total: ${e.weeklyAverage.toFixed(1)}`;
         if (e.typicalValue !== null) line += `, typical value per set: ${Math.round(e.typicalValue)}`;
         if (e.typicalSets !== null) line += `, typical sets per session: ${Math.round(e.typicalSets)}`;
+        if (e.muscles) line += `, muscles: ${e.muscles}`;
         line += ')';
         return line;
       }).join('\n');
 
       const prompt = `You are a fitness training planner. Generate a weekly training schedule in JSON format.
 
-The user has the following exercises. "typical value per set" and "typical sets per session" come from their REAL historical data — you MUST use these as the basis for targetValue and targetSets. Do NOT invent values outside the user's actual range.
+The user has the following exercises. "typical value per set" and "typical sets per session" come from their REAL historical data — you MUST use these as the basis for targetValue and targetSets. Do NOT invent values outside the user's actual range. "muscles" shows which muscle groups each exercise trains (with % contribution).
 ${exerciseLines}
 
 Mode: ${mode === 'recovery' ? 'Recovery week (target = career averages)' : 'Normal week (target = averages + 15%)'}
@@ -604,7 +663,8 @@ Rules:
 4. Group exercises logically by category (strength together, cardio together)
 5. Don't include the same exercise on consecutive days
 6. Balance the total load across training days
-7. User scheduling preference: ${customRules}
+7. MUSCLE GROUP BALANCE: Use the "muscles" field to ensure the weekly plan covers all major muscle groups (胸/背/腿/肩/核心). Try to include at least one exercise covering each major muscle group across the week.
+8. User scheduling preference: ${customRules}
 
 Respond ONLY with a JSON array (no markdown, no explanation). Each element represents a day:
 [

@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { TrendChart } from "@/components/trend-chart";
 import { useLocation } from "wouter";
 import { RankingMetricCard } from "@/components/ranking-metric-card";
 import { RankingDetailDialog } from "@/components/ranking-detail-dialog";
@@ -300,8 +301,20 @@ export default function Dashboard() {
     queryKey: ["/api/plan/progress"],
   });
 
+  type ModeRecommendation = { recommendation: 'recovery' | 'normal'; reason: string; recent4Avg: number; careerAvg: number };
+  const { data: modeRecommendation } = useQuery<ModeRecommendation>({
+    queryKey: ["/api/plan/recommend-mode"],
+  });
+
   const [selectedPlanMode, setSelectedPlanMode] = useState<'recovery' | 'normal'>('normal');
+  const [modeManuallyChanged, setModeManuallyChanged] = useState(false);
   const [rankingOpen, setRankingOpen] = useState(false);
+
+  useEffect(() => {
+    if (modeRecommendation && !modeManuallyChanged) {
+      setSelectedPlanMode(modeRecommendation.recommendation);
+    }
+  }, [modeRecommendation, modeManuallyChanged]);
 
   const generatePlanMutation = useMutation({
     mutationFn: async (mode: 'recovery' | 'normal') => {
@@ -472,6 +485,11 @@ export default function Dashboard() {
         <h1 className="text-3xl font-bold">仪表板</h1>
         <p className="text-muted-foreground mt-2">查看您的运动数据和进展</p>
       </div>
+
+      {/* 歷史趨勢圖 */}
+      {trendData && trendData.length > 1 && (
+        <TrendChart data={trendData} title="歷史趨勢" />
+      )}
 
       {/* 本周綜合摘要 */}
       {rankingData && milestones && (
@@ -726,13 +744,22 @@ export default function Dashboard() {
             </div>
           ) : !planProgress ? (
             <div className="space-y-4">
-              <p className="text-sm text-muted-foreground">选择训练模式并生成本周计划</p>
+              {modeRecommendation && (
+                <div className="flex items-start gap-2 rounded-md bg-muted/50 px-3 py-2 text-sm" data-testid="section-mode-recommendation">
+                  <TrendingUp className="h-4 w-4 mt-0.5 shrink-0 text-muted-foreground" />
+                  <div>
+                    <span className="font-medium">建議：{modeRecommendation.recommendation === 'recovery' ? '恢復週' : '正常週'}</span>
+                    <span className="text-muted-foreground ml-1">— {modeRecommendation.reason}</span>
+                  </div>
+                </div>
+              )}
+              <p className="text-sm text-muted-foreground">選擇訓練模式並生成本週計畫</p>
               <div className="flex items-center gap-3 flex-wrap">
                 <div className="flex gap-2">
                   <Button
                     variant={selectedPlanMode === 'recovery' ? 'default' : 'outline'}
                     size="sm"
-                    onClick={() => setSelectedPlanMode('recovery')}
+                    onClick={() => { setSelectedPlanMode('recovery'); setModeManuallyChanged(true); }}
                     data-testid="button-plan-mode-recovery"
                   >
                     恢復周
@@ -740,7 +767,7 @@ export default function Dashboard() {
                   <Button
                     variant={selectedPlanMode === 'normal' ? 'default' : 'outline'}
                     size="sm"
-                    onClick={() => setSelectedPlanMode('normal')}
+                    onClick={() => { setSelectedPlanMode('normal'); setModeManuallyChanged(true); }}
                     data-testid="button-plan-mode-normal"
                   >
                     正常周
@@ -852,7 +879,7 @@ export default function Dashboard() {
                   <Button
                     variant={selectedPlanMode === 'recovery' ? 'default' : 'outline'}
                     size="sm"
-                    onClick={() => setSelectedPlanMode('recovery')}
+                    onClick={() => { setSelectedPlanMode('recovery'); setModeManuallyChanged(true); }}
                     data-testid="button-replan-mode-recovery"
                   >
                     恢復周
@@ -860,7 +887,7 @@ export default function Dashboard() {
                   <Button
                     variant={selectedPlanMode === 'normal' ? 'default' : 'outline'}
                     size="sm"
-                    onClick={() => setSelectedPlanMode('normal')}
+                    onClick={() => { setSelectedPlanMode('normal'); setModeManuallyChanged(true); }}
                     data-testid="button-replan-mode-normal"
                   >
                     正常周
