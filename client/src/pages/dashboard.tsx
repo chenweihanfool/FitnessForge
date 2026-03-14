@@ -265,7 +265,7 @@ export default function Dashboard() {
     mutationFn: async (dailyAvg: number) => {
       const weeklyTotal = dailyAvg * 7;
       if (stepsData && stepsData.id) {
-        return apiRequest("PATCH", `/api/entries/${stepsData.id}`, {
+        return apiRequest("PUT", `/api/entries/${stepsData.id}`, {
           exerciseId: stepsData.exerciseId,
           value: weeklyTotal,
           weightFactor: 1,

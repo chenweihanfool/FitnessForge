@@ -169,7 +169,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // 更新运动记录
-  app.patch("/api/entries/:id", async (req, res) => {
+  const handleUpdateEntry = async (req: any, res: any) => {
     try {
       const validatedData = insertWorkoutEntrySchema.parse(req.body);
       const entry = await storage.updateWorkoutEntry(req.params.id, validatedData);
@@ -181,7 +181,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.error("更新记录失败:", error);
       res.status(400).json({ error: "更新记录失败，请检查输入数据", details: error instanceof Error ? error.message : String(error) });
     }
-  });
+  };
+  app.patch("/api/entries/:id", handleUpdateEntry);
+  app.put("/api/entries/:id", handleUpdateEntry);
 
   // 删除运动记录
   app.delete("/api/entries/:id", async (req, res) => {
