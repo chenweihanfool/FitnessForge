@@ -1,15 +1,16 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { StatsCard } from "@/components/stats-card";
 import { RankingMetricCard } from "@/components/ranking-metric-card";
 import { RankingDetailDialog } from "@/components/ranking-detail-dialog";
 import { ScaleProgressBar } from "@/components/scale-progress-bar";
 import { TrendChart } from "@/components/trend-chart";
-import { Activity, TrendingUp, Calendar, Award, X, TrendingDown, Dumbbell, Heart, Footprints, Plus, Check, Minus, Star } from "lucide-react";
+import { Activity, TrendingUp, Calendar, Award, X, TrendingDown, Dumbbell, Heart, Footprints, Plus, Check, Minus, Star, Pencil } from "lucide-react";
 import { RankingData, WeeklyStats, RankingDetailResponse, Exercise } from "@shared/schema";
-import { queryClient } from "@/lib/queryClient";
+import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -241,6 +242,56 @@ export default function Dashboard() {
       return response.json();
     },
     enabled: !!selectedDayDate,
+  });
+
+  type StepsData = {
+    exists: boolean;
+    exerciseId: string;
+    entryId?: string;
+    weeklyTotal?: number;
+    dailyAverage?: number;
+    date?: string;
+  } | null;
+
+  const { data: stepsData } = useQuery<StepsData>({
+    queryKey: ["/api/entries/current-week-steps"],
+  });
+
+  const [showStepsDialog, setShowStepsDialog] = useState(false);
+  const [stepsInput, setStepsInput] = useState("");
+
+  const stepsMutation = useMutation({
+    mutationFn: async (dailyAvg: number) => {
+      const weeklyTotal = dailyAvg * 7;
+      if (stepsData?.exists && stepsData.entryId) {
+        return apiRequest("PATCH", `/api/entries/${stepsData.entryId}`, {
+          exerciseId: stepsData.exerciseId,
+          value: weeklyTotal,
+          weightFactor: 1,
+        });
+      } else if (stepsData?.exerciseId) {
+        return apiRequest("POST", "/api/entries", {
+          exerciseId: stepsData.exerciseId,
+          value: weeklyTotal,
+          weightFactor: 1,
+        });
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/entries/current-week-steps"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/stats/ranking"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/stats/trends"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/stats/category-breakdown"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/stats/weekly-progress"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/stats/daily-contributions"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/stats/current-week-details"] });
+      setShowStepsDialog(false);
+      setStepsInput("");
+      toast({ title: "步数已更新" });
+    },
+    onError: () => {
+      toast({ title: "更新失败", variant: "destructive" });
+    },
   });
 
   const trendDirection = (() => {
@@ -1019,6 +1070,77 @@ export default function Dashboard() {
           </>
         )}
       </div>
+
+      {stepsData && (
+        <Card data-testid="card-steps-quick-update">
+          <CardContent className="flex items-center justify-between gap-4 py-3 px-4">
+            <div className="flex items-center gap-2">
+              <Footprints className="h-4 w-4 text-muted-foreground" />
+              <span className="text-sm text-muted-foreground">本周每日平均步数</span>
+            </div>
+            <div className="flex items-center gap-2">
+              {stepsData.exists ? (
+                <span className="text-sm font-medium" data-testid="text-steps-daily-avg">
+                  {stepsData.dailyAverage?.toLocaleString()} 步/天
+                </span>
+              ) : (
+                <span className="text-sm text-muted-foreground" data-testid="text-steps-none">尚未记录</span>
+              )}
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={() => {
+                  setStepsInput(stepsData.exists ? String(stepsData.dailyAverage) : "");
+                  setShowStepsDialog(true);
+                }}
+                data-testid="button-steps-quick-edit"
+              >
+                {stepsData.exists ? <Pencil className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      <Dialog open={showStepsDialog} onOpenChange={setShowStepsDialog}>
+        <DialogContent className="sm:max-w-[360px]">
+          <DialogHeader>
+            <DialogTitle>{stepsData?.exists ? '更新每日平均步数' : '記錄步數'}</DialogTitle>
+            <DialogDescription>
+              {stepsData?.exists
+                ? `目前记录：每日 ${stepsData.dailyAverage?.toLocaleString()} 步（周总计 ${stepsData.weeklyTotal?.toLocaleString()} 步）`
+                : '输入本周每日平均步数'}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">每日平均步数</label>
+              <Input
+                type="number"
+                min="0"
+                step="100"
+                placeholder="例如 8000"
+                value={stepsInput}
+                onChange={(e) => setStepsInput(e.target.value)}
+                data-testid="input-steps-daily-avg"
+              />
+              {stepsInput && Number(stepsInput) > 0 && (
+                <p className="text-xs text-muted-foreground">
+                  周总计：{(Number(stepsInput) * 7).toLocaleString()} 步
+                </p>
+              )}
+            </div>
+            <Button
+              className="w-full"
+              disabled={!stepsInput || Number(stepsInput) <= 0 || stepsMutation.isPending}
+              onClick={() => stepsMutation.mutate(Number(stepsInput))}
+              data-testid="button-steps-confirm"
+            >
+              {stepsMutation.isPending ? '更新中...' : '确认'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
         <div className="lg:col-span-2">

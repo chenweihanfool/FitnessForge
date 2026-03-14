@@ -95,6 +95,44 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.get("/api/entries/current-week-steps", async (req, res) => {
+    try {
+      const allExercises = await storage.getExercises();
+      const stepsExercise = allExercises.find(e => e.name === '每周平均步数');
+      if (!stepsExercise) {
+        return res.json(null);
+      }
+
+      const entries = await storage.getWorkoutEntries();
+      const rankingData = await storage.getRankingData();
+      const weekStart = new Date(rankingData.currentWeek.weekStart);
+      const weekEnd = new Date(rankingData.currentWeek.weekEnd);
+
+      const stepsEntries = entries.filter(e => {
+        if (e.exerciseId !== stepsExercise.id) return false;
+        const d = new Date(e.date);
+        return d >= weekStart && d <= weekEnd;
+      });
+
+      if (stepsEntries.length === 0) {
+        return res.json({ exists: false, exerciseId: stepsExercise.id });
+      }
+
+      const mostRecent = stepsEntries.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
+      res.json({
+        exists: true,
+        exerciseId: stepsExercise.id,
+        entryId: mostRecent.id,
+        weeklyTotal: mostRecent.value,
+        dailyAverage: Math.round(mostRecent.value / 7),
+        date: mostRecent.date,
+      });
+    } catch (error) {
+      console.error("获取本周步数失败:", error);
+      res.status(500).json({ error: "获取本周步数失败" });
+    }
+  });
+
   // 获取单个运动记录
   app.get("/api/entries/:id", async (req, res) => {
     try {
