@@ -664,7 +664,7 @@ export default function Entries() {
                         )}
                         {isStrength && field.value > 0 && selectedExercise && (
                           <div className="rounded-md bg-muted/30 border px-3 py-2 text-xs space-y-1">
-                            <p className="font-medium text-muted-foreground">強度系數換算參考（{field.value}下 × {currentSets || 1}组）</p>
+                            <p className="font-medium text-muted-foreground">強度系數（公斤當量）換算參考（{field.value}下 × {currentSets || 1}组）</p>
                             <div className="flex flex-wrap gap-x-3 gap-y-0.5">
                               {[-20, -10, -5, 0, 5, 10, 20].map((delta) => {
                                 const baseWF = currentWeightFactor ?? selectedExercise.weightFactor;
