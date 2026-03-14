@@ -1297,7 +1297,24 @@ export default function Dashboard() {
                   return { label: '未達標', badgeClass: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400', tintClass: 'bg-red-50/50 dark:bg-red-950/10 border border-red-200/40 dark:border-red-800/20' };
                 };
 
-                return ALL_MUSCLES.map((muscleName) => {
+                // Sort: 未達標 → 缺組數/缺容量 → 未訓練(有歷史) → 全達標 → 未訓練(無歷史)
+                const getSortPriority = (name: string) => {
+                  const g = weekMap.get(name);
+                  const sets = g?.totalSets || 0;
+                  const vol = g?.totalVolume || 0;
+                  const vd = muscleVolumeMap[name];
+                  const avg = vd?.avg || 0;
+                  const hasHist = avg > 0;
+                  if (sets === 0) return hasHist ? 2 : 4;
+                  const sok = sets >= 4;
+                  const vok = hasHist && vol >= avg;
+                  if (!sok && !vok) return 0;     // 未達標
+                  if (!sok || !vok) return 1;     // 缺組數 / 缺容量
+                  return 3;                        // 全達標
+                };
+                const sortedMuscles = [...ALL_MUSCLES].sort((a, b) => getSortPriority(a) - getSortPriority(b));
+
+                return sortedMuscles.map((muscleName) => {
                   const group = weekMap.get(muscleName);
                   const totalSets = group?.totalSets || 0;
                   const totalVolume = group?.totalVolume || 0;
