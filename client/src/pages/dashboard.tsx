@@ -1,17 +1,17 @@
-import { useState, useEffect } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
-import { apiRequest } from "@/lib/queryClient";
+import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { StatsCard } from "@/components/stats-card";
 import { RankingMetricCard } from "@/components/ranking-metric-card";
 import { RankingDetailDialog } from "@/components/ranking-detail-dialog";
 import { ScaleProgressBar } from "@/components/scale-progress-bar";
 import { TrendChart } from "@/components/trend-chart";
-import { Activity, TrendingUp, Calendar, Award, X, TrendingDown, Dumbbell, Heart, Footprints, Plus, Check, Minus, Loader2, Sparkles, RefreshCw, Star } from "lucide-react";
+import { Activity, TrendingUp, Calendar, Award, X, TrendingDown, Dumbbell, Heart, Footprints, Plus, Check, Minus, Star } from "lucide-react";
 import { RankingData, WeeklyStats, RankingDetailResponse, Exercise } from "@shared/schema";
 import { queryClient } from "@/lib/queryClient";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
   DialogContent,
@@ -182,8 +182,6 @@ export default function Dashboard() {
   const [rankingDetailMetric, setRankingDetailMetric] = useState<'total' | 'strength' | 'cardio' | 'activity' | null>(null);
   const [selectedDayDate, setSelectedDayDate] = useState<string | null>(null);
   const [selectedDayName, setSelectedDayName] = useState<string>("");
-  const [aiAssessment, setAiAssessment] = useState<string | null>(null);
-  const [aiAutoTriggered, setAiAutoTriggered] = useState(false);
   
   const handleAddEntry = (exerciseId: string) => {
     setLocation(`/entries?addExercise=${exerciseId}`);
@@ -245,74 +243,16 @@ export default function Dashboard() {
     enabled: !!selectedDayDate,
   });
 
-  // AI评语 mutation
-  const aiAssessmentMutation = useMutation({
-    mutationFn: async () => {
-      const weeklyStats = rankingData?.currentWeek ? {
-        totalBaselineValue: rankingData.currentWeek.totalBaselineValue,
-        strengthValue: rankingData.currentWeek.strengthValue,
-        cardioValue: rankingData.currentWeek.cardioValue,
-        activityValue: rankingData.currentWeek.activityValue,
-      } : null;
-      
-      const categoryData = categoryBreakdown ? {
-        strength: categoryBreakdown.find(c => c.category === "力量")?.value || 0,
-        cardio: categoryBreakdown.find(c => c.category === "有氧")?.value || 0,
-        activity: categoryBreakdown.find(c => c.category === "活动量")?.value || 0,
-      } : null;
-      
-      const ranking = rankingData ? {
-        rank: rankingData.rank,
-        totalWeeks: rankingData.totalWeeks,
-        strengthRank: rankingData.strengthRank,
-        cardioRank: rankingData.cardioRank,
-        activityRank: rankingData.activityRank,
-      } : null;
-      
-      const progress = weeklyProgress?.exercises.map(e => ({
-        exerciseName: e.exerciseName,
-        currentValue: e.currentWeekValue,
-        weeklyAverage: e.weeklyAverage,
-      })) || null;
-      
-      const careerAvg = rankingData ? {
-        total: rankingData.averageWeeklyValue,
-        strength: rankingData.averageStrengthValue,
-        cardio: rankingData.averageCardioValue,
-        activity: rankingData.averageActivityValue,
-      } : null;
-      
-      const response = await apiRequest("POST", "/api/stats/ai-assessment", {
-        weeklyStats,
-        categoryBreakdown: categoryData,
-        ranking,
-        weeklyProgress: progress,
-        careerAverages: careerAvg,
-      });
-      return response.json();
-    },
-    onSuccess: (data) => {
-      setAiAssessment(data.assessment);
-    },
-    onError: (error) => {
-      toast({
-        title: "生成评语失败",
-        description: error instanceof Error ? error.message : "请稍后重试",
-        variant: "destructive",
-      });
-    },
-  });
-
-  // 检查是否可以生成AI评语（数据已加载）
-  const canGenerateAI = !rankingLoading && !!rankingData?.currentWeek;
-
-  // 页面加载时自动生成AI评语
-  useEffect(() => {
-    if (canGenerateAI && !aiAutoTriggered && !aiAssessment && !aiAssessmentMutation.isPending) {
-      setAiAutoTriggered(true);
-      aiAssessmentMutation.mutate();
-    }
-  }, [canGenerateAI, aiAutoTriggered, aiAssessment, aiAssessmentMutation]);
+  const trendDirection = (() => {
+    if (!trendData || trendData.length < 3) return 'stable' as const;
+    const recent = trendData.slice(-3);
+    const diffs = recent.slice(1).map((w, i) => w.totalBaselineValue - recent[i].totalBaselineValue);
+    const allUp = diffs.every(d => d > 0);
+    const allDown = diffs.every(d => d < 0);
+    if (allUp) return 'up' as const;
+    if (allDown) return 'down' as const;
+    return 'stable' as const;
+  })();
 
   if (rankingLoading || trendLoading) {
     return (
@@ -466,184 +406,140 @@ export default function Dashboard() {
         <p className="text-muted-foreground mt-2">查看您的运动数据和进展</p>
       </div>
 
-      {/* 本周评语 - 阶段性目标 */}
+      {/* 本周綜合摘要 */}
       {rankingData && milestones && (
         <Card data-testid="card-weekly-assessment">
           <CardHeader className="pb-3">
-            <CardTitle className="flex items-center gap-2">
-              <Award className="h-5 w-5" />
-              本周评语
+            <CardTitle className="flex items-center justify-between gap-2 flex-wrap">
+              <span className="flex items-center gap-2">
+                <Award className="h-5 w-5" />
+                本周綜合摘要
+              </span>
+              <div className="flex items-center gap-3">
+                <div className="flex items-center gap-1">
+                  {[1, 2, 3, 4, 5].map((star) => (
+                    <Star
+                      key={star}
+                      className={`h-4 w-4 ${star <= milestones.achievedCount ? 'text-yellow-500 fill-yellow-500' : 'text-muted-foreground/30'}`}
+                      data-testid={`star-${star}`}
+                    />
+                  ))}
+                  <span className="text-sm font-medium ml-1" data-testid="text-milestone-count">{milestones.achievedCount}/5</span>
+                </div>
+                {trendDirection !== 'stable' && (
+                  <Badge 
+                    variant="secondary"
+                    className={
+                      trendDirection === 'up' 
+                        ? 'bg-green-100 dark:bg-green-950/40 text-green-700 dark:text-green-400' 
+                        : 'bg-red-100 dark:bg-red-950/40 text-red-700 dark:text-red-400'
+                    }
+                    data-testid="badge-trend-direction"
+                  >
+                    {trendDirection === 'up' ? (
+                      <span className="flex items-center gap-1"><TrendingUp className="h-3 w-3" />连续上升</span>
+                    ) : (
+                      <span className="flex items-center gap-1"><TrendingDown className="h-3 w-3" />连续下降</span>
+                    )}
+                  </Badge>
+                )}
+              </div>
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              {/* AI评语区域 - 自动加载 */}
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium flex items-center gap-1.5">
-                    <Sparkles className="h-4 w-4" />
-                    AI教练评语
+              {/* 综合得分 vs 均值 */}
+              <div className="space-y-2" data-testid="section-composite-score">
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <span className="text-sm text-muted-foreground">综合得分</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-lg font-bold" data-testid="text-current-total">
+                      {milestones.currentTotal.toFixed(1)}
+                    </span>
+                    <span className="text-sm text-muted-foreground">/ 均 {milestones.avgTotal.toFixed(1)}</span>
+                    {milestones.avgTotal > 0 && (
+                      <span className={`text-sm font-semibold ${
+                        milestones.currentTotal >= milestones.avgTotal 
+                          ? 'text-green-600 dark:text-green-400' 
+                          : 'text-red-600 dark:text-red-400'
+                      }`} data-testid="text-total-diff">
+                        {milestones.currentTotal >= milestones.avgTotal ? '+' : ''}
+                        {((milestones.currentTotal - milestones.avgTotal) / milestones.avgTotal * 100).toFixed(0)}%
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <div className="w-full bg-muted rounded-full h-2.5">
+                  <div
+                    className={`h-2.5 rounded-full transition-all ${
+                      milestones.currentTotal >= milestones.avgTotal ? 'bg-green-500' : 'bg-orange-500'
+                    }`}
+                    style={{ width: `${Math.min((milestones.currentTotal / Math.max(milestones.avgTotal, 1)) * 100, 150)}%`, maxWidth: '100%' }}
+                    data-testid="bar-total-progress"
+                  />
+                </div>
+              </div>
+
+              {/* 三大类 progress bars */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2" data-testid="section-category-bars">
+                {[
+                  { label: '力量', current: rankingData.currentWeek?.strengthValue || 0, avg: rankingData.averageStrengthValue, icon: Dumbbell, rank: rankingData.strengthRank },
+                  { label: '有氧', current: rankingData.currentWeek?.cardioValue || 0, avg: rankingData.averageCardioValue, icon: Heart, rank: rankingData.cardioRank },
+                  { label: '活动量', current: rankingData.currentWeek?.activityValue || 0, avg: rankingData.averageActivityValue, icon: Footprints, rank: rankingData.activityRank },
+                ].map((cat) => {
+                  const pct = cat.avg > 0 ? ((cat.current - cat.avg) / cat.avg * 100) : 0;
+                  const isAbove = cat.current >= cat.avg;
+                  return (
+                    <div key={cat.label} className="p-3 rounded-lg bg-muted/50 space-y-2" data-testid={`category-bar-${cat.label}`}>
+                      <div className="flex items-center justify-between gap-1">
+                        <span className="text-xs font-medium flex items-center gap-1">
+                          <cat.icon className="h-3 w-3" />
+                          {cat.label}
+                        </span>
+                        <span className="text-xs text-muted-foreground">#{cat.rank}</span>
+                      </div>
+                      <div className="flex items-baseline gap-1">
+                        <span className="text-sm font-bold">{cat.current.toFixed(1)}</span>
+                        <span className="text-xs text-muted-foreground">/ {cat.avg.toFixed(1)}</span>
+                        {cat.avg > 0 && (
+                          <span className={`text-xs font-semibold ${isAbove ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                            {isAbove ? '+' : ''}{pct.toFixed(0)}%
+                          </span>
+                        )}
+                      </div>
+                      <div className="w-full bg-muted rounded-full h-1.5">
+                        <div
+                          className={`h-1.5 rounded-full transition-all ${isAbove ? 'bg-green-500' : 'bg-orange-500'}`}
+                          style={{ width: `${Math.min((cat.current / Math.max(cat.avg, 1)) * 100, 100)}%` }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* 排名 + 里程碑简要 */}
+              <div className="flex items-center justify-between gap-2 pt-2 border-t flex-wrap" data-testid="section-rank-milestones">
+                <div className="flex items-center gap-3">
+                  <span className="text-sm text-muted-foreground">本周排名</span>
+                  <span className="text-sm font-bold" data-testid="text-current-rank">
+                    #{rankingData.rank} / {rankingData.totalWeeks} 周
                   </span>
-                  {aiAssessment && (
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => aiAssessmentMutation.mutate()}
-                      disabled={aiAssessmentMutation.isPending}
-                      data-testid="button-refresh-ai-assessment"
-                    >
-                      {aiAssessmentMutation.isPending ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <RefreshCw className="h-4 w-4" />
-                      )}
-                    </Button>
+                </div>
+                <div className="text-xs text-muted-foreground" data-testid="text-next-milestone">
+                  {milestones.achievedCount < 5 ? (
+                    <span>
+                      下一阶段: {
+                        milestones.achievedCount === 0 ? '参与 (记录1次训练)'
+                        : milestones.achievedCount === 1 ? `纪律 (训练${milestones.trainingDays}/3天)`
+                        : milestones.achievedCount === 2 ? '容量 (总分超过均值)'
+                        : milestones.achievedCount === 3 ? `强度 (${milestones.musclesFullyMetCount}/${milestones.musclesTotalCount}肌群达标)`
+                        : '突破 (前10%或4周新高)'
+                      }
+                    </span>
+                  ) : (
+                    <span className="text-green-600 dark:text-green-400 font-medium">全部达成</span>
                   )}
-                </div>
-                {aiAssessmentMutation.isPending && !aiAssessment ? (
-                  <div className="p-3 rounded-lg bg-muted/50 text-sm text-muted-foreground flex items-center gap-2">
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    正在生成评语...
-                  </div>
-                ) : aiAssessment ? (
-                  <div 
-                    className="p-3 rounded-lg bg-muted/50 text-sm leading-relaxed"
-                    data-testid="text-ai-assessment"
-                  >
-                    {aiAssessment}
-                  </div>
-                ) : null}
-                {aiAssessmentMutation.isError && (
-                  <div className="p-3 rounded-lg bg-destructive/10 text-sm text-destructive flex items-center justify-between">
-                    <span>生成评语失败</span>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => aiAssessmentMutation.mutate()}
-                      disabled={aiAssessmentMutation.isPending}
-                    >
-                      重试
-                    </Button>
-                  </div>
-                )}
-              </div>
-
-              {/* 星星评级显示 */}
-              <div className="flex items-center gap-2 pt-4 border-t">
-                <span className="text-sm font-medium text-muted-foreground">本周达成:</span>
-                <div className="flex items-center gap-0.5">
-                  {[1, 2, 3, 4, 5].map((star) => (
-                    <Star
-                      key={star}
-                      className={`h-5 w-5 ${star <= milestones.achievedCount ? 'text-yellow-500 fill-yellow-500' : 'text-muted-foreground/30'}`}
-                    />
-                  ))}
-                </div>
-                <span className="text-sm font-medium">{milestones.achievedCount}/5</span>
-              </div>
-
-              {/* 5个阶段性目标 */}
-              <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 pt-3">
-                {/* 目标1: 参与 */}
-                <div 
-                  className={`p-3 rounded-lg border ${milestones.hasEntry ? 'bg-orange-50 dark:bg-orange-950/30 border-orange-200 dark:border-orange-800' : 'bg-muted/30 border-muted'}`}
-                  data-testid="milestone-participation"
-                >
-                  <div className="flex items-center gap-2 mb-1">
-                    <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${milestones.hasEntry ? 'bg-orange-500 text-white' : 'bg-muted text-muted-foreground'}`}>
-                      1
-                    </div>
-                    <span className={`text-sm font-medium ${milestones.hasEntry ? 'text-orange-700 dark:text-orange-300' : 'text-muted-foreground'}`}>
-                      参与
-                    </span>
-                  </div>
-                  <p className="text-xs text-muted-foreground ml-8">
-                    {milestones.hasEntry ? '已有训练纪录' : '本周尚无纪录'}
-                  </p>
-                </div>
-
-                {/* 目标2: 纪律 */}
-                <div 
-                  className={`p-3 rounded-lg border ${milestones.hasDiscipline ? 'bg-blue-50 dark:bg-blue-950/30 border-blue-200 dark:border-blue-800' : 'bg-muted/30 border-muted'}`}
-                  data-testid="milestone-discipline"
-                >
-                  <div className="flex items-center gap-2 mb-1">
-                    <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${milestones.hasDiscipline ? 'bg-blue-500 text-white' : 'bg-muted text-muted-foreground'}`}>
-                      2
-                    </div>
-                    <span className={`text-sm font-medium ${milestones.hasDiscipline ? 'text-blue-700 dark:text-blue-300' : 'text-muted-foreground'}`}>
-                      纪律
-                    </span>
-                  </div>
-                  <p className="text-xs text-muted-foreground ml-8">
-                    训练天数: {milestones.trainingDays}/3
-                  </p>
-                </div>
-
-                {/* 目标3: 容量 */}
-                <div 
-                  className={`p-3 rounded-lg border ${milestones.totalAbove ? 'bg-green-50 dark:bg-green-950/30 border-green-200 dark:border-green-800' : 'bg-muted/30 border-muted'}`}
-                  data-testid="milestone-volume"
-                >
-                  <div className="flex items-center gap-2 mb-1">
-                    <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${milestones.totalAbove ? 'bg-green-500 text-white' : 'bg-muted text-muted-foreground'}`}>
-                      3
-                    </div>
-                    <span className={`text-sm font-medium ${milestones.totalAbove ? 'text-green-700 dark:text-green-300' : 'text-muted-foreground'}`}>
-                      容量
-                    </span>
-                  </div>
-                  <p className="text-xs text-muted-foreground ml-8">
-                    总基准值超过平均
-                  </p>
-                </div>
-
-                {/* 目标4: 强度 */}
-                <div 
-                  className={`p-3 rounded-lg border ${milestones.achievedCount >= 4 ? 'bg-purple-50 dark:bg-purple-950/30 border-purple-200 dark:border-purple-800' : 'bg-muted/30 border-muted'}`}
-                  data-testid="milestone-intensity"
-                >
-                  <div className="flex items-center gap-2 mb-1">
-                    <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${milestones.achievedCount >= 4 ? 'bg-purple-500 text-white' : 'bg-muted text-muted-foreground'}`}>
-                      4
-                    </div>
-                    <span className={`text-sm font-medium ${milestones.achievedCount >= 4 ? 'text-purple-700 dark:text-purple-300' : 'text-muted-foreground'}`}>
-                      强度
-                    </span>
-                  </div>
-                  <div className="text-xs text-muted-foreground ml-8 space-y-0.5">
-                    <p className="flex items-center gap-1">
-                      达标: {milestones.musclesFullyMetCount}/{milestones.musclesTotalCount} 肌群
-                      ({milestones.musclesTotalCount > 0 ? Math.round(milestones.musclesFullyMetCount / milestones.musclesTotalCount * 100) : 0}%)
-                      {milestones.allMusclesAtMaintenance ? <Check className="h-3 w-3 text-green-500" /> : <Minus className="h-3 w-3" />}
-                    </p>
-                    <p className="text-muted-foreground/70">
-                      门槛: 50% 肌群组数及容量达标
-                    </p>
-                  </div>
-                </div>
-
-                {/* 目标5: 突破 */}
-                <div 
-                  className={`p-3 rounded-lg border ${milestones.achievedCount >= 5 ? 'bg-yellow-50 dark:bg-yellow-950/30 border-yellow-200 dark:border-yellow-800' : 'bg-muted/30 border-muted'}`}
-                  data-testid="milestone-breakthrough"
-                >
-                  <div className="flex items-center gap-2 mb-1">
-                    <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${milestones.achievedCount >= 5 ? 'bg-yellow-500 text-white' : 'bg-muted text-muted-foreground'}`}>
-                      5
-                    </div>
-                    <span className={`text-sm font-medium ${milestones.achievedCount >= 5 ? 'text-yellow-700 dark:text-yellow-300' : 'text-muted-foreground'}`}>
-                      突破
-                    </span>
-                  </div>
-                  <div className="text-xs text-muted-foreground ml-8 space-y-0.5">
-                    <p className="flex items-center gap-1">
-                      前10%{milestones.inTop10 ? <Check className="h-3 w-3 text-green-500" /> : <span>(前{milestones.percentile.toFixed(0)}%)</span>}
-                    </p>
-                    <p className="flex items-center gap-1">
-                      4周新高{milestones.isFourWeekHigh ? <Check className="h-3 w-3 text-green-500" /> : <Minus className="h-3 w-3" />}
-                    </p>
-                  </div>
                 </div>
               </div>
             </div>
