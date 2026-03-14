@@ -245,17 +245,18 @@ export default function Dashboard() {
   });
 
   type StepsData = {
-    exists: boolean;
+    id: string;
     exerciseId: string;
-    entryId?: string;
-    weeklyTotal?: number;
-    dailyAverage?: number;
-    date?: string;
+    value: number;
+    dailyAverage: number;
+    date: string;
   } | null;
 
-  const { data: stepsData } = useQuery<StepsData>({
+  const { data: stepsData, isSuccess: stepsLoaded } = useQuery<StepsData>({
     queryKey: ["/api/entries/current-week-steps"],
   });
+
+  const stepsExerciseId = exercises?.find(e => e.name === '每周平均步数')?.id;
 
   const [showStepsDialog, setShowStepsDialog] = useState(false);
   const [stepsInput, setStepsInput] = useState("");
@@ -263,15 +264,15 @@ export default function Dashboard() {
   const stepsMutation = useMutation({
     mutationFn: async (dailyAvg: number) => {
       const weeklyTotal = dailyAvg * 7;
-      if (stepsData?.exists && stepsData.entryId) {
-        return apiRequest("PATCH", `/api/entries/${stepsData.entryId}`, {
+      if (stepsData && stepsData.id) {
+        return apiRequest("PATCH", `/api/entries/${stepsData.id}`, {
           exerciseId: stepsData.exerciseId,
           value: weeklyTotal,
           weightFactor: 1,
         });
-      } else if (stepsData?.exerciseId) {
+      } else if (stepsExerciseId) {
         return apiRequest("POST", "/api/entries", {
-          exerciseId: stepsData.exerciseId,
+          exerciseId: stepsExerciseId,
           value: weeklyTotal,
           weightFactor: 1,
         });
@@ -1071,7 +1072,7 @@ export default function Dashboard() {
         )}
       </div>
 
-      {stepsData && (
+      {stepsLoaded && stepsExerciseId && (
         <Card data-testid="card-steps-quick-update">
           <CardContent className="flex items-center justify-between gap-4 py-3 px-4">
             <div className="flex items-center gap-2">
@@ -1079,24 +1080,37 @@ export default function Dashboard() {
               <span className="text-sm text-muted-foreground">本周每日平均步数</span>
             </div>
             <div className="flex items-center gap-2">
-              {stepsData.exists ? (
-                <span className="text-sm font-medium" data-testid="text-steps-daily-avg">
-                  {stepsData.dailyAverage?.toLocaleString()} 步/天
-                </span>
+              {stepsData ? (
+                <>
+                  <span className="text-sm font-medium" data-testid="text-steps-daily-avg">
+                    {stepsData.dailyAverage.toLocaleString()} 步/天
+                  </span>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    onClick={() => {
+                      setStepsInput(String(stepsData.dailyAverage));
+                      setShowStepsDialog(true);
+                    }}
+                    data-testid="button-steps-quick-edit"
+                  >
+                    <Pencil className="h-4 w-4" />
+                  </Button>
+                </>
               ) : (
-                <span className="text-sm text-muted-foreground" data-testid="text-steps-none">尚未记录</span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setStepsInput("");
+                    setShowStepsDialog(true);
+                  }}
+                  data-testid="button-steps-quick-edit"
+                >
+                  <Plus className="h-4 w-4 mr-1" />
+                  記錄步數
+                </Button>
               )}
-              <Button
-                size="icon"
-                variant="ghost"
-                onClick={() => {
-                  setStepsInput(stepsData.exists ? String(stepsData.dailyAverage) : "");
-                  setShowStepsDialog(true);
-                }}
-                data-testid="button-steps-quick-edit"
-              >
-                {stepsData.exists ? <Pencil className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
-              </Button>
             </div>
           </CardContent>
         </Card>
@@ -1105,10 +1119,10 @@ export default function Dashboard() {
       <Dialog open={showStepsDialog} onOpenChange={setShowStepsDialog}>
         <DialogContent className="sm:max-w-[360px]">
           <DialogHeader>
-            <DialogTitle>{stepsData?.exists ? '更新每日平均步数' : '記錄步數'}</DialogTitle>
+            <DialogTitle>{stepsData ? '更新每日平均步数' : '記錄步數'}</DialogTitle>
             <DialogDescription>
-              {stepsData?.exists
-                ? `目前记录：每日 ${stepsData.dailyAverage?.toLocaleString()} 步（周总计 ${stepsData.weeklyTotal?.toLocaleString()} 步）`
+              {stepsData
+                ? `目前记录：每日 ${stepsData.dailyAverage.toLocaleString()} 步（周总计 ${stepsData.value.toLocaleString()} 步）`
                 : '输入本周每日平均步数'}
             </DialogDescription>
           </DialogHeader>

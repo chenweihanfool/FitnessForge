@@ -103,11 +103,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.json(null);
       }
 
-      const entries = await storage.getWorkoutEntries();
-      const rankingData = await storage.getRankingData();
-      const weekStart = new Date(rankingData.currentWeek.weekStart);
-      const weekEnd = new Date(rankingData.currentWeek.weekEnd);
+      const TAIPEI_OFFSET = 8 * 60 * 60 * 1000;
+      const now = new Date();
+      const taipeiTimestamp = now.getTime() + TAIPEI_OFFSET;
+      const taipeiDate = new Date(taipeiTimestamp);
+      const taipeiDay = taipeiDate.getUTCDay();
+      const diffToMonday = taipeiDay === 0 ? 6 : taipeiDay - 1;
+      const mondayTaipei = new Date(Date.UTC(
+        taipeiDate.getUTCFullYear(), taipeiDate.getUTCMonth(), taipeiDate.getUTCDate() - diffToMonday, 0, 0, 0, 0
+      ));
+      const weekStart = new Date(mondayTaipei.getTime() - TAIPEI_OFFSET);
+      const sundayTaipei = new Date(Date.UTC(
+        taipeiDate.getUTCFullYear(), taipeiDate.getUTCMonth(), taipeiDate.getUTCDate() - diffToMonday + 6, 23, 59, 59, 999
+      ));
+      const weekEnd = new Date(sundayTaipei.getTime() - TAIPEI_OFFSET);
 
+      const entries = await storage.getWorkoutEntries();
       const stepsEntries = entries.filter(e => {
         if (e.exerciseId !== stepsExercise.id) return false;
         const d = new Date(e.date);
@@ -115,15 +126,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       if (stepsEntries.length === 0) {
-        return res.json({ exists: false, exerciseId: stepsExercise.id });
+        return res.json(null);
       }
 
       const mostRecent = stepsEntries.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
       res.json({
-        exists: true,
+        id: mostRecent.id,
         exerciseId: stepsExercise.id,
-        entryId: mostRecent.id,
-        weeklyTotal: mostRecent.value,
+        value: mostRecent.value,
         dailyAverage: Math.round(mostRecent.value / 7),
         date: mostRecent.date,
       });
