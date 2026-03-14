@@ -534,17 +534,39 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const allExercises = await storage.getExercises();
       const weeklyProgress = await storage.getWeeklyProgress();
+      const allEntries = await storage.getWorkoutEntries();
+
+      // Compute per-exercise typical session structure from historical entries
+      const entryMap = new Map<string, { values: number[]; sets: number[] }>();
+      for (const entry of allEntries) {
+        if (!entryMap.has(entry.exerciseId)) entryMap.set(entry.exerciseId, { values: [], sets: [] });
+        const rec = entryMap.get(entry.exerciseId)!;
+        if (entry.value > 0) rec.values.push(entry.value);
+        if (entry.sets != null && entry.sets > 0) rec.sets.push(entry.sets);
+      }
+
+      const median = (arr: number[]) => {
+        if (!arr.length) return null;
+        const s = [...arr].sort((a, b) => a - b);
+        const m = Math.floor(s.length / 2);
+        return s.length % 2 === 0 ? (s[m - 1] + s[m]) / 2 : s[m];
+      };
 
       const exerciseData = allExercises
         .filter(e => e.name !== '每周平均步数')
         .map(e => {
           const prog = weeklyProgress.exercises.find(p => p.exerciseId === e.id);
+          const hist = entryMap.get(e.id);
+          const typicalValue = hist ? median(hist.values) : null;
+          const typicalSets = hist ? median(hist.sets) : null;
           return {
             id: e.id,
             name: e.name,
             unit: e.unit,
             category: e.category,
             weeklyAverage: prog?.weeklyAverage ?? 0,
+            typicalValue,
+            typicalSets,
           };
         })
         .filter(e => e.weeklyAverage > 0);
@@ -559,10 +581,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const allSettings = await storage.getAllUserSettings();
       const customRules = allSettings['planCustomRules'] ?? DEFAULT_PLAN_CUSTOM_RULES;
 
+      const exerciseLines = exerciseData.map(e => {
+        let line = `- ${e.name} (unit: ${e.unit}, category: ${e.category || 'other'}, weekly avg total: ${e.weeklyAverage.toFixed(1)}`;
+        if (e.typicalValue !== null) line += `, typical value per set: ${Math.round(e.typicalValue)}`;
+        if (e.typicalSets !== null) line += `, typical sets per session: ${Math.round(e.typicalSets)}`;
+        line += ')';
+        return line;
+      }).join('\n');
+
       const prompt = `You are a fitness training planner. Generate a weekly training schedule in JSON format.
 
-The user has the following exercises with their weekly averages:
-${exerciseData.map(e => `- ${e.name} (${e.unit}, category: ${e.category || 'other'}, weekly avg: ${e.weeklyAverage.toFixed(1)})`).join('\n')}
+The user has the following exercises. "typical value per set" and "typical sets per session" come from their REAL historical data — you MUST use these as the basis for targetValue and targetSets. Do NOT invent values outside the user's actual range.
+${exerciseLines}
 
 Mode: ${mode === 'recovery' ? 'Recovery week (target = career averages)' : 'Normal week (target = averages + 15%)'}
 Target multiplier: ${targetMultiplier}
@@ -570,12 +600,11 @@ Target multiplier: ${targetMultiplier}
 Rules:
 1. Distribute exercises across 3-5 training days (Mon-Sun), leave 2-4 rest days
 2. Each training day should have 2-4 exercises
-3. For each exercise, set targetValue (reps/minutes/steps per set) and targetSets (number of sets)
-4. The total weekly volume (sum of targetValue * targetSets across all days) for each exercise should approximate: weeklyAverage * ${targetMultiplier}
-5. Group exercises logically by category (strength together, cardio together)
-6. Don't include the same exercise on consecutive days
-7. Balance the total baseline load across training days
-8. User scheduling preference: ${customRules}
+3. For each exercise, set targetValue and targetSets CLOSE to the user's historical typical values (within ±20%). The total weekly volume across all sessions should approximate: weeklyAverage * ${targetMultiplier}
+4. Group exercises logically by category (strength together, cardio together)
+5. Don't include the same exercise on consecutive days
+6. Balance the total load across training days
+7. User scheduling preference: ${customRules}
 
 Respond ONLY with a JSON array (no markdown, no explanation). Each element represents a day:
 [
