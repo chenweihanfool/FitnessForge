@@ -665,13 +665,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
             .map(([key, label]) => `${label}${ (e as Record<string, unknown>)[key] }%`)
             .join('/');
           const rollingAvg = getRollingAvg(e.id);
-          const weeklyAvg = rollingAvg ?? (prog?.weeklyAverage ?? 0);
           return {
             id: e.id,
             name: e.name,
             unit: e.unit,
             category: e.category,
-            weeklyAverage: weeklyAvg,
+            weeklyAverage: rollingAvg ?? 0,
             typicalValue,
             typicalSets,
             muscles,

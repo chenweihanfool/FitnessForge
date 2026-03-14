@@ -859,7 +859,7 @@ export default function Dashboard() {
                 </Button>
               </div>
               <p className="text-xs text-muted-foreground">
-                恢復周：目標為生涯平均值 | 正常周：目標為平均值 +15%
+                恢復周：目標為近8週滾動均值 × 75% | 正常周：目標為滾動均值 × 105%
               </p>
             </div>
           ) : (

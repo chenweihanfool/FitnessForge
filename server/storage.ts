@@ -104,6 +104,7 @@ export interface IStorage {
     }>;
   }>;
   getExerciseWeeklyAverage(exerciseId: string): Promise<number | null>;
+  getExerciseRollingAverage(exerciseId: string, weeks: number): Promise<number | null>;
   getWeeklyProgress(): Promise<{
     weekStart: string;
     weekEnd: string;
@@ -847,7 +848,6 @@ export class MemStorage implements IStorage {
   }
 
   async getExerciseWeeklyAverage(exerciseId: string): Promise<number | null> {
-    // 获取该运动类型的所有记录
     const exerciseEntries = Array.from(this.workoutEntries.values())
       .filter(entry => entry.exerciseId === exerciseId);
 
@@ -855,7 +855,6 @@ export class MemStorage implements IStorage {
       return null;
     }
 
-    // 按周分组计算
     const weeklyTotals = new Map<string, number>();
 
     for (const entry of exerciseEntries) {
@@ -869,11 +868,36 @@ export class MemStorage implements IStorage {
       );
     }
 
-    // 计算平均值
     const totalWeeks = weeklyTotals.size;
     const sumOfWeeklyTotals = Array.from(weeklyTotals.values()).reduce((sum, val) => sum + val, 0);
     
     return sumOfWeeklyTotals / totalWeeks;
+  }
+
+  async getExerciseRollingAverage(exerciseId: string, weeks: number): Promise<number | null> {
+    const exerciseEntries = Array.from(this.workoutEntries.values())
+      .filter(entry => entry.exerciseId === exerciseId);
+
+    if (exerciseEntries.length === 0) return null;
+
+    const now = new Date();
+    const currentWeekStart = this.getWeekStart(now);
+    const cutoff = new Date(currentWeekStart);
+    cutoff.setDate(cutoff.getDate() - weeks * 7);
+
+    const weeklyTotals = new Map<string, number>();
+    for (const entry of exerciseEntries) {
+      const entryDate = new Date(entry.date);
+      const weekStart = this.getWeekStart(entryDate);
+      if (weekStart >= cutoff && weekStart < currentWeekStart) {
+        const weekKey = weekStart.toISOString();
+        weeklyTotals.set(weekKey, (weeklyTotals.get(weekKey) || 0) + (entry.baselineValue ?? entry.value));
+      }
+    }
+
+    if (weeklyTotals.size === 0) return null;
+    const sum = Array.from(weeklyTotals.values()).reduce((s, v) => s + v, 0);
+    return sum / weeklyTotals.size;
   }
 
   async getWeeklyProgress() {
@@ -2398,7 +2422,6 @@ export class DbStorage implements IStorage {
   }
 
   async getExerciseWeeklyAverage(exerciseId: string): Promise<number | null> {
-    // 从数据库获取该运动类型的所有记录
     const entries = await this.db
       .select()
       .from(workoutEntries)
@@ -2408,7 +2431,6 @@ export class DbStorage implements IStorage {
       return null;
     }
 
-    // 按周分组计算
     const weeklyTotals = new Map<string, number>();
 
     for (const entry of entries) {
@@ -2422,11 +2444,38 @@ export class DbStorage implements IStorage {
       );
     }
 
-    // 计算平均值
     const totalWeeks = weeklyTotals.size;
     const sumOfWeeklyTotals = Array.from(weeklyTotals.values()).reduce((sum, val) => sum + val, 0);
     
     return sumOfWeeklyTotals / totalWeeks;
+  }
+
+  async getExerciseRollingAverage(exerciseId: string, weeks: number): Promise<number | null> {
+    const entries = await this.db
+      .select()
+      .from(workoutEntries)
+      .where(eq(workoutEntries.exerciseId, exerciseId));
+
+    if (entries.length === 0) return null;
+
+    const now = new Date();
+    const currentWeekStart = this.getWeekStart(now);
+    const cutoff = new Date(currentWeekStart);
+    cutoff.setDate(cutoff.getDate() - weeks * 7);
+
+    const weeklyTotals = new Map<string, number>();
+    for (const entry of entries) {
+      const entryDate = new Date(entry.date);
+      const weekStart = this.getWeekStart(entryDate);
+      if (weekStart >= cutoff && weekStart < currentWeekStart) {
+        const weekKey = weekStart.toISOString();
+        weeklyTotals.set(weekKey, (weeklyTotals.get(weekKey) || 0) + (entry.baselineValue ?? entry.value));
+      }
+    }
+
+    if (weeklyTotals.size === 0) return null;
+    const sum = Array.from(weeklyTotals.values()).reduce((s, v) => s + v, 0);
+    return sum / weeklyTotals.size;
   }
 
   async getWeeklyProgress() {
