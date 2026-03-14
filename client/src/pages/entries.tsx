@@ -119,6 +119,7 @@ export default function Entries() {
       queryClient.invalidateQueries({ queryKey: ["/api/stats/category-breakdown"] });
       queryClient.invalidateQueries({ queryKey: ["/api/stats/career-overview"] });
       queryClient.invalidateQueries({ queryKey: ["/api/stats/muscle-group-weekly"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/plan/progress"] });
       setIsCreateOpen(false);
       form.reset();
       setProgressiveMode(false);
@@ -144,6 +145,7 @@ export default function Entries() {
       queryClient.invalidateQueries({ queryKey: ["/api/stats/current-week-details"] });
       queryClient.invalidateQueries({ queryKey: ["/api/stats/category-breakdown"] });
       queryClient.invalidateQueries({ queryKey: ["/api/stats/muscle-group-weekly"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/plan/progress"] });
       setDeletingEntry(null);
       toast({
         title: "成功",
@@ -163,6 +165,7 @@ export default function Entries() {
       queryClient.invalidateQueries({ queryKey: ["/api/stats/current-week-details"] });
       queryClient.invalidateQueries({ queryKey: ["/api/stats/category-breakdown"] });
       queryClient.invalidateQueries({ queryKey: ["/api/stats/muscle-group-weekly"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/plan/progress"] });
       setIsEditOpen(false);
       setEditingEntry(null);
       editForm.reset();

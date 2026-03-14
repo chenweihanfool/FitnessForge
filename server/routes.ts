@@ -1,9 +1,10 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertExerciseSchema, insertWorkoutEntrySchema } from "@shared/schema";
+import { insertExerciseSchema, insertWorkoutEntrySchema, type PlanDayItem } from "@shared/schema";
 import multer from "multer";
 import Papa from "papaparse";
+import OpenAI from "openai";
 
 const upload = multer({ storage: multer.memoryStorage() });
 
@@ -467,6 +468,256 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("保存设置失败:", error);
       res.status(500).json({ error: "保存设置失败" });
+    }
+  });
+
+  // ==================== AI 训练计划 API ====================
+
+  const getOpenAIClient = () => {
+    return new OpenAI({
+      apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
+      baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+    });
+  };
+
+  const getCurrentWeekStart = (): string => {
+    const TAIPEI_OFFSET = 8 * 60 * 60 * 1000;
+    const now = new Date();
+    const taipeiTimestamp = now.getTime() + TAIPEI_OFFSET;
+    const taipeiDate = new Date(taipeiTimestamp);
+    const taipeiDay = taipeiDate.getUTCDay();
+    const diffToMonday = taipeiDay === 0 ? 6 : taipeiDay - 1;
+    const mondayTaipei = new Date(Date.UTC(
+      taipeiDate.getUTCFullYear(), taipeiDate.getUTCMonth(), taipeiDate.getUTCDate() - diffToMonday, 0, 0, 0, 0
+    ));
+    const weekStartUTC = new Date(mondayTaipei.getTime() - TAIPEI_OFFSET);
+    return weekStartUTC.toISOString();
+  };
+
+  app.get("/api/plan/current", async (req, res) => {
+    try {
+      const weekStart = getCurrentWeekStart();
+      const plan = await storage.getWeeklyPlan(weekStart);
+      if (!plan) {
+        return res.json(null);
+      }
+      res.json(plan);
+    } catch (error) {
+      console.error("获取训练计划失败:", error);
+      res.status(500).json({ error: "获取训练计划失败" });
+    }
+  });
+
+  app.post("/api/plan/generate", async (req, res) => {
+    try {
+      const { mode } = req.body;
+      if (!mode || !['recovery', 'normal'].includes(mode)) {
+        return res.status(400).json({ error: "模式必须是 recovery 或 normal" });
+      }
+
+      const allExercises = await storage.getExercises();
+      const weeklyProgress = await storage.getWeeklyProgress();
+
+      const exerciseData = allExercises
+        .filter(e => e.name !== '每周平均步数')
+        .map(e => {
+          const prog = weeklyProgress.exercises.find(p => p.exerciseId === e.id);
+          return {
+            id: e.id,
+            name: e.name,
+            unit: e.unit,
+            category: e.category,
+            weeklyAverage: prog?.weeklyAverage ?? 0,
+          };
+        })
+        .filter(e => e.weeklyAverage > 0);
+
+      if (exerciseData.length === 0) {
+        return res.status(400).json({ error: "没有足够的历史数据来生成训练计划。请先记录一些训练数据。" });
+      }
+
+      const dayNames = ['週一', '週二', '週三', '週四', '週五', '週六', '週日'];
+      const targetMultiplier = mode === 'recovery' ? 1.0 : 1.15;
+
+      const prompt = `You are a fitness training planner. Generate a weekly training schedule in JSON format.
+
+The user has the following exercises with their weekly averages:
+${exerciseData.map(e => `- ${e.name} (${e.unit}, category: ${e.category || 'other'}, weekly avg: ${e.weeklyAverage.toFixed(1)})`).join('\n')}
+
+Mode: ${mode === 'recovery' ? 'Recovery week (target = career averages)' : 'Normal week (target = averages + 15%)'}
+Target multiplier: ${targetMultiplier}
+
+Rules:
+1. Distribute exercises across 3-5 training days (Mon-Sun), leave 2-4 rest days
+2. Each training day should have 2-4 exercises
+3. For each exercise, set targetValue (reps/minutes/steps per set) and targetSets (number of sets)
+4. The total weekly volume (sum of targetValue * targetSets across all days) for each exercise should approximate: weeklyAverage * ${targetMultiplier}
+5. Group exercises logically by category (strength together, cardio together)
+6. Don't include the same exercise on consecutive days
+7. Balance the total baseline load across training days
+
+Respond ONLY with a JSON array (no markdown, no explanation). Each element represents a day:
+[
+  {
+    "day": 1,
+    "dayName": "週一",
+    "exercises": [
+      {
+        "exerciseId": "<id>",
+        "exerciseName": "<name>",
+        "targetValue": <number>,
+        "targetSets": <number>,
+        "unit": "<unit>",
+        "category": "<category or null>"
+      }
+    ]
+  }
+]
+
+Only include days that have exercises. Day numbers: 1=週一, 2=週二, ..., 7=週日.
+Use the exact exerciseId and exerciseName from the list above.`;
+
+      const openai = getOpenAIClient();
+      const response = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [{ role: "user", content: prompt + '\n\nWrap the array in a JSON object with key "days", e.g. {"days": [...]}' }],
+        response_format: { type: "json_object" },
+        max_completion_tokens: 8192,
+      });
+
+      const content = response.choices[0]?.message?.content;
+      if (!content) {
+        return res.status(500).json({ error: "AI 未返回有效的训练计划" });
+      }
+
+      let parsedPlan: PlanDayItem[];
+      try {
+        const parsed = JSON.parse(content);
+        parsedPlan = Array.isArray(parsed) ? parsed : (parsed.plan || parsed.days || parsed.schedule || []);
+        if (!Array.isArray(parsedPlan)) {
+          throw new Error("Invalid plan format");
+        }
+      } catch {
+        console.error("AI 返回内容解析失败:", content);
+        return res.status(500).json({ error: "AI 返回的训练计划格式无效" });
+      }
+
+      const validExerciseIds = new Set(allExercises.map(e => e.id));
+      const exerciseNameToId = new Map(allExercises.map(e => [e.name, e.id]));
+      const exerciseIdToData = new Map(allExercises.map(e => [e.id, e]));
+
+      parsedPlan = parsedPlan.map(day => ({
+        ...day,
+        dayName: dayNames[(day.day - 1)] || `第${day.day}天`,
+        exercises: day.exercises.map(ex => {
+          if (validExerciseIds.has(ex.exerciseId)) return ex;
+          const resolvedId = exerciseNameToId.get(ex.exerciseName);
+          if (resolvedId) {
+            const exData = exerciseIdToData.get(resolvedId);
+            return { ...ex, exerciseId: resolvedId, unit: exData?.unit || ex.unit, category: exData?.category || ex.category };
+          }
+          return null;
+        }).filter((ex): ex is NonNullable<typeof ex> => ex !== null),
+      })).filter(day => day.exercises.length > 0);
+
+      const weekStart = getCurrentWeekStart();
+      const saved = await storage.saveWeeklyPlan({
+        weekStart,
+        mode: mode as 'recovery' | 'normal',
+        planJson: JSON.stringify(parsedPlan),
+      });
+
+      res.json(saved);
+    } catch (error) {
+      console.error("生成训练计划失败:", error);
+      res.status(500).json({ error: "生成训练计划失败", details: error instanceof Error ? error.message : String(error) });
+    }
+  });
+
+  app.get("/api/plan/progress", async (req, res) => {
+    try {
+      const weekStart = getCurrentWeekStart();
+      const plan = await storage.getWeeklyPlan(weekStart);
+      if (!plan) {
+        return res.json(null);
+      }
+
+      const planDays: PlanDayItem[] = JSON.parse(plan.planJson);
+      const entries = await storage.getWorkoutEntries();
+
+      const weekStartDate = new Date(weekStart);
+      const TAIPEI_OFFSET = 8 * 60 * 60 * 1000;
+      const taipeiMonday = new Date(weekStartDate.getTime() + TAIPEI_OFFSET);
+      const weekEndDate = new Date(Date.UTC(
+        taipeiMonday.getUTCFullYear(), taipeiMonday.getUTCMonth(), taipeiMonday.getUTCDate() + 6, 23, 59, 59, 999
+      ));
+      const weekEnd = new Date(weekEndDate.getTime() - TAIPEI_OFFSET);
+
+      const weekEntries = entries.filter(e => {
+        const d = new Date(e.date);
+        return d >= weekStartDate && d <= weekEnd;
+      });
+
+      const exerciseActuals = new Map<string, { totalVolume: number; totalSets: number }>();
+      for (const entry of weekEntries) {
+        const existing = exerciseActuals.get(entry.exerciseId) || { totalVolume: 0, totalSets: 0 };
+        existing.totalVolume += entry.value * (entry.sets || 1);
+        existing.totalSets += (entry.sets || 1);
+        exerciseActuals.set(entry.exerciseId, existing);
+      }
+
+      const exerciseTotalPlanned = new Map<string, number>();
+      for (const day of planDays) {
+        for (const ex of day.exercises) {
+          const prev = exerciseTotalPlanned.get(ex.exerciseId) || 0;
+          exerciseTotalPlanned.set(ex.exerciseId, prev + ex.targetValue * ex.targetSets);
+        }
+      }
+
+      const exerciseMet = new Map<string, boolean>();
+      for (const [exId, totalTarget] of exerciseTotalPlanned.entries()) {
+        const actual = exerciseActuals.get(exId) || { totalVolume: 0, totalSets: 0 };
+        exerciseMet.set(exId, actual.totalVolume >= totalTarget * 0.8);
+      }
+
+      const uniqueExerciseIds = new Set<string>();
+      for (const day of planDays) {
+        for (const ex of day.exercises) {
+          uniqueExerciseIds.add(ex.exerciseId);
+        }
+      }
+      const totalPlanned = uniqueExerciseIds.size;
+      let totalMet = 0;
+      for (const exId of uniqueExerciseIds) {
+        if (exerciseMet.get(exId)) totalMet++;
+      }
+
+      const daysWithProgress = planDays.map(day => ({
+        ...day,
+        exercises: day.exercises.map(ex => {
+          const actual = exerciseActuals.get(ex.exerciseId) || { totalVolume: 0, totalSets: 0 };
+          const met = exerciseMet.get(ex.exerciseId) || false;
+          return {
+            ...ex,
+            actualValue: actual.totalVolume,
+            actualSets: actual.totalSets,
+            met,
+          };
+        }),
+      }));
+
+      res.json({
+        weekStart: plan.weekStart,
+        mode: plan.mode,
+        generatedAt: plan.generatedAt,
+        days: daysWithProgress,
+        totalPlanned,
+        totalMet,
+        completionPercentage: totalPlanned > 0 ? Math.round((totalMet / totalPlanned) * 100) : 0,
+      });
+    } catch (error) {
+      console.error("获取训练进度失败:", error);
+      res.status(500).json({ error: "获取训练进度失败" });
     }
   });
 

@@ -11,6 +11,10 @@ import {
   workoutEntries,
   weeklyMuscleStats,
   userSettings,
+  weeklyPlans,
+  type WeeklyPlan,
+  type InsertWeeklyPlan,
+  type PlanDayItem,
 } from "@shared/schema";
 import { randomUUID } from "crypto";
 import { drizzle } from "drizzle-orm/node-postgres";
@@ -232,6 +236,10 @@ export interface IStorage {
   getUserSetting(key: string): Promise<string | null>;
   setUserSetting(key: string, value: string): Promise<void>;
   getAllUserSettings(): Promise<Record<string, string>>;
+
+  // 每周训练计划
+  getWeeklyPlan(weekStart: string): Promise<WeeklyPlan | null>;
+  saveWeeklyPlan(plan: InsertWeeklyPlan): Promise<WeeklyPlan>;
 }
 
 type WeeklyMuscleStatsRecord = {
@@ -1701,6 +1709,23 @@ export class MemStorage implements IStorage {
 
   async convertExerciseUnit(exerciseName: string, newUnit: string, valueMultiplier: number): Promise<{ updatedExercise: boolean; updatedEntries: number }> {
     return { updatedExercise: false, updatedEntries: 0 };
+  }
+
+  private weeklyPlansStore: Map<string, WeeklyPlan> = new Map();
+
+  async getWeeklyPlan(weekStart: string): Promise<WeeklyPlan | null> {
+    return this.weeklyPlansStore.get(weekStart) ?? null;
+  }
+
+  async saveWeeklyPlan(plan: InsertWeeklyPlan): Promise<WeeklyPlan> {
+    const saved: WeeklyPlan = {
+      weekStart: plan.weekStart,
+      mode: plan.mode,
+      planJson: plan.planJson,
+      generatedAt: new Date(),
+    };
+    this.weeklyPlansStore.set(plan.weekStart, saved);
+    return saved;
   }
 }
 
@@ -3443,6 +3468,34 @@ export class DbStorage implements IStorage {
       settings[row.key] = row.value;
     }
     return settings;
+  }
+
+  async getWeeklyPlan(weekStart: string): Promise<WeeklyPlan | null> {
+    const rows = await this.db
+      .select()
+      .from(weeklyPlans)
+      .where(eq(weeklyPlans.weekStart, weekStart));
+    return rows.length > 0 ? rows[0] : null;
+  }
+
+  async saveWeeklyPlan(plan: InsertWeeklyPlan): Promise<WeeklyPlan> {
+    const rows = await this.db
+      .insert(weeklyPlans)
+      .values({
+        weekStart: plan.weekStart,
+        mode: plan.mode,
+        planJson: plan.planJson,
+      })
+      .onConflictDoUpdate({
+        target: weeklyPlans.weekStart,
+        set: {
+          mode: plan.mode,
+          planJson: plan.planJson,
+          generatedAt: new Date(),
+        },
+      })
+      .returning();
+    return rows[0];
   }
 }
 

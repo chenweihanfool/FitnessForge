@@ -144,6 +144,58 @@ export const userSettings = pgTable("user_settings", {
 
 export type UserSetting = typeof userSettings.$inferSelect;
 
+// 每周训练计划表
+export const weeklyPlans = pgTable("weekly_plans", {
+  weekStart: varchar("week_start").primaryKey(),
+  mode: text("mode").notNull(), // 'recovery' | 'normal'
+  planJson: text("plan_json").notNull(), // JSON array of daily plan items
+  generatedAt: timestamp("generated_at").notNull().defaultNow(),
+});
+
+export const insertWeeklyPlanSchema = z.object({
+  weekStart: z.string(),
+  mode: z.enum(['recovery', 'normal']),
+  planJson: z.string(),
+});
+
+export type InsertWeeklyPlan = z.infer<typeof insertWeeklyPlanSchema>;
+export type WeeklyPlan = typeof weeklyPlans.$inferSelect;
+
+export type PlanDayItem = {
+  day: number;
+  dayName: string;
+  exercises: Array<{
+    exerciseId: string;
+    exerciseName: string;
+    targetValue: number;
+    targetSets: number;
+    unit: string;
+    category: string | null;
+  }>;
+};
+
+export type PlanProgress = {
+  weekStart: string;
+  mode: string;
+  generatedAt: string;
+  days: Array<PlanDayItem & {
+    exercises: Array<{
+      exerciseId: string;
+      exerciseName: string;
+      targetValue: number;
+      targetSets: number;
+      unit: string;
+      category: string | null;
+      actualValue: number;
+      actualSets: number;
+      met: boolean;
+    }>;
+  }>;
+  totalPlanned: number;
+  totalMet: number;
+  completionPercentage: number;
+};
+
 // 排名快照类型（用于排名详情）
 export type RankingSnapshot = {
   weekStart: string;
