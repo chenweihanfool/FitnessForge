@@ -434,7 +434,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // ==================== 用户设置 API ====================
 
-  const DEFAULT_PLAN_CUSTOM_RULES = `Monday–Thursday are workdays so keep intensity moderate-to-light on those days — shorter sessions, fewer sets, or lighter cardio/core work. 1-2 rest days among Mon-Thu is fine but do NOT skip all four. Friday–Sunday are free days so these can have higher volume and heavier strength exercises, but still within reason (do not stack everything here). Aim for a natural intensity curve that rises toward the weekend.`;
+  const DEFAULT_PLAN_CUSTOM_RULES = `週一到週四是上班日，強度保持中低：安排較短或較輕的訓練（有氧、核心），週一到週四中可有 1-2 天休息，但不要全部跳過。週五到週日是假日，可安排較高容量與較重的力量訓練，但不要把所有項目都集中在這三天。整體強度應自然地朝週末逐漸提升。`;
 
   app.get("/api/settings", async (req, res) => {
     try {
