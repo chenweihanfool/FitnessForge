@@ -870,8 +870,6 @@ export default function Dashboard() {
           <CardContent>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               {(() => {
-                const maxVolume = Math.max(...muscleGroupStats.muscleGroups.map(g => g.totalVolume));
-                
                 const getSetStatus = (sets: number) => {
                   if (sets < 4) return { color: 'bg-red-500', textColor: 'text-red-600 dark:text-red-400', label: '低于维持量' };
                   if (sets <= 8) return { color: 'bg-yellow-500', textColor: 'text-yellow-600 dark:text-yellow-400', label: '维持中' };
@@ -879,37 +877,53 @@ export default function Dashboard() {
                   if (sets <= 20) return { color: 'bg-green-500', textColor: 'text-green-600 dark:text-green-400', label: '高强度' };
                   return { color: 'bg-purple-500', textColor: 'text-purple-600 dark:text-purple-400', label: '超量警示' };
                 };
+
+                const getCombinedStatus = (setsOk: boolean, volumeOk: boolean, hasHistory: boolean) => {
+                  if (!hasHistory) return { label: '--', badgeClass: 'bg-muted text-muted-foreground', tintClass: '' };
+                  if (setsOk && volumeOk) return { label: '全達標', badgeClass: 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400', tintClass: 'bg-green-50 dark:bg-green-950/20 border border-green-200/50 dark:border-green-800/30' };
+                  if (!setsOk && volumeOk) return { label: '缺組數', badgeClass: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400', tintClass: 'bg-amber-50/50 dark:bg-amber-950/10 border border-amber-200/40 dark:border-amber-800/20' };
+                  if (setsOk && !volumeOk) return { label: '缺容量', badgeClass: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400', tintClass: 'bg-amber-50/50 dark:bg-amber-950/10 border border-amber-200/40 dark:border-amber-800/20' };
+                  return { label: '未達標', badgeClass: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400', tintClass: 'bg-red-50/50 dark:bg-red-950/10 border border-red-200/40 dark:border-red-800/20' };
+                };
                 
                 return muscleGroupStats.muscleGroups.map((group) => {
                   const status = getSetStatus(group.totalSets);
                   const maxSets = 20;
                   const volData = muscleVolumeMap[group.muscleGroup];
                   const volAvg = volData?.avg || 0;
-                  const volPeak = volData?.peak || 0;
                   const hasVolHistory = volAvg > 0;
-                  const volumeAboveAvg = hasVolHistory && group.totalVolume >= volAvg;
-                  const volumeAbovePeak = volPeak > 0 && group.totalVolume >= volPeak;
+                  const setsOk = group.totalSets >= 4;
+                  const volumeOk = hasVolHistory && group.totalVolume >= volAvg;
 
-                  const getVolumeStatus = () => {
-                    if (!hasVolHistory) return { textColor: 'text-muted-foreground', label: '--' };
-                    if (volumeAbovePeak) return { textColor: 'text-green-600 dark:text-green-400', label: '超越高峰' };
-                    if (volumeAboveAvg) return { textColor: 'text-green-600 dark:text-green-400', label: '达标' };
-                    return { textColor: 'text-red-600 dark:text-red-400', label: '低于均值' };
-                  };
-                  const volStatus = getVolumeStatus();
+                  const combined = getCombinedStatus(setsOk, volumeOk, hasVolHistory);
+
+                  const volDiffPercent = hasVolHistory && volAvg > 0
+                    ? Math.round(((group.totalVolume - volAvg) / volAvg) * 100)
+                    : 0;
 
                   return (
-                    <div key={group.muscleGroup} className="space-y-2 p-3 rounded-lg bg-muted/50" data-testid={`muscle-group-stat-${group.muscleGroup}`}>
-                      <div className="flex justify-between items-center">
+                    <div
+                      key={group.muscleGroup}
+                      className={`space-y-2 p-3 rounded-lg ${combined.tintClass || 'bg-muted/50'}`}
+                      data-testid={`muscle-group-stat-${group.muscleGroup}`}
+                    >
+                      <div className="flex justify-between items-center gap-1">
                         <span className="text-sm font-medium">{group.muscleGroup}</span>
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs text-muted-foreground" data-testid={`sets-${group.muscleGroup}`}>
-                            {group.totalSets} 组
-                          </span>
-                          <span className="text-sm font-bold" data-testid={`volume-${group.muscleGroup}`}>
-                            {group.totalVolume.toFixed(1)}
-                          </span>
-                        </div>
+                        <Badge
+                          variant="secondary"
+                          className={`text-[10px] px-1.5 py-0 h-5 no-default-hover-elevate no-default-active-elevate ${combined.badgeClass}`}
+                          data-testid={`combined-status-${group.muscleGroup}`}
+                        >
+                          {combined.label}
+                        </Badge>
+                      </div>
+                      <div className="flex justify-between items-center gap-2">
+                        <span className="text-xs text-muted-foreground" data-testid={`sets-${group.muscleGroup}`}>
+                          {group.totalSets} 组
+                        </span>
+                        <span className="text-sm font-bold" data-testid={`volume-${group.muscleGroup}`}>
+                          {group.totalVolume.toFixed(1)}
+                        </span>
                       </div>
                       <div className="pt-4">
                         <ScaleProgressBar
@@ -924,28 +938,20 @@ export default function Dashboard() {
                           showLabels={false}
                         />
                       </div>
-                      {hasVolHistory && (
-                        <div className="pt-2">
-                          <ScaleProgressBar
-                            currentValue={group.totalVolume}
-                            maxValue={Math.max(group.totalVolume, volPeak, volAvg * 1.5)}
-                            markers={[
-                              { value: volAvg, label: '均', colorClass: 'bg-blue-500', textColorClass: 'text-blue-600 dark:text-blue-400' },
-                              ...(volPeak > volAvg ? [{ value: volPeak, label: '冠', colorClass: 'bg-green-500', textColorClass: 'text-green-600 dark:text-green-400' }] : [])
-                            ]}
-                            barColorClass={volumeAbovePeak ? 'bg-green-500' : volumeAboveAvg ? 'bg-blue-500' : 'bg-red-500'}
-                            height="h-1.5"
-                            showLabels={false}
-                          />
-                        </div>
-                      )}
                       <div className="flex justify-between items-center gap-1">
                         <span className={`text-xs ${status.textColor}`} data-testid={`status-${group.muscleGroup}`}>
                           {status.label}
                         </span>
-                        {hasVolHistory && (
-                          <span className={`text-xs ${volStatus.textColor}`} data-testid={`volume-status-${group.muscleGroup}`}>
-                            {volStatus.label}
+                        {hasVolHistory ? (
+                          <span
+                            className={`text-xs ${volDiffPercent >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}
+                            data-testid={`volume-status-${group.muscleGroup}`}
+                          >
+                            容量 {group.totalVolume.toFixed(0)} / 均 {volAvg.toFixed(0)} ({volDiffPercent >= 0 ? '+' : ''}{volDiffPercent}%)
+                          </span>
+                        ) : (
+                          <span className="text-xs text-muted-foreground" data-testid={`volume-status-${group.muscleGroup}`}>
+                            --
                           </span>
                         )}
                       </div>
