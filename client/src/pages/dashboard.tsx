@@ -653,7 +653,196 @@ export default function Dashboard() {
         </Card>
       )}
 
-      {/* 本周训练进度 - 置顶显示 */}
+      {/* 本周訓練計畫 */}
+      <Card data-testid="card-training-plan">
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center justify-between gap-2 flex-wrap">
+            <span className="flex items-center gap-2">
+              <ClipboardList className="h-5 w-5" />
+              本周訓練計畫
+            </span>
+            {planProgress && (
+              <div className="flex items-center gap-2">
+                <Badge variant={planProgress.mode === 'recovery' ? 'secondary' : 'default'} data-testid="badge-plan-mode">
+                  {planProgress.mode === 'recovery' ? '恢復周' : '正常周'}
+                </Badge>
+                <Badge variant="outline" data-testid="badge-plan-completion">
+                  {planProgress.completionPercentage}% 完成
+                </Badge>
+              </div>
+            )}
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {planProgressLoading ? (
+            <div className="space-y-2">
+              <Skeleton className="h-4 w-full" />
+              <Skeleton className="h-4 w-3/4" />
+              <Skeleton className="h-4 w-1/2" />
+            </div>
+          ) : !planProgress ? (
+            <div className="space-y-4">
+              <p className="text-sm text-muted-foreground">选择训练模式并生成本周计划</p>
+              <div className="flex items-center gap-3 flex-wrap">
+                <div className="flex gap-2">
+                  <Button
+                    variant={selectedPlanMode === 'recovery' ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setSelectedPlanMode('recovery')}
+                    data-testid="button-plan-mode-recovery"
+                  >
+                    恢復周
+                  </Button>
+                  <Button
+                    variant={selectedPlanMode === 'normal' ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setSelectedPlanMode('normal')}
+                    data-testid="button-plan-mode-normal"
+                  >
+                    正常周
+                  </Button>
+                </div>
+                <Button
+                  size="sm"
+                  onClick={() => generatePlanMutation.mutate(selectedPlanMode)}
+                  disabled={generatePlanMutation.isPending}
+                  data-testid="button-generate-plan"
+                >
+                  {generatePlanMutation.isPending ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <ClipboardList className="h-4 w-4" />
+                  )}
+                  <span className="ml-1">{generatePlanMutation.isPending ? '生成中...' : '生成計畫'}</span>
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                恢復周：目標為生涯平均值 | 正常周：目標為平均值 +15%
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium">{planProgress.totalMet}/{planProgress.totalPlanned} 项达标</span>
+                  <div className="w-32 h-2 bg-muted rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-primary rounded-full transition-all"
+                      style={{ width: `${planProgress.completionPercentage}%` }}
+                    />
+                  </div>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => {
+                    setSelectedPlanMode(planProgress.mode === 'recovery' ? 'recovery' : 'normal');
+                    generatePlanMutation.mutate(planProgress.mode as 'recovery' | 'normal');
+                  }}
+                  disabled={generatePlanMutation.isPending}
+                  data-testid="button-regenerate-plan"
+                >
+                  {generatePlanMutation.isPending ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <RefreshCw className="h-4 w-4" />
+                  )}
+                </Button>
+              </div>
+
+              <div className="space-y-3">
+                {planProgress.days.map((day) => (
+                  <div key={day.day} className="space-y-1" data-testid={`plan-day-${day.day}`}>
+                    <div className="flex items-center gap-2">
+                      <Badge variant="outline" className="text-xs">{day.dayName}</Badge>
+                      <span className="text-xs text-muted-foreground">
+                        {day.exercises.filter(e => e.status === 'met').length}/{day.exercises.length} 完成
+                      </span>
+                    </div>
+                    <div className="grid gap-1.5 pl-2">
+                      {day.exercises.map((ex, idx) => {
+                        const targetTotal = ex.targetValue * ex.targetSets;
+                        const progress = targetTotal > 0 ? Math.min(100, (ex.actualValue / targetTotal) * 100) : 0;
+                        return (
+                          <div
+                            key={`${day.day}-${ex.exerciseId}-${idx}`}
+                            className="flex items-center gap-2 text-sm"
+                            data-testid={`plan-exercise-${day.day}-${idx}`}
+                          >
+                            <div className="w-4 h-4 flex items-center justify-center flex-shrink-0">
+                              {ex.status === 'met' ? (
+                                <Check className="h-4 w-4 text-green-600 dark:text-green-400" />
+                              ) : ex.status === 'partial' ? (
+                                <div className="w-3 h-3 rounded-full border-2 border-primary bg-primary/30" />
+                              ) : (
+                                <div className="w-3 h-3 rounded-full border-2 border-muted-foreground/30" />
+                              )}
+                            </div>
+                            <span className={`flex-shrink-0 ${ex.status === 'met' ? 'text-muted-foreground line-through' : ''}`}>
+                              {ex.exerciseName}
+                            </span>
+                            <span className="text-xs text-muted-foreground flex-shrink-0">
+                              {ex.targetValue}{ex.unit} x{ex.targetSets}
+                            </span>
+                            <div className="flex-1 min-w-12 h-1.5 bg-muted rounded-full overflow-hidden">
+                              <div
+                                className={`h-full rounded-full transition-all ${ex.status === 'met' ? 'bg-green-500' : ex.status === 'partial' ? 'bg-primary/60' : 'bg-muted-foreground/20'}`}
+                                style={{ width: `${progress}%` }}
+                              />
+                            </div>
+                            {ex.actualValue > 0 && (
+                              <span className="text-xs text-muted-foreground flex-shrink-0">
+                                {ex.actualValue.toFixed(0)}
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="flex items-center justify-between gap-2 pt-2 border-t flex-wrap">
+                <div className="flex gap-2">
+                  <Button
+                    variant={selectedPlanMode === 'recovery' ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setSelectedPlanMode('recovery')}
+                    data-testid="button-replan-mode-recovery"
+                  >
+                    恢復周
+                  </Button>
+                  <Button
+                    variant={selectedPlanMode === 'normal' ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setSelectedPlanMode('normal')}
+                    data-testid="button-replan-mode-normal"
+                  >
+                    正常周
+                  </Button>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => generatePlanMutation.mutate(selectedPlanMode)}
+                  disabled={generatePlanMutation.isPending}
+                  data-testid="button-replan-generate"
+                >
+                  {generatePlanMutation.isPending ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <RefreshCw className="h-4 w-4" />
+                  )}
+                  <span className="ml-1">重新生成</span>
+                </Button>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* 本周训练进度 */}
       {!weeklyProgressLoading && weeklyProgress && weeklyProgress.exercises.length > 0 && (
         <Card data-testid="card-weekly-progress">
           <CardHeader className="pb-3">
@@ -1107,195 +1296,6 @@ export default function Dashboard() {
           </div>
         </CollapsibleContent>
       </Collapsible>
-
-      {/* 本周訓練計畫 */}
-      <Card data-testid="card-training-plan">
-        <CardHeader className="pb-3">
-          <CardTitle className="flex items-center justify-between gap-2 flex-wrap">
-            <span className="flex items-center gap-2">
-              <ClipboardList className="h-5 w-5" />
-              本周訓練計畫
-            </span>
-            {planProgress && (
-              <div className="flex items-center gap-2">
-                <Badge variant={planProgress.mode === 'recovery' ? 'secondary' : 'default'} data-testid="badge-plan-mode">
-                  {planProgress.mode === 'recovery' ? '恢復周' : '正常周'}
-                </Badge>
-                <Badge variant="outline" data-testid="badge-plan-completion">
-                  {planProgress.completionPercentage}% 完成
-                </Badge>
-              </div>
-            )}
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {planProgressLoading ? (
-            <div className="space-y-2">
-              <Skeleton className="h-4 w-full" />
-              <Skeleton className="h-4 w-3/4" />
-              <Skeleton className="h-4 w-1/2" />
-            </div>
-          ) : !planProgress ? (
-            <div className="space-y-4">
-              <p className="text-sm text-muted-foreground">选择训练模式并生成本周计划</p>
-              <div className="flex items-center gap-3 flex-wrap">
-                <div className="flex gap-2">
-                  <Button
-                    variant={selectedPlanMode === 'recovery' ? 'default' : 'outline'}
-                    size="sm"
-                    onClick={() => setSelectedPlanMode('recovery')}
-                    data-testid="button-plan-mode-recovery"
-                  >
-                    恢復周
-                  </Button>
-                  <Button
-                    variant={selectedPlanMode === 'normal' ? 'default' : 'outline'}
-                    size="sm"
-                    onClick={() => setSelectedPlanMode('normal')}
-                    data-testid="button-plan-mode-normal"
-                  >
-                    正常周
-                  </Button>
-                </div>
-                <Button
-                  size="sm"
-                  onClick={() => generatePlanMutation.mutate(selectedPlanMode)}
-                  disabled={generatePlanMutation.isPending}
-                  data-testid="button-generate-plan"
-                >
-                  {generatePlanMutation.isPending ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <ClipboardList className="h-4 w-4" />
-                  )}
-                  <span className="ml-1">{generatePlanMutation.isPending ? '生成中...' : '生成計畫'}</span>
-                </Button>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                恢復周：目標為生涯平均值 | 正常周：目標為平均值 +15%
-              </p>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              <div className="flex items-center justify-between gap-2 flex-wrap">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium">{planProgress.totalMet}/{planProgress.totalPlanned} 项达标</span>
-                  <div className="w-32 h-2 bg-muted rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-primary rounded-full transition-all"
-                      style={{ width: `${planProgress.completionPercentage}%` }}
-                    />
-                  </div>
-                </div>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => {
-                    setSelectedPlanMode(planProgress.mode === 'recovery' ? 'recovery' : 'normal');
-                    generatePlanMutation.mutate(planProgress.mode as 'recovery' | 'normal');
-                  }}
-                  disabled={generatePlanMutation.isPending}
-                  data-testid="button-regenerate-plan"
-                >
-                  {generatePlanMutation.isPending ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <RefreshCw className="h-4 w-4" />
-                  )}
-                </Button>
-              </div>
-
-              <div className="space-y-3">
-                {planProgress.days.map((day) => (
-                  <div key={day.day} className="space-y-1" data-testid={`plan-day-${day.day}`}>
-                    <div className="flex items-center gap-2">
-                      <Badge variant="outline" className="text-xs">{day.dayName}</Badge>
-                      <span className="text-xs text-muted-foreground">
-                        {day.exercises.filter(e => e.status === 'met').length}/{day.exercises.length} 完成
-                      </span>
-                    </div>
-                    <div className="grid gap-1.5 pl-2">
-                      {day.exercises.map((ex, idx) => {
-                        const targetTotal = ex.targetValue * ex.targetSets;
-                        const progress = targetTotal > 0 ? Math.min(100, (ex.actualValue / targetTotal) * 100) : 0;
-                        return (
-                          <div
-                            key={`${day.day}-${ex.exerciseId}-${idx}`}
-                            className="flex items-center gap-2 text-sm"
-                            data-testid={`plan-exercise-${day.day}-${idx}`}
-                          >
-                            <div className="w-4 h-4 flex items-center justify-center flex-shrink-0">
-                              {ex.status === 'met' ? (
-                                <Check className="h-4 w-4 text-green-600 dark:text-green-400" />
-                              ) : ex.status === 'partial' ? (
-                                <div className="w-3 h-3 rounded-full border-2 border-primary bg-primary/30" />
-                              ) : (
-                                <div className="w-3 h-3 rounded-full border-2 border-muted-foreground/30" />
-                              )}
-                            </div>
-                            <span className={`flex-shrink-0 ${ex.status === 'met' ? 'text-muted-foreground line-through' : ''}`}>
-                              {ex.exerciseName}
-                            </span>
-                            <span className="text-xs text-muted-foreground flex-shrink-0">
-                              {ex.targetValue}{ex.unit} x{ex.targetSets}
-                            </span>
-                            <div className="flex-1 min-w-12 h-1.5 bg-muted rounded-full overflow-hidden">
-                              <div
-                                className={`h-full rounded-full transition-all ${ex.status === 'met' ? 'bg-green-500' : ex.status === 'partial' ? 'bg-primary/60' : 'bg-muted-foreground/20'}`}
-                                style={{ width: `${progress}%` }}
-                              />
-                            </div>
-                            {ex.actualValue > 0 && (
-                              <span className="text-xs text-muted-foreground flex-shrink-0">
-                                {ex.actualValue.toFixed(0)}
-                              </span>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              <div className="flex items-center justify-between gap-2 pt-2 border-t flex-wrap">
-                <div className="flex gap-2">
-                  <Button
-                    variant={selectedPlanMode === 'recovery' ? 'default' : 'outline'}
-                    size="sm"
-                    onClick={() => setSelectedPlanMode('recovery')}
-                    data-testid="button-replan-mode-recovery"
-                  >
-                    恢復周
-                  </Button>
-                  <Button
-                    variant={selectedPlanMode === 'normal' ? 'default' : 'outline'}
-                    size="sm"
-                    onClick={() => setSelectedPlanMode('normal')}
-                    data-testid="button-replan-mode-normal"
-                  >
-                    正常周
-                  </Button>
-                </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => generatePlanMutation.mutate(selectedPlanMode)}
-                  disabled={generatePlanMutation.isPending}
-                  data-testid="button-replan-generate"
-                >
-                  {generatePlanMutation.isPending ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <RefreshCw className="h-4 w-4" />
-                  )}
-                  <span className="ml-1">重新生成</span>
-                </Button>
-              </div>
-            </div>
-          )}
-        </CardContent>
-      </Card>
 
       {stepsLoaded && stepsExerciseId && (
         <Card data-testid="card-steps-quick-update">
