@@ -555,7 +555,7 @@ Rules:
 5. Group exercises logically by category (strength together, cardio together)
 6. Don't include the same exercise on consecutive days
 7. Balance the total baseline load across training days
-8. WEEKDAY vs WEEKEND schedule: Monday–Thursday are workdays (低強度或休息): prefer lighter exercises (cardio, core, flexibility) or mark as rest days; Friday–Sunday are free days (高強度): schedule the heavier compound strength exercises and higher-volume sessions here. It is perfectly fine to have 2-3 rest days on weekdays.
+8. WEEKDAY vs WEEKEND intensity balance: Monday–Thursday are workdays so keep intensity moderate-to-light on those days — shorter sessions, fewer sets, or lighter cardio/core work. 1-2 rest days among Mon-Thu is fine but do NOT skip all four. Friday–Sunday are free days so these can have higher volume and heavier strength exercises, but still within reason (do not stack everything here). Aim for a natural intensity curve that rises toward the weekend.
 
 Respond ONLY with a JSON array (no markdown, no explanation). Each element represents a day:
 [
