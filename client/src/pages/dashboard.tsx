@@ -5,7 +5,7 @@ import { useLocation } from "wouter";
 import { RankingMetricCard } from "@/components/ranking-metric-card";
 import { RankingDetailDialog } from "@/components/ranking-detail-dialog";
 import { ScaleProgressBar } from "@/components/scale-progress-bar";
-import { Activity, TrendingUp, Award, X, TrendingDown, Dumbbell, Heart, Footprints, Plus, Check, Minus, Star, Pencil, ClipboardList, RefreshCw, Loader2, ChevronDown } from "lucide-react";
+import { Activity, TrendingUp, Award, X, TrendingDown, Dumbbell, Heart, Footprints, Plus, Check, Minus, Star, Pencil, ClipboardList, RefreshCw, Loader2, ChevronDown, ChevronRight } from "lucide-react";
 import { RankingData, WeeklyStats, RankingDetailResponse, Exercise, PlanProgress, PlanItemStatus } from "@shared/schema";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -317,6 +317,7 @@ export default function Dashboard() {
 
   const [selectedPlanMode, setSelectedPlanMode] = useState<'recovery' | 'normal'>('normal');
   const [modeManuallyChanged, setModeManuallyChanged] = useState(false);
+  const [showModeLogic, setShowModeLogic] = useState(false);
   const [rankingOpen, setRankingOpen] = useState(false);
 
   useEffect(() => {
@@ -946,6 +947,75 @@ export default function Dashboard() {
                   </div>
                 ))}
               </div>
+
+              {modeRecommendation && (
+                <div className="pt-2 border-t space-y-2">
+                  <button
+                    type="button"
+                    className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                    onClick={() => setShowModeLogic(v => !v)}
+                    data-testid="button-toggle-mode-logic"
+                  >
+                    <ChevronRight className={`h-3 w-3 transition-transform ${showModeLogic ? 'rotate-90' : ''}`} />
+                    系統建議：{modeRecommendation.recommendation === 'recovery' ? '恢復週' : '正常週'}
+                    <span className="text-muted-foreground/70">（查看判斷依據）</span>
+                  </button>
+                  {showModeLogic && (
+                    <div className="space-y-1.5" data-testid="section-mode-logic-expanded">
+                      {([
+                        {
+                          id: 1,
+                          result: '恢復週',
+                          label: '近4週均分 > 生涯均值 × 112%',
+                          detail: `近4週均分 ${modeRecommendation.recent4Avg}，生涯均值 ${modeRecommendation.careerAvg}（差距 ${modeRecommendation.c1Pct > 0 ? '+' : ''}${modeRecommendation.c1Pct}%，門檻：均值 × 112% = ${Math.round(modeRecommendation.careerAvg * 1.12)}）`,
+                        },
+                        {
+                          id: 2,
+                          result: '恢復週',
+                          label: '近4週中 ≥ 3 週超均值，且上週得分 > 均值 × 110%',
+                          detail: `近4週有 ${modeRecommendation.aboveAvgCount} 週超均值，上週 ${modeRecommendation.lastWeekTotal}（門檻：${Math.round(modeRecommendation.careerAvg * 1.1)}）`,
+                        },
+                        {
+                          id: 3,
+                          result: '正常週',
+                          label: '近4週均分 < 生涯均值 × 85%',
+                          detail: `近4週均分 ${modeRecommendation.recent4Avg}，門檻：${Math.round(modeRecommendation.careerAvg * 0.85)}`,
+                        },
+                        {
+                          id: 4,
+                          result: '正常週',
+                          label: '其餘情況（訓練量穩定正常）',
+                          detail: '以上條件均不符合，訓練穩定，維持正常週節奏',
+                        },
+                      ] as { id: number; result: string; label: string; detail: string }[]).map(cond => {
+                        const isMatched = modeRecommendation.matchedCondition === cond.id;
+                        return (
+                          <div
+                            key={cond.id}
+                            className={`rounded-md border px-3 py-2 text-sm ${isMatched ? 'border-primary bg-primary/5' : 'border-border bg-muted/30 opacity-60'}`}
+                            data-testid={`replan-condition-${cond.id}${isMatched ? '-matched' : ''}`}
+                          >
+                            <div className="flex items-start justify-between gap-2 flex-wrap">
+                              <div className="flex items-start gap-2">
+                                <span className={`mt-0.5 shrink-0 text-xs font-bold ${isMatched ? 'text-primary' : 'text-muted-foreground'}`}>
+                                  {isMatched ? '▶' : `${cond.id}.`}
+                                </span>
+                                <div>
+                                  <span className={`font-medium ${isMatched ? 'text-foreground' : 'text-muted-foreground'}`}>{cond.label}</span>
+                                  {isMatched && <p className="text-xs text-muted-foreground mt-0.5">{cond.detail}</p>}
+                                </div>
+                              </div>
+                              <span className={`shrink-0 text-xs px-1.5 py-0.5 rounded font-medium ${cond.result === '恢復週' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300' : 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300'}`}>
+                                → {cond.result}
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
 
               <div className="flex items-center justify-between gap-2 pt-2 border-t flex-wrap">
                 <div className="flex gap-2">
