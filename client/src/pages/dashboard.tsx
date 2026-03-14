@@ -309,11 +309,11 @@ export default function Dashboard() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/plan/progress"] });
       queryClient.invalidateQueries({ queryKey: ["/api/plan/current"] });
-      toast({ title: "训练计划已生成" });
+      toast({ title: "訓練計畫已生成" });
     },
     onError: (error: unknown) => {
-      const message = error instanceof Error ? error.message : "生成失败";
-      toast({ title: "生成训练计划失败", description: message, variant: "destructive" });
+      const message = error instanceof Error ? error.message : "生成失敗";
+      toast({ title: "生成訓練計畫失敗", description: message, variant: "destructive" });
     },
   });
 
@@ -623,13 +623,13 @@ export default function Dashboard() {
         </Card>
       )}
 
-      {/* 本周训练计划 */}
+      {/* 本周訓練計畫 */}
       <Card data-testid="card-training-plan">
         <CardHeader className="pb-3">
           <CardTitle className="flex items-center justify-between gap-2 flex-wrap">
             <span className="flex items-center gap-2">
               <ClipboardList className="h-5 w-5" />
-              本周训练计划
+              本周訓練計畫
             </span>
             {planProgress && (
               <div className="flex items-center gap-2">
@@ -683,11 +683,11 @@ export default function Dashboard() {
                   ) : (
                     <ClipboardList className="h-4 w-4" />
                   )}
-                  <span className="ml-1">{generatePlanMutation.isPending ? '生成中...' : '生成计划'}</span>
+                  <span className="ml-1">{generatePlanMutation.isPending ? '生成中...' : '生成計畫'}</span>
                 </Button>
               </div>
               <p className="text-xs text-muted-foreground">
-                恢復周：目标为生涯平均值 | 正常周：目标为平均值 +15%
+                恢復周：目標為生涯平均值 | 正常周：目標為平均值 +15%
               </p>
             </div>
           ) : (
