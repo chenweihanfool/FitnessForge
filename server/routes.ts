@@ -550,22 +550,42 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       let recommendation: 'recovery' | 'normal';
       let reason: string;
+      let matchedCondition: number;
 
-      if (recent4Avg > careerAvg * 1.12) {
+      // Condition values for frontend display
+      const c1Met = recent4Avg > careerAvg * 1.12;
+      const c2Met = aboveAvgCount >= 3 && lastWeek.totalBaselineValue > careerAvg * 1.1;
+      const c3Met = recent4Avg < careerAvg * 0.85;
+      const c1Pct = Math.round((recent4Avg / careerAvg - 1) * 100);
+
+      if (c1Met) {
+        matchedCondition = 1;
         recommendation = 'recovery';
-        reason = `近4週平均分數（${recent4Avg.toFixed(0)}）高於生涯均值（${careerAvg.toFixed(0)}）約 ${Math.round((recent4Avg / careerAvg - 1) * 100)}%，建議安排恢復週讓身體適應。`;
-      } else if (aboveAvgCount >= 3 && lastWeek.totalBaselineValue > careerAvg * 1.1) {
+        reason = `近4週均分（${recent4Avg.toFixed(0)}）高於生涯均值（${careerAvg.toFixed(0)}）約 ${c1Pct}%，建議安排恢復週讓身體適應。`;
+      } else if (c2Met) {
+        matchedCondition = 2;
         recommendation = 'recovery';
         reason = `近4週中有 ${aboveAvgCount} 週超過生涯均值，且上週表現特別突出（${lastWeek.totalBaselineValue.toFixed(0)}），適合安排恢復週。`;
-      } else if (recent4Avg < careerAvg * 0.85) {
+      } else if (c3Met) {
+        matchedCondition = 3;
         recommendation = 'normal';
         reason = `近4週均分（${recent4Avg.toFixed(0)}）低於生涯均值（${careerAvg.toFixed(0)}），建議正常週維持訓練量。`;
       } else {
+        matchedCondition = 4;
         recommendation = 'normal';
         reason = `近期訓練量穩定正常（均值 ${recent4Avg.toFixed(0)}，生涯均 ${careerAvg.toFixed(0)}），建議維持正常週節奏。`;
       }
 
-      res.json({ recommendation, reason, recent4Avg: Math.round(recent4Avg), careerAvg: Math.round(careerAvg) });
+      res.json({
+        recommendation,
+        reason,
+        matchedCondition,
+        recent4Avg: Math.round(recent4Avg),
+        careerAvg: Math.round(careerAvg),
+        aboveAvgCount,
+        lastWeekTotal: Math.round(lastWeek.totalBaselineValue),
+        c1Pct,
+      });
     } catch (error) {
       console.error("取得週建議失敗:", error);
       res.status(500).json({ error: "取得建議失敗" });

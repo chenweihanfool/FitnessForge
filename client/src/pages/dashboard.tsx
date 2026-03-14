@@ -301,7 +301,16 @@ export default function Dashboard() {
     queryKey: ["/api/plan/progress"],
   });
 
-  type ModeRecommendation = { recommendation: 'recovery' | 'normal'; reason: string; recent4Avg: number; careerAvg: number };
+  type ModeRecommendation = {
+    recommendation: 'recovery' | 'normal';
+    reason: string;
+    matchedCondition: number;
+    recent4Avg: number;
+    careerAvg: number;
+    aboveAvgCount: number;
+    lastWeekTotal: number;
+    c1Pct: number;
+  };
   const { data: modeRecommendation } = useQuery<ModeRecommendation>({
     queryKey: ["/api/plan/recommend-mode"],
   });
@@ -745,11 +754,75 @@ export default function Dashboard() {
           ) : !planProgress ? (
             <div className="space-y-4">
               {modeRecommendation && (
-                <div className="flex items-start gap-2 rounded-md bg-muted/50 px-3 py-2 text-sm" data-testid="section-mode-recommendation">
-                  <TrendingUp className="h-4 w-4 mt-0.5 shrink-0 text-muted-foreground" />
-                  <div>
-                    <span className="font-medium">建議：{modeRecommendation.recommendation === 'recovery' ? '恢復週' : '正常週'}</span>
-                    <span className="text-muted-foreground ml-1">— {modeRecommendation.reason}</span>
+                <div className="space-y-2" data-testid="section-mode-recommendation">
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">系統建議依據</p>
+                  <div className="space-y-1.5">
+                    {[
+                      {
+                        id: 1,
+                        result: '恢復週',
+                        label: '近4週均分 > 生涯均值 × 112%',
+                        detail: `近4週均分 ${modeRecommendation.recent4Avg}，生涯均值 ${modeRecommendation.careerAvg}（差距 ${modeRecommendation.c1Pct > 0 ? '+' : ''}${modeRecommendation.c1Pct}%）`,
+                        threshold: `門檻：超過 ${Math.round(modeRecommendation.careerAvg * 1.12)}`,
+                      },
+                      {
+                        id: 2,
+                        result: '恢復週',
+                        label: '近4週中 ≥ 3 週超均值，且上週表現突出',
+                        detail: `近4週有 ${modeRecommendation.aboveAvgCount} 週超過均值，上週得分 ${modeRecommendation.lastWeekTotal}（門檻：${Math.round(modeRecommendation.careerAvg * 1.1)}）`,
+                        threshold: `門檻：上週 > 均值 × 110%`,
+                      },
+                      {
+                        id: 3,
+                        result: '正常週',
+                        label: '近4週均分 < 生涯均值 × 85%',
+                        detail: `近4週均分 ${modeRecommendation.recent4Avg}，生涯均值 ${modeRecommendation.careerAvg}（差距 ${modeRecommendation.c1Pct > 0 ? '+' : ''}${modeRecommendation.c1Pct}%）`,
+                        threshold: `門檻：低於 ${Math.round(modeRecommendation.careerAvg * 0.85)}`,
+                      },
+                      {
+                        id: 4,
+                        result: '正常週',
+                        label: '其餘情況（訓練量穩定正常）',
+                        detail: `以上條件均不符合，近期訓練穩定，維持正常週節奏`,
+                        threshold: null,
+                      },
+                    ].map(cond => {
+                      const isMatched = modeRecommendation.matchedCondition === cond.id;
+                      return (
+                        <div
+                          key={cond.id}
+                          className={`rounded-md border px-3 py-2 text-sm transition-colors ${
+                            isMatched
+                              ? 'border-primary bg-primary/5'
+                              : 'border-border bg-muted/30 opacity-60'
+                          }`}
+                          data-testid={`condition-${cond.id}${isMatched ? '-matched' : ''}`}
+                        >
+                          <div className="flex items-start justify-between gap-2 flex-wrap">
+                            <div className="flex items-start gap-2">
+                              <span className={`mt-0.5 shrink-0 text-xs font-bold ${isMatched ? 'text-primary' : 'text-muted-foreground'}`}>
+                                {isMatched ? '▶' : `${cond.id}.`}
+                              </span>
+                              <div>
+                                <span className={`font-medium ${isMatched ? 'text-foreground' : 'text-muted-foreground'}`}>
+                                  {cond.label}
+                                </span>
+                                {isMatched && (
+                                  <p className="text-xs text-muted-foreground mt-0.5">{cond.detail}</p>
+                                )}
+                              </div>
+                            </div>
+                            <span className={`shrink-0 text-xs px-1.5 py-0.5 rounded font-medium ${
+                              cond.result === '恢復週'
+                                ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300'
+                                : 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300'
+                            }`}>
+                              → {cond.result}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               )}
