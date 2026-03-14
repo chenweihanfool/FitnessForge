@@ -527,53 +527,53 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/plan/recommend-mode", async (req, res) => {
     try {
+      const ROLLING_WEEKS = 8;
       const allStats = await storage.getAllWeeklyStats();
       if (allStats.length < 4) {
-        return res.json({ recommendation: 'normal', reason: '歷史週數不足，建議先按正常週累積數據。' });
+        return res.json({ recommendation: 'normal', reason: '歷史週數不足，建議先按正常週累積數據。', matchedCondition: 4, recent4Avg: 0, rollingAvg: 0, aboveAvgCount: 0, lastWeekTotal: 0, diffPct: 0 });
       }
 
       const currentWeekStart = getCurrentWeekStart();
-      // Exclude current (possibly incomplete) week
       const completed = allStats
         .filter(w => w.weekStart !== currentWeekStart)
         .sort((a, b) => a.weekStart.localeCompare(b.weekStart));
 
       if (completed.length < 4) {
-        return res.json({ recommendation: 'normal', reason: '完成週數不足，建議按正常週訓練。' });
+        return res.json({ recommendation: 'normal', reason: '完成週數不足，建議按正常週訓練。', matchedCondition: 4, recent4Avg: 0, rollingAvg: 0, aboveAvgCount: 0, lastWeekTotal: 0, diffPct: 0 });
       }
 
-      const careerAvg = completed.reduce((s, w) => s + w.totalBaselineValue, 0) / completed.length;
+      const rollingWindow = completed.slice(-ROLLING_WEEKS);
+      const rollingAvg = rollingWindow.reduce((s, w) => s + w.totalBaselineValue, 0) / rollingWindow.length;
       const recent4 = completed.slice(-4);
       const recent4Avg = recent4.reduce((s, w) => s + w.totalBaselineValue, 0) / 4;
       const lastWeek = completed[completed.length - 1];
-      const aboveAvgCount = recent4.filter(w => w.totalBaselineValue > careerAvg).length;
+      const aboveAvgCount = recent4.filter(w => w.totalBaselineValue > rollingAvg).length;
 
       let recommendation: 'recovery' | 'normal';
       let reason: string;
       let matchedCondition: number;
 
-      // Condition values for frontend display
-      const c1Met = recent4Avg > careerAvg * 1.12;
-      const c2Met = aboveAvgCount >= 3 && lastWeek.totalBaselineValue > careerAvg * 1.1;
-      const c3Met = recent4Avg < careerAvg * 0.85;
-      const c1Pct = Math.round((recent4Avg / careerAvg - 1) * 100);
+      const diffPct = Math.round((recent4Avg / rollingAvg - 1) * 100);
+      const c1Met = recent4Avg > rollingAvg * 1.12;
+      const c2Met = aboveAvgCount >= 3 && lastWeek.totalBaselineValue > rollingAvg * 1.1;
+      const c3Met = recent4Avg < rollingAvg * 0.85;
 
       if (c1Met) {
         matchedCondition = 1;
         recommendation = 'recovery';
-        reason = `近4週均分（${recent4Avg.toFixed(0)}）高於生涯均值（${careerAvg.toFixed(0)}）約 ${c1Pct}%，建議安排恢復週讓身體適應。`;
+        reason = `近4週均分（${recent4Avg.toFixed(0)}）高於近${rollingWindow.length}週滾動均值（${rollingAvg.toFixed(0)}）約 ${diffPct}%，建議安排恢復週讓身體適應。`;
       } else if (c2Met) {
         matchedCondition = 2;
         recommendation = 'recovery';
-        reason = `近4週中有 ${aboveAvgCount} 週超過生涯均值，且上週表現特別突出（${lastWeek.totalBaselineValue.toFixed(0)}），適合安排恢復週。`;
+        reason = `近4週中有 ${aboveAvgCount} 週超過滾動均值，且上週表現特別突出（${lastWeek.totalBaselineValue.toFixed(0)}），適合安排恢復週。`;
       } else if (c3Met) {
         matchedCondition = 3;
         recommendation = 'normal';
-        reason = `近4週均分（${recent4Avg.toFixed(0)}）低於生涯均值（${careerAvg.toFixed(0)}），建議正常週維持訓練量。`;
+        reason = `近4週均分（${recent4Avg.toFixed(0)}）低於滾動均值（${rollingAvg.toFixed(0)}），建議正常週維持訓練量。`;
       } else {
         matchedCondition = 4;
         recommendation = 'normal';
-        reason = `近期訓練量穩定正常（均值 ${recent4Avg.toFixed(0)}，生涯均 ${careerAvg.toFixed(0)}），建議維持正常週節奏。`;
+        reason = `近期訓練量穩定（均分 ${recent4Avg.toFixed(0)}，滾動均值 ${rollingAvg.toFixed(0)}），建議維持正常週節奏。`;
       }
 
       res.json({
@@ -581,10 +581,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         reason,
         matchedCondition,
         recent4Avg: Math.round(recent4Avg),
-        careerAvg: Math.round(careerAvg),
+        rollingAvg: Math.round(rollingAvg),
+        rollingWeeks: rollingWindow.length,
         aboveAvgCount,
         lastWeekTotal: Math.round(lastWeek.totalBaselineValue),
-        c1Pct,
+        diffPct,
       });
     } catch (error) {
       console.error("取得週建議失敗:", error);
@@ -599,18 +600,45 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "模式必须是 recovery 或 normal" });
       }
 
+      const ROLLING_WEEKS = 8;
       const allExercises = await storage.getExercises();
       const weeklyProgress = await storage.getWeeklyProgress();
       const allEntries = await storage.getWorkoutEntries();
 
-      // Compute per-exercise typical session structure from historical entries
+      // Compute rolling 8-week cutoff date for per-exercise rolling averages
+      const currentWeekStartDate = new Date(getCurrentWeekStart());
+      const rollingCutoff = new Date(currentWeekStartDate);
+      rollingCutoff.setDate(rollingCutoff.getDate() - ROLLING_WEEKS * 7);
+
+      // Compute per-exercise typical session structure and rolling weekly averages
       const entryMap = new Map<string, { values: number[]; sets: number[] }>();
+      const rollingEntryMap = new Map<string, Map<string, number>>();
       for (const entry of allEntries) {
         if (!entryMap.has(entry.exerciseId)) entryMap.set(entry.exerciseId, { values: [], sets: [] });
         const rec = entryMap.get(entry.exerciseId)!;
         if (entry.value > 0) rec.values.push(entry.value);
         if (entry.sets != null && entry.sets > 0) rec.sets.push(entry.sets);
+
+        const entryDate = new Date(entry.date);
+        if (entryDate >= rollingCutoff && entryDate < currentWeekStartDate) {
+          if (!rollingEntryMap.has(entry.exerciseId)) rollingEntryMap.set(entry.exerciseId, new Map());
+          const weekMap = rollingEntryMap.get(entry.exerciseId)!;
+          const weekKey = entry.date.substring(0, 10);
+          const adjustedDate = new Date(entryDate);
+          const day = adjustedDate.getUTCDay();
+          const diff = day === 0 ? -6 : 1 - day;
+          adjustedDate.setUTCDate(adjustedDate.getUTCDate() + diff);
+          const wk = adjustedDate.toISOString().substring(0, 10);
+          weekMap.set(wk, (weekMap.get(wk) || 0) + (entry.baselineValue ?? entry.value));
+        }
       }
+
+      const getRollingAvg = (exerciseId: string): number | null => {
+        const weekMap = rollingEntryMap.get(exerciseId);
+        if (!weekMap || weekMap.size === 0) return null;
+        const vals = Array.from(weekMap.values());
+        return vals.reduce((a, b) => a + b, 0) / vals.length;
+      };
 
       const median = (arr: number[]) => {
         if (!arr.length) return null;
@@ -636,12 +664,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
             .filter(([key]) => ((e as Record<string, unknown>)[key] as number ?? 0) > 0)
             .map(([key, label]) => `${label}${ (e as Record<string, unknown>)[key] }%`)
             .join('/');
+          const rollingAvg = getRollingAvg(e.id);
+          const weeklyAvg = rollingAvg ?? (prog?.weeklyAverage ?? 0);
           return {
             id: e.id,
             name: e.name,
             unit: e.unit,
             category: e.category,
-            weeklyAverage: prog?.weeklyAverage ?? 0,
+            weeklyAverage: weeklyAvg,
             typicalValue,
             typicalSets,
             muscles,
@@ -654,13 +684,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const dayNames = ['週一', '週二', '週三', '週四', '週五', '週六', '週日'];
-      const targetMultiplier = mode === 'recovery' ? 1.0 : 1.15;
+      const targetMultiplier = mode === 'recovery' ? 0.75 : 1.05;
 
       const allSettings = await storage.getAllUserSettings();
       const customRules = allSettings['planCustomRules'] ?? DEFAULT_PLAN_CUSTOM_RULES;
 
       const exerciseLines = exerciseData.map(e => {
-        let line = `- ${e.name} (unit: ${e.unit}, category: ${e.category || 'other'}, weekly avg total: ${e.weeklyAverage.toFixed(1)}`;
+        let line = `- ${e.name} (unit: ${e.unit}, category: ${e.category || 'other'}, rolling ${ROLLING_WEEKS}wk avg: ${e.weeklyAverage.toFixed(1)}`;
         if (e.typicalValue !== null) line += `, typical value per set: ${Math.round(e.typicalValue)}`;
         if (e.typicalSets !== null) line += `, typical sets per session: ${Math.round(e.typicalSets)}`;
         if (e.muscles) line += `, muscles: ${e.muscles}`;
@@ -668,18 +698,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return line;
       }).join('\n');
 
+      const modeDesc = mode === 'recovery'
+        ? `Recovery week (target = rolling avg × 75%, reduce volume for fatigue management)`
+        : `Normal week (target = rolling avg × 105%, progressive overload +5%)`;
+
       const prompt = `You are a fitness training planner. Generate a weekly training schedule in JSON format.
 
-The user has the following exercises. "typical value per set" and "typical sets per session" come from their REAL historical data — you MUST use these as the basis for targetValue and targetSets. Do NOT invent values outside the user's actual range. "muscles" shows which muscle groups each exercise trains (with % contribution).
+The user has the following exercises. "rolling ${ROLLING_WEEKS}wk avg" is the recent ${ROLLING_WEEKS}-week rolling average baseline value. "typical value per set" and "typical sets per session" come from their REAL historical data — you MUST use these as the basis for targetValue and targetSets. Do NOT invent values outside the user's actual range. "muscles" shows which muscle groups each exercise trains (with % contribution).
 ${exerciseLines}
 
-Mode: ${mode === 'recovery' ? 'Recovery week (target = career averages)' : 'Normal week (target = averages + 15%)'}
+Mode: ${modeDesc}
 Target multiplier: ${targetMultiplier}
 
 Rules:
 1. Distribute exercises across 3-5 training days (Mon-Sun), leave 2-4 rest days
 2. Each training day should have 2-4 exercises
-3. For each exercise, set targetValue and targetSets CLOSE to the user's historical typical values (within ±20%). The total weekly volume across all sessions should approximate: weeklyAverage * ${targetMultiplier}
+3. For each exercise, set targetValue and targetSets CLOSE to the user's historical typical values (within ±20%). The total weekly volume across all sessions should approximate: rolling avg * ${targetMultiplier}
 4. Group exercises logically by category (strength together, cardio together)
 5. Don't include the same exercise on consecutive days
 6. Balance the total load across training days

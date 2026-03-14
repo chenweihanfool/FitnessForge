@@ -306,10 +306,11 @@ export default function Dashboard() {
     reason: string;
     matchedCondition: number;
     recent4Avg: number;
-    careerAvg: number;
+    rollingAvg: number;
+    rollingWeeks: number;
     aboveAvgCount: number;
     lastWeekTotal: number;
-    c1Pct: number;
+    diffPct: number;
   };
   const { data: modeRecommendation } = useQuery<ModeRecommendation>({
     queryKey: ["/api/plan/recommend-mode"],
@@ -762,30 +763,26 @@ export default function Dashboard() {
                       {
                         id: 1,
                         result: '恢復週',
-                        label: '近4週均分 > 生涯均值 × 112%',
-                        detail: `近4週均分 ${modeRecommendation.recent4Avg}，生涯均值 ${modeRecommendation.careerAvg}（差距 ${modeRecommendation.c1Pct > 0 ? '+' : ''}${modeRecommendation.c1Pct}%）`,
-                        threshold: `門檻：超過 ${Math.round(modeRecommendation.careerAvg * 1.12)}`,
+                        label: `近4週均分 > 近${modeRecommendation.rollingWeeks}週滾動均值 × 112%`,
+                        detail: `近4週均分 ${modeRecommendation.recent4Avg}，滾動均值 ${modeRecommendation.rollingAvg}（差距 ${modeRecommendation.diffPct > 0 ? '+' : ''}${modeRecommendation.diffPct}%）`,
                       },
                       {
                         id: 2,
                         result: '恢復週',
-                        label: '近4週中 ≥ 3 週超均值，且上週表現突出',
-                        detail: `近4週有 ${modeRecommendation.aboveAvgCount} 週超過均值，上週得分 ${modeRecommendation.lastWeekTotal}（門檻：${Math.round(modeRecommendation.careerAvg * 1.1)}）`,
-                        threshold: `門檻：上週 > 均值 × 110%`,
+                        label: '近4週中 ≥ 3 週超滾動均值，且上週表現突出',
+                        detail: `近4週有 ${modeRecommendation.aboveAvgCount} 週超過滾動均值，上週得分 ${modeRecommendation.lastWeekTotal}（門檻：${Math.round(modeRecommendation.rollingAvg * 1.1)}）`,
                       },
                       {
                         id: 3,
                         result: '正常週',
-                        label: '近4週均分 < 生涯均值 × 85%',
-                        detail: `近4週均分 ${modeRecommendation.recent4Avg}，生涯均值 ${modeRecommendation.careerAvg}（差距 ${modeRecommendation.c1Pct > 0 ? '+' : ''}${modeRecommendation.c1Pct}%）`,
-                        threshold: `門檻：低於 ${Math.round(modeRecommendation.careerAvg * 0.85)}`,
+                        label: `近4週均分 < 近${modeRecommendation.rollingWeeks}週滾動均值 × 85%`,
+                        detail: `近4週均分 ${modeRecommendation.recent4Avg}，滾動均值 ${modeRecommendation.rollingAvg}（差距 ${modeRecommendation.diffPct > 0 ? '+' : ''}${modeRecommendation.diffPct}%）`,
                       },
                       {
                         id: 4,
                         result: '正常週',
                         label: '其餘情況（訓練量穩定正常）',
                         detail: `以上條件均不符合，近期訓練穩定，維持正常週節奏`,
-                        threshold: null,
                       },
                     ].map(cond => {
                       const isMatched = modeRecommendation.matchedCondition === cond.id;
@@ -966,20 +963,20 @@ export default function Dashboard() {
                         {
                           id: 1,
                           result: '恢復週',
-                          label: '近4週均分 > 生涯均值 × 112%',
-                          detail: `近4週均分 ${modeRecommendation.recent4Avg}，生涯均值 ${modeRecommendation.careerAvg}（差距 ${modeRecommendation.c1Pct > 0 ? '+' : ''}${modeRecommendation.c1Pct}%，門檻：均值 × 112% = ${Math.round(modeRecommendation.careerAvg * 1.12)}）`,
+                          label: `近4週均分 > 近${modeRecommendation.rollingWeeks}週滾動均值 × 112%`,
+                          detail: `近4週均分 ${modeRecommendation.recent4Avg}，滾動均值 ${modeRecommendation.rollingAvg}（差距 ${modeRecommendation.diffPct > 0 ? '+' : ''}${modeRecommendation.diffPct}%，門檻：滾動均值 × 112% = ${Math.round(modeRecommendation.rollingAvg * 1.12)}）`,
                         },
                         {
                           id: 2,
                           result: '恢復週',
-                          label: '近4週中 ≥ 3 週超均值，且上週得分 > 均值 × 110%',
-                          detail: `近4週有 ${modeRecommendation.aboveAvgCount} 週超均值，上週 ${modeRecommendation.lastWeekTotal}（門檻：${Math.round(modeRecommendation.careerAvg * 1.1)}）`,
+                          label: '近4週中 ≥ 3 週超滾動均值，且上週得分 > 滾動均值 × 110%',
+                          detail: `近4週有 ${modeRecommendation.aboveAvgCount} 週超滾動均值，上週 ${modeRecommendation.lastWeekTotal}（門檻：${Math.round(modeRecommendation.rollingAvg * 1.1)}）`,
                         },
                         {
                           id: 3,
                           result: '正常週',
-                          label: '近4週均分 < 生涯均值 × 85%',
-                          detail: `近4週均分 ${modeRecommendation.recent4Avg}，門檻：${Math.round(modeRecommendation.careerAvg * 0.85)}`,
+                          label: `近4週均分 < 近${modeRecommendation.rollingWeeks}週滾動均值 × 85%`,
+                          detail: `近4週均分 ${modeRecommendation.recent4Avg}，門檻：${Math.round(modeRecommendation.rollingAvg * 0.85)}`,
                         },
                         {
                           id: 4,
