@@ -311,8 +311,8 @@ export default function Dashboard() {
       queryClient.invalidateQueries({ queryKey: ["/api/plan/current"] });
       toast({ title: "训练计划已生成" });
     },
-    onError: (error: any) => {
-      const message = error?.message || "生成失败";
+    onError: (error: unknown) => {
+      const message = error instanceof Error ? error.message : "生成失败";
       toast({ title: "生成训练计划失败", description: message, variant: "destructive" });
     },
   });

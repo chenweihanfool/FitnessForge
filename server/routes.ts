@@ -658,20 +658,18 @@ Use the exact exerciseId and exerciseName from the list above.`;
         return d >= weekStartDate && d <= weekEnd;
       });
 
-      const exerciseActuals = new Map<string, { totalVolume: number; totalSets: number }>();
+      const dayEntries = new Map<number, Map<string, { totalVolume: number; totalSets: number }>>();
       for (const entry of weekEntries) {
-        const existing = exerciseActuals.get(entry.exerciseId) || { totalVolume: 0, totalSets: 0 };
+        const entryTaipei = new Date(new Date(entry.date).getTime() + TAIPEI_OFFSET);
+        let entryDow = entryTaipei.getUTCDay();
+        const dayNum = entryDow === 0 ? 7 : entryDow;
+
+        if (!dayEntries.has(dayNum)) dayEntries.set(dayNum, new Map());
+        const dayMap = dayEntries.get(dayNum)!;
+        const existing = dayMap.get(entry.exerciseId) || { totalVolume: 0, totalSets: 0 };
         existing.totalVolume += entry.value * (entry.sets || 1);
         existing.totalSets += (entry.sets || 1);
-        exerciseActuals.set(entry.exerciseId, existing);
-      }
-
-      const exerciseTotalPlannedVolume = new Map<string, number>();
-      for (const day of planDays) {
-        for (const ex of day.exercises) {
-          const prev = exerciseTotalPlannedVolume.get(ex.exerciseId) || 0;
-          exerciseTotalPlannedVolume.set(ex.exerciseId, prev + ex.targetValue * ex.targetSets);
-        }
+        dayMap.set(entry.exerciseId, existing);
       }
 
       let totalPlanned = 0;
@@ -682,17 +680,14 @@ Use the exact exerciseId and exerciseName from the list above.`;
         exercises: day.exercises.map(ex => {
           totalPlanned++;
           const itemTarget = ex.targetValue * ex.targetSets;
-          const totalTarget = exerciseTotalPlannedVolume.get(ex.exerciseId) || itemTarget;
-          const actual = exerciseActuals.get(ex.exerciseId) || { totalVolume: 0, totalSets: 0 };
-          const itemProportion = totalTarget > 0 ? itemTarget / totalTarget : 1;
-          const itemActual = actual.totalVolume * itemProportion;
-          const itemActualSets = Math.round(actual.totalSets * itemProportion);
+          const dayMap = dayEntries.get(day.day);
+          const actual = dayMap?.get(ex.exerciseId) || { totalVolume: 0, totalSets: 0 };
 
           let status: 'met' | 'partial' | 'not_met';
-          if (itemActual >= itemTarget * 0.8) {
+          if (actual.totalVolume >= itemTarget) {
             status = 'met';
             totalMet++;
-          } else if (itemActual > 0) {
+          } else if (actual.totalVolume > 0) {
             status = 'partial';
           } else {
             status = 'not_met';
@@ -700,8 +695,8 @@ Use the exact exerciseId and exerciseName from the list above.`;
 
           return {
             ...ex,
-            actualValue: Math.round(itemActual * 10) / 10,
-            actualSets: itemActualSets,
+            actualValue: Math.round(actual.totalVolume * 10) / 10,
+            actualSets: actual.totalSets,
             status,
           };
         }),
