@@ -858,36 +858,86 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return d >= weekStartDate && d <= weekEnd;
       });
 
-      const dayEntries = new Map<number, Map<string, { totalVolume: number; totalSets: number }>>();
+      // Group all week entries by exerciseId (for make-up training support)
+      // An entry recorded on ANY day of the week can satisfy a plan item on a different day.
+      interface WeekEntry { volume: number; sets: number; baselineValue: number; date: Date; }
+      const weekExerciseEntries = new Map<string, WeekEntry[]>();
       for (const entry of weekEntries) {
-        const entryTaipei = new Date(new Date(entry.date).getTime() + TAIPEI_OFFSET);
-        let entryDow = entryTaipei.getUTCDay();
-        const dayNum = entryDow === 0 ? 7 : entryDow;
+        if (!weekExerciseEntries.has(entry.exerciseId)) weekExerciseEntries.set(entry.exerciseId, []);
+        weekExerciseEntries.get(entry.exerciseId)!.push({
+          volume: entry.value * (entry.sets || 1),
+          sets: entry.sets || 1,
+          baselineValue: entry.baselineValue ?? 0,
+          date: new Date(entry.date),
+        });
+      }
+      // Sort each exercise's entries by date ascending
+      for (const arr of Array.from(weekExerciseEntries.values())) {
+        arr.sort((a, b) => a.date.getTime() - b.date.getTime());
+      }
 
-        if (!dayEntries.has(dayNum)) dayEntries.set(dayNum, new Map());
-        const dayMap = dayEntries.get(dayNum)!;
-        const existing = dayMap.get(entry.exerciseId) || { totalVolume: 0, totalSets: 0 };
-        existing.totalVolume += entry.value * (entry.sets || 1);
-        existing.totalSets += (entry.sets || 1);
-        dayMap.set(entry.exerciseId, existing);
+      // Build plan occurrences per exercise, sorted by day ascending
+      // exerciseId -> sorted list of { dayIndex, targetVolume }
+      interface Occurrence { dayIndex: number; day: number; targetVolume: number; }
+      const exerciseOccurrences = new Map<string, Occurrence[]>();
+      planDays.forEach((day, di) => {
+        day.exercises.forEach(ex => {
+          if (!exerciseOccurrences.has(ex.exerciseId)) exerciseOccurrences.set(ex.exerciseId, []);
+          exerciseOccurrences.get(ex.exerciseId)!.push({ dayIndex: di, day: day.day, targetVolume: ex.targetValue * ex.targetSets });
+        });
+      });
+
+      // Greedy match: i-th occurrence (sorted by day) gets i-th actual entry (sorted by date)
+      // key: `${exerciseId}__${dayIndex}` -> matched WeekEntry | null
+      const occurrenceMatch = new Map<string, WeekEntry | null>();
+      for (const [exId, occs] of Array.from(exerciseOccurrences.entries())) {
+        const sortedOccs = [...occs].sort((a, b) => a.day - b.day);
+        const entries = weekExerciseEntries.get(exId) ?? [];
+        sortedOccs.forEach((occ, i) => {
+          occurrenceMatch.set(`${exId}__${occ.dayIndex}`, entries[i] ?? null);
+        });
       }
 
       let totalPlanned = 0;
       let totalMet = 0;
+      let actualBaseline = 0;
 
-      const daysWithProgress = planDays.map(day => ({
+      // Compute targetBaseline: for each unique planned exercise,
+      // targetContrib = weeklyContrib * targetMultiplier (historical avg scaled by mode)
+      const targetMultiplier = plan.mode === 'recovery' ? 0.75 : 1.05;
+      const seenExerciseIds = new Set<string>();
+      let targetBaseline = 0;
+      for (const day of planDays) {
+        for (const ex of day.exercises) {
+          if (!seenExerciseIds.has(ex.exerciseId)) {
+            seenExerciseIds.add(ex.exerciseId);
+            const contrib = (ex as { weeklyContrib?: number }).weeklyContrib ?? 0;
+            targetBaseline += contrib * targetMultiplier;
+          }
+        }
+      }
+
+      // Actual baseline: sum of baselineValue for all week entries of planned exercises
+      for (const [exId, entries] of Array.from(weekExerciseEntries.entries())) {
+        if (seenExerciseIds.has(exId)) {
+          for (const e of entries) actualBaseline += e.baselineValue;
+        }
+      }
+
+      const daysWithProgress = planDays.map((day, dayIndex) => ({
         ...day,
         exercises: day.exercises.map(ex => {
           totalPlanned++;
           const itemTarget = ex.targetValue * ex.targetSets;
-          const dayMap = dayEntries.get(day.day);
-          const actual = dayMap?.get(ex.exerciseId) || { totalVolume: 0, totalSets: 0 };
+          const matched = occurrenceMatch.get(`${ex.exerciseId}__${dayIndex}`);
+          const volume = matched?.volume ?? 0;
+          const setsActual = matched?.sets ?? 0;
 
           let status: 'met' | 'partial' | 'not_met';
-          if (actual.totalVolume >= itemTarget) {
+          if (volume >= itemTarget) {
             status = 'met';
             totalMet++;
-          } else if (actual.totalVolume > 0) {
+          } else if (volume > 0) {
             status = 'partial';
           } else {
             status = 'not_met';
@@ -895,8 +945,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
           return {
             ...ex,
-            actualValue: Math.round(actual.totalVolume * 10) / 10,
-            actualSets: actual.totalSets,
+            actualValue: Math.round(volume * 10) / 10,
+            actualSets: setsActual,
             status,
           };
         }),
@@ -910,6 +960,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         totalPlanned,
         totalMet,
         completionPercentage: totalPlanned > 0 ? Math.round((totalMet / totalPlanned) * 100) : 0,
+        targetBaseline: Math.round(targetBaseline),
+        actualBaseline: Math.round(actualBaseline),
+        baselinePercentage: targetBaseline > 0 ? Math.round((actualBaseline / targetBaseline) * 100) : 0,
       });
     } catch (error) {
       console.error("获取训练进度失败:", error);

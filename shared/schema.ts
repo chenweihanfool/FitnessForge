@@ -171,6 +171,7 @@ export type PlanDayItem = {
     targetSets: number;
     unit: string;
     category: string | null;
+    weeklyContrib?: number;
   }>;
 };
 
@@ -188,6 +189,7 @@ export type PlanProgress = {
       targetSets: number;
       unit: string;
       category: string | null;
+      weeklyContrib?: number;
       actualValue: number;
       actualSets: number;
       status: PlanItemStatus;
@@ -196,6 +198,9 @@ export type PlanProgress = {
   totalPlanned: number;
   totalMet: number;
   completionPercentage: number;
+  targetBaseline: number;
+  actualBaseline: number;
+  baselinePercentage: number;
 };
 
 // 排名快照类型（用于排名详情）

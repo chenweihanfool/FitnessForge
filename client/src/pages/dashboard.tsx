@@ -895,9 +895,9 @@ export default function Dashboard() {
           ) : (
             <div className="space-y-4">
               <div className="flex items-center justify-between gap-2 flex-wrap">
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-sm font-medium">{planProgress.totalMet}/{planProgress.totalPlanned} 项达标</span>
-                  <div className="w-32 h-2 bg-muted rounded-full overflow-hidden">
+                  <div className="w-24 h-2 bg-muted rounded-full overflow-hidden">
                     <div
                       className="h-full bg-primary rounded-full transition-all"
                       style={{ width: `${planProgress.completionPercentage}%` }}
@@ -921,6 +921,24 @@ export default function Dashboard() {
                   )}
                 </Button>
               </div>
+
+              {planProgress.targetBaseline > 0 && (
+                <div className="space-y-1.5 p-2.5 rounded-md bg-muted/40" data-testid="plan-baseline-progress">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-muted-foreground">課表基準值進度</span>
+                    <span className={`font-medium tabular-nums ${planProgress.baselinePercentage >= 100 ? 'text-green-600 dark:text-green-400' : planProgress.baselinePercentage >= 60 ? 'text-primary' : ''}`}>
+                      {planProgress.actualBaseline} / {planProgress.targetBaseline}
+                      <span className="ml-1 text-muted-foreground">({planProgress.baselinePercentage}%)</span>
+                    </span>
+                  </div>
+                  <div className="h-2 bg-muted rounded-full overflow-hidden">
+                    <div
+                      className={`h-full rounded-full transition-all ${planProgress.baselinePercentage >= 100 ? 'bg-green-500' : 'bg-primary/70'}`}
+                      style={{ width: `${Math.min(100, planProgress.baselinePercentage)}%` }}
+                    />
+                  </div>
+                </div>
+              )}
 
               <div className="space-y-3">
                 {planProgress.days.map((day) => (
