@@ -954,7 +954,9 @@ export default function Dashboard() {
                               {ex.exerciseName}
                             </span>
                             <span className="text-xs text-muted-foreground flex-shrink-0">
-                              {ex.targetValue}{ex.unit} x{ex.targetSets}
+                              {(ex.exerciseName === '跑步' || ex.exerciseName === '跑步機負重')
+                                ? `${ex.targetValue}分鐘 + ${ex.targetSets}km`
+                                : `${ex.targetValue}${ex.unit} x${ex.targetSets}`}
                             </span>
                             <div className="flex-1 min-w-12 h-1.5 bg-muted rounded-full overflow-hidden">
                               <div
