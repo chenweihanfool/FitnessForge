@@ -594,8 +594,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const ROLLING_WEEKS = 8;
       const MIN_ROLLING_WEEKS = 4;
-      const allExercises = await storage.getExercises();
-      const allEntries = await storage.getWorkoutEntries();
+      const [allExercises, allEntries, genSettings] = await Promise.all([
+        storage.getExercises(),
+        storage.getWorkoutEntries(),
+        storage.getAllUserSettings(),
+      ]);
 
       const rollingTotalStats = await storage.getRollingTotalStats(ROLLING_WEEKS);
       if (!rollingTotalStats || rollingTotalStats.weekCount < MIN_ROLLING_WEEKS) {
@@ -611,6 +614,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Collect per-entry data within the rolling window
       const entryMap = new Map<string, { values: number[]; sets: number[]; baselines: number[] }>();
       const weeklyBaselineMap = new Map<string, Map<string, number>>(); // exerciseId -> weekKey -> weekSum
+      const exerciseCatMapGen = new Map(allExercises.map(ex => [ex.id, ex]));
+      // For weighted rolling avg: accumulate per-week category sums
+      const weeklyWeightedCats = new Map<string, { s: number; c: number; a: number }>();
       for (const entry of allEntries) {
         const entryDate = new Date(entry.date);
         if (entryDate < rollingCutoff || entryDate >= currentWeekStartDate) continue;
@@ -629,7 +635,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
         if (!weeklyBaselineMap.has(entry.exerciseId)) weeklyBaselineMap.set(entry.exerciseId, new Map());
         const wm = weeklyBaselineMap.get(entry.exerciseId)!;
         wm.set(weekKey, (wm.get(weekKey) ?? 0) + (entry.baselineValue ?? 0));
+
+        // Accumulate per-week CATEGORY sums for weighted rolling avg
+        if (!weeklyWeightedCats.has(weekKey)) weeklyWeightedCats.set(weekKey, { s: 0, c: 0, a: 0 });
+        const wcat = weeklyWeightedCats.get(weekKey)!;
+        const exCat = exerciseCatMapGen.get(entry.exerciseId);
+        const baseline = entry.baselineValue ?? 0;
+        const splitRatio = (exCat as Record<string, unknown>)?.splitRatio as number ?? 0;
+        const splitCat = (exCat as Record<string, unknown>)?.splitCategory as string | null ?? null;
+        const addCat = (cat: string | null, val: number) => {
+          if (cat === '力量') wcat.s += val;
+          else if (cat === '有氧') wcat.c += val;
+          else if (cat === '活动量') wcat.a += val;
+          else wcat.s += val;
+        };
+        addCat(exCat?.category ?? null, baseline * (1 - splitRatio));
+        if (splitRatio > 0 && splitCat) addCat(splitCat, baseline * splitRatio);
       }
+
+      // Compute weighted rolling average — divide by ROLLING_WEEKS (not just weeks with data)
+      // to match the recommend-mode endpoint which includes zero-training weeks in the average.
+      const genSW = parseFloat(genSettings['strengthWeight'] ?? '50') / 100;
+      const genCW = parseFloat(genSettings['cardioWeight'] ?? '30') / 100;
+      const genAW = parseFloat(genSettings['activityWeight'] ?? '20') / 100;
+      const weeklyWeightedSum = Array.from(weeklyWeightedCats.values())
+        .reduce((s, wk) => s + (wk.s * genSW + wk.c * genCW + wk.a * genAW), 0);
+      const rollingWeightedAvg = ROLLING_WEEKS > 0 ? weeklyWeightedSum / ROLLING_WEEKS : 0;
 
       const median = (arr: number[]) => {
         if (!arr.length) return null;
@@ -821,10 +852,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         .filter(d => d.exercises.length > 0);
 
       const weekStart = getCurrentWeekStart();
+      // Store WEIGHTED targetBaseline in planJson so the progress endpoint can read it
+      // without re-fetching all weekly stats (which is slow on production).
+      // rollingWeightedAvg uses category-weighted composite same as the dashboard total score.
+      const planPayload = { targetBaseline: Math.round(rollingWeightedAvg * targetMultiplier), days: parsedPlan };
       const saved = await storage.saveWeeklyPlan({
         weekStart,
         mode: mode as 'recovery' | 'normal',
-        planJson: JSON.stringify(parsedPlan),
+        planJson: JSON.stringify(planPayload),
       });
 
       res.json(saved);
@@ -842,8 +877,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.json(null);
       }
 
-      const planDays: PlanDayItem[] = JSON.parse(plan.planJson);
-      const entries = await storage.getWorkoutEntries();
+      // Support both old format (array) and new format ({ targetBaseline, days })
+      const parsedJson = JSON.parse(plan.planJson);
+      const planDays: PlanDayItem[] = Array.isArray(parsedJson) ? parsedJson : parsedJson.days;
+      const storedTargetBaseline: number = Array.isArray(parsedJson) ? 0 : (parsedJson.targetBaseline ?? 0);
+
+      const [entries, allExercises, settings] = await Promise.all([
+        storage.getWorkoutEntries(),
+        storage.getExercises(),
+        storage.getAllUserSettings(),
+      ]);
 
       const weekStartDate = new Date(weekStart);
       const TAIPEI_OFFSET = 8 * 60 * 60 * 1000;
@@ -901,27 +944,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
       let totalPlanned = 0;
       let totalMet = 0;
 
-      // Compute targetBaseline: rolling 8-week WEIGHTED composite average × mode multiplier
-      // Uses the same totalBaselineValue (weighted) as the recommend-mode endpoint and dashboard.
-      const targetMultiplier = plan.mode === 'recovery' ? 0.75 : 1.05;
+      // targetBaseline: read from stored plan (computed at generation time, no DB scan needed)
+      const targetBaseline = storedTargetBaseline;
 
-      const [allStats, currentWeekStats] = await Promise.all([
-        storage.getAllWeeklyStats(),
-        storage.getWeeklyStats(weekStartDate, weekEnd),
-      ]);
+      // actualBaseline: compute from week entries using exercise categories + user weights.
+      // This avoids calling slow getAllWeeklyStats() / getWeeklyStats() on production.
+      const exerciseMap = new Map(allExercises.map(ex => [ex.id, ex]));
+      const sW = parseFloat(settings['strengthWeight'] ?? '50') / 100;
+      const cW = parseFloat(settings['cardioWeight'] ?? '30') / 100;
+      const aW = parseFloat(settings['activityWeight'] ?? '20') / 100;
 
-      const ROLLING_WEEKS = 8;
-      const completedStats = allStats
-        .filter(w => w.weekStart !== weekStart)
-        .sort((a, b) => a.weekStart.localeCompare(b.weekStart));
-      const rollingWindow = completedStats.slice(-ROLLING_WEEKS);
-      const rollingAvgWeighted = rollingWindow.length > 0
-        ? rollingWindow.reduce((s, w) => s + w.totalBaselineValue, 0) / rollingWindow.length
-        : 0;
-      const targetBaseline = Math.round(rollingAvgWeighted * targetMultiplier);
-
-      // Actual baseline: current week's weighted composite (same value shown on dashboard)
-      const actualBaseline = Math.round(currentWeekStats.totalBaselineValue);
+      let strengthTotal = 0, cardioTotal = 0, activityTotal = 0;
+      for (const entry of weekEntries) {
+        const ex = exerciseMap.get(entry.exerciseId);
+        const baseline = entry.baselineValue ?? 0;
+        if (!ex) { strengthTotal += baseline; continue; } // fallback: treat as strength
+        const splitRatio = (ex as Record<string, unknown>).splitRatio as number ?? 0;
+        const splitCat = (ex as Record<string, unknown>).splitCategory as string | null ?? null;
+        const primaryBaseline = baseline * (1 - splitRatio);
+        const secondaryBaseline = baseline * splitRatio;
+        const addTo = (cat: string | null, val: number) => {
+          if (cat === '力量') strengthTotal += val;
+          else if (cat === '有氧') cardioTotal += val;
+          else if (cat === '活动量') activityTotal += val;
+          else strengthTotal += val; // fallback
+        };
+        addTo(ex.category, primaryBaseline);
+        if (splitRatio > 0 && splitCat) addTo(splitCat, secondaryBaseline);
+      }
+      const actualBaseline = Math.round(strengthTotal * sW + cardioTotal * cW + activityTotal * aW);
 
       const daysWithProgress = planDays.map((day, dayIndex) => ({
         ...day,
