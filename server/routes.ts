@@ -610,20 +610,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: `需要至少 ${MIN_ROLLING_WEEKS} 週完成的訓練數據才能生成計畫。目前有 ${rollingTotalStats?.weekCount ?? 0} 週數據。` });
       }
 
-      // Use only the rolling window entries for typicalValue/typicalSets
-      // so that stale early-history records don't corrupt the per-set median.
+      // Use only the rolling window entries for typicalValue/typicalSets/perSessionBaseline
+      // so that stale early-history records don't corrupt per-set medians.
       const currentWeekStartDate = new Date(getCurrentWeekStart());
       const rollingCutoff = new Date(currentWeekStartDate);
       rollingCutoff.setDate(rollingCutoff.getDate() - ROLLING_WEEKS * 7);
 
-      const entryMap = new Map<string, { values: number[]; sets: number[] }>();
+      // Collect per-entry data within the rolling window
+      const entryMap = new Map<string, { values: number[]; sets: number[]; baselines: number[] }>();
+      const weeklyBaselineMap = new Map<string, Map<string, number>>(); // exerciseId -> weekKey -> weekSum
       for (const entry of allEntries) {
         const entryDate = new Date(entry.date);
         if (entryDate < rollingCutoff || entryDate >= currentWeekStartDate) continue;
-        if (!entryMap.has(entry.exerciseId)) entryMap.set(entry.exerciseId, { values: [], sets: [] });
+        if (!entryMap.has(entry.exerciseId)) entryMap.set(entry.exerciseId, { values: [], sets: [], baselines: [] });
         const rec = entryMap.get(entry.exerciseId)!;
         if (entry.value > 0) rec.values.push(entry.value);
         if (entry.sets != null && entry.sets > 0) rec.sets.push(entry.sets);
+        if (entry.baselineValue != null && entry.baselineValue > 0) rec.baselines.push(entry.baselineValue);
+
+        // Track weekly baseline contribution per exercise
+        const day = entryDate.getUTCDay();
+        const diff = day === 0 ? -6 : 1 - day;
+        const weekStart = new Date(entryDate);
+        weekStart.setUTCDate(weekStart.getUTCDate() + diff);
+        const weekKey = weekStart.toISOString().substring(0, 10);
+        if (!weeklyBaselineMap.has(entry.exerciseId)) weeklyBaselineMap.set(entry.exerciseId, new Map());
+        const wm = weeklyBaselineMap.get(entry.exerciseId)!;
+        wm.set(weekKey, (wm.get(weekKey) ?? 0) + (entry.baselineValue ?? 0));
       }
 
       const median = (arr: number[]) => {
@@ -632,6 +645,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const m = Math.floor(s.length / 2);
         return s.length % 2 === 0 ? (s[m - 1] + s[m]) / 2 : s[m];
       };
+      const avg = (arr: number[]) => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
 
       const muscleLabels: Array<[string, string]> = [
         ['muscleChest', '胸'], ['muscleBack', '背'], ['muscleLegs', '腿'],
@@ -639,69 +653,72 @@ export async function registerRoutes(app: Express): Promise<Server> {
         ['muscleCore', '核心'], ['muscleGlutes', '臀'], ['muscleFullBody', '全身'],
       ];
 
-      const exerciseRollingAvgs = await Promise.all(
-        allExercises
-          .filter(e => e.name !== '每周平均步数')
-          .map(async e => {
-            const rollingAvg = await storage.getExerciseRollingAverage(e.id, ROLLING_WEEKS);
-            const hist = entryMap.get(e.id);
-            const typicalValue = hist ? median(hist.values) : null;
-            const typicalSets = hist ? median(hist.sets) : null;
-            const muscles = muscleLabels
-              .filter(([key]) => ((e as Record<string, unknown>)[key] as number ?? 0) > 0)
-              .map(([key, label]) => `${label}${ (e as Record<string, unknown>)[key] }%`)
-              .join('/');
-            return {
-              id: e.id,
-              name: e.name,
-              unit: e.unit,
-              category: e.category,
-              weeklyAverage: rollingAvg ?? 0,
-              typicalValue,
-              typicalSets,
-              muscles,
-            };
-          })
-      );
-
-      const exerciseData = exerciseRollingAvgs.filter(e => e.weeklyAverage > 0);
-
-      if (exerciseData.length === 0) {
-        return res.status(400).json({ error: "没有足够的历史数据来生成训练计划。请先记录一些训练数据。" });
-      }
-
       const dayNames = ['週一', '週二', '週三', '週四', '週五', '週六', '週日'];
       const targetMultiplier = mode === 'recovery' ? 0.75 : 1.05;
+
+      // Build exercise data with server-computed targets and session counts
+      const exerciseDataRaw = allExercises
+        .filter(e => e.name !== '每周平均步数')
+        .map(e => {
+          const hist = entryMap.get(e.id);
+          if (!hist || hist.values.length === 0 || hist.sets.length === 0 || hist.baselines.length === 0) return null;
+
+          const targetValue = Math.max(1, Math.round(median(hist.values)!));
+          const targetSets = Math.max(1, Math.round(median(hist.sets)!));
+          const perSessionBaseline = median(hist.baselines)!;
+
+          // Avg weekly contribution for this exercise over the rolling window
+          const weeklyVals = Array.from((weeklyBaselineMap.get(e.id) ?? new Map()).values());
+          const weeklyContrib = avg(weeklyVals); // avg weekly baseline points from this exercise
+
+          if (weeklyContrib <= 0 || perSessionBaseline <= 0) return null;
+
+          // Sessions per week needed to hit the scaled target
+          const rawSessions = (weeklyContrib * targetMultiplier) / perSessionBaseline;
+          const sessionsPerWeek = Math.min(3, Math.max(1, Math.round(rawSessions)));
+
+          const muscles = muscleLabels
+            .filter(([key]) => ((e as Record<string, unknown>)[key] as number ?? 0) > 0)
+            .map(([key, label]) => `${label}${(e as Record<string, unknown>)[key]}%`)
+            .join('/');
+
+          return {
+            id: e.id,
+            name: e.name,
+            unit: e.unit,
+            category: e.category,
+            targetValue,
+            targetSets,
+            perSessionBaseline,
+            weeklyContrib,
+            sessionsPerWeek,
+            muscles,
+          };
+        })
+        .filter((e): e is NonNullable<typeof e> => e !== null);
+
+      if (exerciseDataRaw.length === 0) {
+        return res.status(400).json({ error: "沒有足夠的近期訓練數據來生成計畫，請先累積 4 週以上的訓練紀錄。" });
+      }
+
+      const weeklyTarget = rollingTotalStats.avg * targetMultiplier;
+      const projectedTotal = exerciseDataRaw.reduce((s, e) => s + e.sessionsPerWeek * e.perSessionBaseline, 0);
 
       const allSettings = await storage.getAllUserSettings();
       const customRules = allSettings['planCustomRules'] ?? DEFAULT_PLAN_CUSTOM_RULES;
 
-      // Pre-compute targets server-side from real historical medians.
-      // targetValue stays close to historical median (mode affects targetSets count only).
-      // This prevents the AI from confusing composite baseline scores with natural units.
-      const exerciseDataWithTargets = exerciseData.map(e => {
-        const baseValue = e.typicalValue != null ? Math.round(e.typicalValue) : null;
-        const baseSets = e.typicalSets != null
-          ? Math.max(1, Math.round(e.typicalSets * targetMultiplier))
-          : null;
-        return { ...e, targetValue: baseValue, targetSets: baseSets };
-      }).filter(e => e.targetValue != null && e.targetSets != null);
-
-      if (exerciseDataWithTargets.length === 0) {
-        return res.status(400).json({ error: "沒有足夠的歷史訓練數據（需要有記錄值與組數）來生成計畫。" });
-      }
-
-      const exerciseLines = exerciseDataWithTargets.map(e => {
+      const exerciseLines = exerciseDataRaw.map(e => {
         let line = `- ${e.name} [id: ${e.id}] (unit: ${e.unit}, category: ${e.category || 'other'}`;
         line += `, TARGET_VALUE: ${e.targetValue}, TARGET_SETS: ${e.targetSets}`;
+        line += `, REQUIRED_SESSIONS_THIS_WEEK: ${e.sessionsPerWeek}`;
         if (e.muscles) line += `, muscles: ${e.muscles}`;
         line += ')';
         return line;
       }).join('\n');
 
       const modeDesc = mode === 'recovery'
-        ? `Recovery week — sets reduced to ~75% of normal (already applied in TARGET_SETS above)`
-        : `Normal week — slightly increased sets for progressive overload (already applied in TARGET_SETS above)`;
+        ? `Recovery week (target volume ≈ ${Math.round(weeklyTarget)}, projected ≈ ${Math.round(projectedTotal)})`
+        : `Normal week (target volume ≈ ${Math.round(weeklyTarget)}, projected ≈ ${Math.round(projectedTotal)})`;
 
       const prompt = `You are a fitness training scheduler. Generate a weekly training schedule in JSON format.
 
@@ -709,18 +726,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
 ${customRules}
 *** END SCHEDULING PREFERENCE ***
 
-The user's exercises with PRE-CALCULATED targets (based on real historical data):
+The user's exercises with PRE-CALCULATED targets and required session counts:
 ${exerciseLines}
 
 Mode: ${modeDesc}
 
 RULES (apply after satisfying the scheduling preference above):
-1. Use EXACTLY the TARGET_VALUE and TARGET_SETS shown above for each exercise. Do NOT change these numbers.
-2. Each training day should have 2-4 exercises
-3. Group exercises logically by category (strength together, cardio together)
-4. Do not schedule the same exercise on consecutive days
-5. Balance the total load evenly across training days
-6. MUSCLE GROUP BALANCE: Use the "muscles" field to ensure the weekly plan covers all major groups (胸/背/腿/肩/核心). Include at least one exercise per major muscle group across the week.
+1. Each exercise MUST appear EXACTLY REQUIRED_SESSIONS_THIS_WEEK times across the week. No more, no less.
+2. Use EXACTLY the TARGET_VALUE and TARGET_SETS for each occurrence. Do NOT change these numbers.
+3. Each training day should have 2-4 exercises
+4. Group exercises logically by category (strength together, cardio together)
+5. Do not schedule the same exercise on consecutive days
+6. Balance the total load evenly across training days
+7. MUSCLE GROUP BALANCE: use the "muscles" field to cover all major groups (胸/背/腿/肩/核心) across the week.
 
 Respond ONLY with JSON (no markdown, no explanation). Wrap in {"days": [...]}:
 {
@@ -774,6 +792,7 @@ Use the EXACT exerciseId and exerciseName from the list above.`;
       const exerciseNameToId = new Map(allExercises.map(e => [e.name, e.id]));
       const exerciseIdToData = new Map(allExercises.map(e => [e.id, e]));
 
+      // Step 1: Resolve exercise IDs from AI response
       parsedPlan = parsedPlan.map(day => ({
         ...day,
         dayName: dayNames[(day.day - 1)] || `第${day.day}天`,
@@ -787,6 +806,84 @@ Use the EXACT exerciseId and exerciseName from the list above.`;
           return null;
         }).filter((ex): ex is NonNullable<typeof ex> => ex !== null),
       })).filter(day => day.exercises.length > 0);
+
+      // Step 2: Enforce REQUIRED_SESSIONS_THIS_WEEK counts
+      // Build a canonical exercise slot for each required exercise
+      const requiredSessionsMap = new Map(exerciseDataRaw.map(e => [e.id, {
+        required: e.sessionsPerWeek,
+        slot: { exerciseId: e.id, exerciseName: e.name, targetValue: e.targetValue, targetSets: e.targetSets, unit: allExercises.find(x => x.id === e.id)?.unit ?? '', category: allExercises.find(x => x.id === e.id)?.category ?? null }
+      }]));
+
+      // Enforce: correct targetValue/targetSets that AI may have changed
+      parsedPlan = parsedPlan.map(day => ({
+        ...day,
+        exercises: day.exercises.map(ex => {
+          const spec = requiredSessionsMap.get(ex.exerciseId);
+          if (!spec) return ex;
+          return { ...ex, targetValue: spec.slot.targetValue, targetSets: spec.slot.targetSets };
+        }),
+      }));
+
+      // Trim excess sessions (keep first N occurrences, removing later ones)
+      const seenCounts = new Map<string, number>();
+      parsedPlan = parsedPlan.map(day => ({
+        ...day,
+        exercises: day.exercises.filter(ex => {
+          const spec = requiredSessionsMap.get(ex.exerciseId);
+          if (!spec) return true; // exercise not in spec, keep as-is
+          const seen = seenCounts.get(ex.exerciseId) ?? 0;
+          if (seen < spec.required) {
+            seenCounts.set(ex.exerciseId, seen + 1);
+            return true;
+          }
+          return false; // excess occurrence
+        }),
+      })).filter(day => day.exercises.length > 0);
+
+      // Add missing sessions (exercises with 0 occurrences or fewer than required)
+      const missingExercises: Array<{ id: string; needed: number }> = [];
+      for (const [exId, spec] of Array.from(requiredSessionsMap.entries())) {
+        const current = seenCounts.get(exId) ?? 0;
+        if (current < spec.required) {
+          missingExercises.push({ id: exId, needed: spec.required - current });
+        }
+      }
+
+      if (missingExercises.length > 0) {
+        // Add missing sessions to days, distributing evenly
+        // Prefer days that already exist and have fewer exercises
+        const allDayNums = [1, 2, 3, 4, 5, 6, 7];
+        for (const { id, needed } of missingExercises) {
+          const spec = requiredSessionsMap.get(id)!;
+          let placed = 0;
+          // Find days that don't already have this exercise and have room
+          const existingDayNums = new Set(parsedPlan.map(d => d.day));
+          // Try existing days first
+          let attempts = 0;
+          while (placed < needed && attempts < 14) {
+            attempts++;
+            // Pick the day with fewest exercises that doesn't already have this exercise
+            const candidates = parsedPlan.filter(d => !d.exercises.some(e => e.exerciseId === id));
+            if (candidates.length > 0) {
+              candidates.sort((a, b) => a.exercises.length - b.exercises.length);
+              candidates[0].exercises.push(spec.slot);
+              placed++;
+            } else {
+              // All existing days have this exercise; create a new day if possible
+              const unusedDay = allDayNums.find(n => !existingDayNums.has(n));
+              if (unusedDay) {
+                parsedPlan.push({ day: unusedDay, dayName: dayNames[unusedDay - 1], exercises: [spec.slot] });
+                existingDayNums.add(unusedDay);
+                placed++;
+              } else {
+                break; // no more days available
+              }
+            }
+          }
+        }
+        // Sort days
+        parsedPlan.sort((a, b) => a.day - b.day);
+      }
 
       const weekStart = getCurrentWeekStart();
       const saved = await storage.saveWeeklyPlan({
