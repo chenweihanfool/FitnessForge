@@ -900,29 +900,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       let totalPlanned = 0;
       let totalMet = 0;
-      let actualBaseline = 0;
 
-      // Compute targetBaseline: for each unique planned exercise,
-      // targetContrib = weeklyContrib * targetMultiplier (historical avg scaled by mode)
+      // Compute targetBaseline: rolling 8-week WEIGHTED composite average × mode multiplier
+      // Uses the same totalBaselineValue (weighted) as the recommend-mode endpoint and dashboard.
       const targetMultiplier = plan.mode === 'recovery' ? 0.75 : 1.05;
-      const seenExerciseIds = new Set<string>();
-      let targetBaseline = 0;
-      for (const day of planDays) {
-        for (const ex of day.exercises) {
-          if (!seenExerciseIds.has(ex.exerciseId)) {
-            seenExerciseIds.add(ex.exerciseId);
-            const contrib = (ex as { weeklyContrib?: number }).weeklyContrib ?? 0;
-            targetBaseline += contrib * targetMultiplier;
-          }
-        }
-      }
 
-      // Actual baseline: sum of baselineValue for all week entries of planned exercises
-      for (const [exId, entries] of Array.from(weekExerciseEntries.entries())) {
-        if (seenExerciseIds.has(exId)) {
-          for (const e of entries) actualBaseline += e.baselineValue;
-        }
-      }
+      const [allStats, currentWeekStats] = await Promise.all([
+        storage.getAllWeeklyStats(),
+        storage.getWeeklyStats(weekStartDate, weekEnd),
+      ]);
+
+      const ROLLING_WEEKS = 8;
+      const completedStats = allStats
+        .filter(w => w.weekStart !== weekStart)
+        .sort((a, b) => a.weekStart.localeCompare(b.weekStart));
+      const rollingWindow = completedStats.slice(-ROLLING_WEEKS);
+      const rollingAvgWeighted = rollingWindow.length > 0
+        ? rollingWindow.reduce((s, w) => s + w.totalBaselineValue, 0) / rollingWindow.length
+        : 0;
+      const targetBaseline = Math.round(rollingAvgWeighted * targetMultiplier);
+
+      // Actual baseline: current week's weighted composite (same value shown on dashboard)
+      const actualBaseline = Math.round(currentWeekStats.totalBaselineValue);
 
       const daysWithProgress = planDays.map((day, dayIndex) => ({
         ...day,
