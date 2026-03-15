@@ -322,10 +322,14 @@ export default function Dashboard() {
   const [rankingOpen, setRankingOpen] = useState(false);
 
   useEffect(() => {
-    if (modeRecommendation && !modeManuallyChanged) {
-      setSelectedPlanMode(modeRecommendation.recommendation);
+    if (!modeManuallyChanged) {
+      if (planProgress?.mode) {
+        setSelectedPlanMode(planProgress.mode as 'recovery' | 'normal');
+      } else if (modeRecommendation) {
+        setSelectedPlanMode(modeRecommendation.recommendation);
+      }
     }
-  }, [modeRecommendation, modeManuallyChanged]);
+  }, [planProgress?.mode, modeRecommendation, modeManuallyChanged]);
 
   const generatePlanMutation = useMutation({
     mutationFn: async (mode: 'recovery' | 'normal') => {
@@ -904,22 +908,39 @@ export default function Dashboard() {
                     />
                   </div>
                 </div>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => {
-                    setSelectedPlanMode(planProgress.mode === 'recovery' ? 'recovery' : 'normal');
-                    generatePlanMutation.mutate(planProgress.mode as 'recovery' | 'normal');
-                  }}
-                  disabled={generatePlanMutation.isPending}
-                  data-testid="button-regenerate-plan"
-                >
-                  {generatePlanMutation.isPending ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <RefreshCw className="h-4 w-4" />
-                  )}
-                </Button>
+                <div className="flex items-center gap-1.5">
+                  <Button
+                    variant={selectedPlanMode === 'recovery' ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => { setSelectedPlanMode('recovery'); setModeManuallyChanged(true); }}
+                    disabled={generatePlanMutation.isPending}
+                    data-testid="button-plan-mode-recovery-active"
+                  >
+                    恢復周
+                  </Button>
+                  <Button
+                    variant={selectedPlanMode === 'normal' ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => { setSelectedPlanMode('normal'); setModeManuallyChanged(true); }}
+                    disabled={generatePlanMutation.isPending}
+                    data-testid="button-plan-mode-normal-active"
+                  >
+                    正常周
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => generatePlanMutation.mutate(selectedPlanMode)}
+                    disabled={generatePlanMutation.isPending}
+                    data-testid="button-regenerate-plan"
+                  >
+                    {generatePlanMutation.isPending ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <RefreshCw className="h-4 w-4" />
+                    )}
+                  </Button>
+                </div>
               </div>
 
               {planProgress.targetBaseline > 0 && (
