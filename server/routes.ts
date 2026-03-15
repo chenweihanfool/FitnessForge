@@ -610,8 +610,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: `需要至少 ${MIN_ROLLING_WEEKS} 週完成的訓練數據才能生成計畫。目前有 ${rollingTotalStats?.weekCount ?? 0} 週數據。` });
       }
 
+      // Use only the rolling window entries for typicalValue/typicalSets
+      // so that stale early-history records don't corrupt the per-set median.
+      const currentWeekStartDate = new Date(getCurrentWeekStart());
+      const rollingCutoff = new Date(currentWeekStartDate);
+      rollingCutoff.setDate(rollingCutoff.getDate() - ROLLING_WEEKS * 7);
+
       const entryMap = new Map<string, { values: number[]; sets: number[] }>();
       for (const entry of allEntries) {
+        const entryDate = new Date(entry.date);
+        if (entryDate < rollingCutoff || entryDate >= currentWeekStartDate) continue;
         if (!entryMap.has(entry.exerciseId)) entryMap.set(entry.exerciseId, { values: [], sets: [] });
         const rec = entryMap.get(entry.exerciseId)!;
         if (entry.value > 0) rec.values.push(entry.value);
@@ -697,20 +705,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const prompt = `You are a fitness training scheduler. Generate a weekly training schedule in JSON format.
 
+*** USER SCHEDULING PREFERENCE (HIGHEST PRIORITY — follow before all other rules) ***
+${customRules}
+*** END SCHEDULING PREFERENCE ***
+
 The user's exercises with PRE-CALCULATED targets (based on real historical data):
 ${exerciseLines}
 
 Mode: ${modeDesc}
 
-CRITICAL RULES:
+RULES (apply after satisfying the scheduling preference above):
 1. Use EXACTLY the TARGET_VALUE and TARGET_SETS shown above for each exercise. Do NOT change these numbers.
-2. Distribute exercises across 3-5 training days (Mon-Sun), leaving 2-4 rest days
-3. Each training day should have 2-4 exercises
-4. Group exercises logically by category (strength together, cardio together)
-5. Do not schedule the same exercise on consecutive days
-6. Balance the total load evenly across training days
-7. MUSCLE GROUP BALANCE: Use the "muscles" field to ensure the weekly plan covers all major groups (胸/背/腿/肩/核心). Include at least one exercise per major muscle group across the week.
-8. User scheduling preference: ${customRules}
+2. Each training day should have 2-4 exercises
+3. Group exercises logically by category (strength together, cardio together)
+4. Do not schedule the same exercise on consecutive days
+5. Balance the total load evenly across training days
+6. MUSCLE GROUP BALANCE: Use the "muscles" field to ensure the weekly plan covers all major groups (胸/背/腿/肩/核心). Include at least one exercise per major muscle group across the week.
 
 Respond ONLY with JSON (no markdown, no explanation). Wrap in {"days": [...]}:
 {
