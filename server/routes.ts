@@ -668,62 +668,77 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const allSettings = await storage.getAllUserSettings();
       const customRules = allSettings['planCustomRules'] ?? DEFAULT_PLAN_CUSTOM_RULES;
 
-      const exerciseLines = exerciseData.map(e => {
-        let line = `- ${e.name} (unit: ${e.unit}, category: ${e.category || 'other'}, rolling ${ROLLING_WEEKS}wk avg: ${e.weeklyAverage.toFixed(1)}`;
-        if (e.typicalValue !== null) line += `, typical value per set: ${Math.round(e.typicalValue)}`;
-        if (e.typicalSets !== null) line += `, typical sets per session: ${Math.round(e.typicalSets)}`;
+      // Pre-compute targets server-side from real historical medians.
+      // targetValue stays close to historical median (mode affects targetSets count only).
+      // This prevents the AI from confusing composite baseline scores with natural units.
+      const exerciseDataWithTargets = exerciseData.map(e => {
+        const baseValue = e.typicalValue != null ? Math.round(e.typicalValue) : null;
+        const baseSets = e.typicalSets != null
+          ? Math.max(1, Math.round(e.typicalSets * targetMultiplier))
+          : null;
+        return { ...e, targetValue: baseValue, targetSets: baseSets };
+      }).filter(e => e.targetValue != null && e.targetSets != null);
+
+      if (exerciseDataWithTargets.length === 0) {
+        return res.status(400).json({ error: "沒有足夠的歷史訓練數據（需要有記錄值與組數）來生成計畫。" });
+      }
+
+      const exerciseLines = exerciseDataWithTargets.map(e => {
+        let line = `- ${e.name} [id: ${e.id}] (unit: ${e.unit}, category: ${e.category || 'other'}`;
+        line += `, TARGET_VALUE: ${e.targetValue}, TARGET_SETS: ${e.targetSets}`;
         if (e.muscles) line += `, muscles: ${e.muscles}`;
         line += ')';
         return line;
       }).join('\n');
 
       const modeDesc = mode === 'recovery'
-        ? `Recovery week (target = rolling avg × 75%, reduce volume for fatigue management)`
-        : `Normal week (target = rolling avg × 105%, progressive overload +5%)`;
+        ? `Recovery week — sets reduced to ~75% of normal (already applied in TARGET_SETS above)`
+        : `Normal week — slightly increased sets for progressive overload (already applied in TARGET_SETS above)`;
 
-      const prompt = `You are a fitness training planner. Generate a weekly training schedule in JSON format.
+      const prompt = `You are a fitness training scheduler. Generate a weekly training schedule in JSON format.
 
-The user has the following exercises. "rolling ${ROLLING_WEEKS}wk avg" is the recent ${ROLLING_WEEKS}-week rolling average baseline value. "typical value per set" and "typical sets per session" come from their REAL historical data — you MUST use these as the basis for targetValue and targetSets. Do NOT invent values outside the user's actual range. "muscles" shows which muscle groups each exercise trains (with % contribution).
+The user's exercises with PRE-CALCULATED targets (based on real historical data):
 ${exerciseLines}
 
 Mode: ${modeDesc}
-Target multiplier: ${targetMultiplier}
 
-Rules:
-1. Distribute exercises across 3-5 training days (Mon-Sun), leave 2-4 rest days
-2. Each training day should have 2-4 exercises
-3. For each exercise, set targetValue and targetSets CLOSE to the user's historical typical values (within ±20%). The total weekly volume across all sessions should approximate: rolling avg * ${targetMultiplier}
+CRITICAL RULES:
+1. Use EXACTLY the TARGET_VALUE and TARGET_SETS shown above for each exercise. Do NOT change these numbers.
+2. Distribute exercises across 3-5 training days (Mon-Sun), leaving 2-4 rest days
+3. Each training day should have 2-4 exercises
 4. Group exercises logically by category (strength together, cardio together)
-5. Don't include the same exercise on consecutive days
-6. Balance the total load across training days
-7. MUSCLE GROUP BALANCE: Use the "muscles" field to ensure the weekly plan covers all major muscle groups (胸/背/腿/肩/核心). Try to include at least one exercise covering each major muscle group across the week.
+5. Do not schedule the same exercise on consecutive days
+6. Balance the total load evenly across training days
+7. MUSCLE GROUP BALANCE: Use the "muscles" field to ensure the weekly plan covers all major groups (胸/背/腿/肩/核心). Include at least one exercise per major muscle group across the week.
 8. User scheduling preference: ${customRules}
 
-Respond ONLY with a JSON array (no markdown, no explanation). Each element represents a day:
-[
-  {
-    "day": 1,
-    "dayName": "週一",
-    "exercises": [
-      {
-        "exerciseId": "<id>",
-        "exerciseName": "<name>",
-        "targetValue": <number>,
-        "targetSets": <number>,
-        "unit": "<unit>",
-        "category": "<category or null>"
-      }
-    ]
-  }
-]
+Respond ONLY with JSON (no markdown, no explanation). Wrap in {"days": [...]}:
+{
+  "days": [
+    {
+      "day": 1,
+      "dayName": "週一",
+      "exercises": [
+        {
+          "exerciseId": "<id from list>",
+          "exerciseName": "<name>",
+          "targetValue": <copy TARGET_VALUE exactly>,
+          "targetSets": <copy TARGET_SETS exactly>,
+          "unit": "<unit>",
+          "category": "<category or null>"
+        }
+      ]
+    }
+  ]
+}
 
 Only include days that have exercises. Day numbers: 1=週一, 2=週二, ..., 7=週日.
-Use the exact exerciseId and exerciseName from the list above.`;
+Use the EXACT exerciseId and exerciseName from the list above.`;
 
       const openai = getOpenAIClient();
       const response = await openai.chat.completions.create({
         model: "gpt-4o-mini",
-        messages: [{ role: "user", content: prompt + '\n\nWrap the array in a JSON object with key "days", e.g. {"days": [...]}' }],
+        messages: [{ role: "user", content: prompt }],
         response_format: { type: "json_object" },
         max_completion_tokens: 8192,
       });
