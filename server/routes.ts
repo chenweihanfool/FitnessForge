@@ -4,7 +4,6 @@ import { storage } from "./storage";
 import { insertExerciseSchema, insertWorkoutEntrySchema, type PlanDayItem } from "@shared/schema";
 import multer from "multer";
 import Papa from "papaparse";
-import OpenAI from "openai";
 
 const upload = multer({ storage: multer.memoryStorage() });
 
@@ -488,14 +487,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // ==================== AI 训练计划 API ====================
-
-  const getOpenAIClient = () => {
-    return new OpenAI({
-      apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
-      baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
-    });
-  };
+  // ==================== 训练计划 API ====================
 
   const getCurrentWeekStart = (): string => {
     const TAIPEI_OFFSET = 8 * 60 * 60 * 1000;
@@ -743,203 +735,90 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const weeklyTarget = rollingTotalStats.avg * targetMultiplier;
       const projectedTotal = exercisesInPlan.reduce((s, e) => s + e.sessionsPerWeek * e.perSessionBaseline, 0);
 
-      const allSettings = await storage.getAllUserSettings();
-      const customRules = allSettings['planCustomRules'] ?? DEFAULT_PLAN_CUSTOM_RULES;
+      // --- Deterministic scheduler (no AI needed) ---
+      // Rules:
+      // - Strength → prefer weekend days; Cardio/Other → prefer weekday days
+      // - Same exercise not on consecutive training days (by index in trainingDays array)
+      // - Max 4 exercises per training day; balance load evenly
+      // - Within each day, sort by category: 力量 first, then 有氧, then others
 
-      // Detect running exercises (use km for sets field, not reps)
-      const RUNNING_EXERCISES = new Set(['跑步', '跑步機負重']);
-
-      const exerciseLines = exercisesInPlan.map(e => {
-        const isRunning = RUNNING_EXERCISES.has(e.name);
-        let line = `- ${e.name} [id: ${e.id}] (unit: ${e.unit}, category: ${e.category || 'other'}`;
-        line += `, TARGET_DURATION_MINUTES: ${e.targetValue}`;
-        if (isRunning) {
-          line += `, TARGET_KM: ${e.targetSets}`;
-        } else {
-          line += `, TARGET_SETS: ${e.targetSets}`;
-        }
-        line += `, REQUIRED_SESSIONS_THIS_WEEK: ${e.sessionsPerWeek}`;
-        if (e.muscles) line += `, muscles: ${e.muscles}`;
-        line += ')';
-        return line;
-      }).join('\n');
-
-      const trainingDayNames = trainingDays.map(d => dayNames[d - 1]).join('、');
-      const modeDesc = mode === 'recovery'
-        ? `Recovery week (target volume ≈ ${Math.round(weeklyTarget)}, projected ≈ ${Math.round(projectedTotal)})`
-        : `Normal week (target volume ≈ ${Math.round(weeklyTarget)}, projected ≈ ${Math.round(projectedTotal)})`;
-
-      const prompt = `You are a fitness training scheduler. Generate a weekly training schedule in JSON format.
-
-*** TRAINING DAYS (HARD CONSTRAINT — MUST follow exactly) ***
-Use ONLY these ${neededDays} training days: ${trainingDayNames} (day numbers: ${trainingDays.join(', ')}).
-All other days are REST DAYS. Do NOT add exercises to rest days.
-*** END TRAINING DAYS ***
-
-*** USER SCHEDULING PREFERENCE (apply within the training days above) ***
-${customRules}
-*** END SCHEDULING PREFERENCE ***
-
-Exercises to schedule (PRE-CALCULATED targets):
-${exerciseLines}
-
-Mode: ${modeDesc}
-
-RULES:
-1. Each exercise MUST appear EXACTLY REQUIRED_SESSIONS_THIS_WEEK times across the week. No more, no less.
-2. Use EXACTLY the TARGET_DURATION_MINUTES, TARGET_SETS (or TARGET_KM for running) for each occurrence.
-3. Each training day should have 2-4 exercises.
-4. Group exercises by category (strength days separate from cardio days when possible).
-5. Do not schedule the same exercise on consecutive training days.
-6. MUSCLE GROUP BALANCE: cover all major groups (胸/背/腿/肩/核心) across the week.
-
-Respond ONLY with JSON (no markdown). Wrap in {"days": [...]}:
-{
-  "days": [
-    {
-      "day": <day number from the allowed list>,
-      "dayName": "<Chinese day name>",
-      "exercises": [
-        {
-          "exerciseId": "<id from list>",
-          "exerciseName": "<name>",
-          "targetValue": <TARGET_DURATION_MINUTES value>,
-          "targetSets": <TARGET_SETS or TARGET_KM value>,
-          "unit": "<unit>",
-          "category": "<category or null>"
-        }
-      ]
-    }
-  ]
-}
-
-Day numbers: 1=週一, 2=週二, 3=週三, 4=週四, 5=週五, 6=週六, 7=週日.
-Use the EXACT exerciseId and exerciseName from the list above.`;
-
-      const openai = getOpenAIClient();
-      const response = await openai.chat.completions.create({
-        model: "gpt-4o-mini",
-        messages: [{ role: "user", content: prompt }],
-        response_format: { type: "json_object" },
-        max_completion_tokens: 8192,
-      });
-
-      const content = response.choices[0]?.message?.content;
-      if (!content) {
-        return res.status(500).json({ error: "AI 未返回有效的训练计划" });
+      interface PlanSlot {
+        exerciseId: string;
+        exerciseName: string;
+        targetValue: number;
+        targetSets: number;
+        unit: string;
+        category: string | null;
+        weeklyContrib: number;
       }
 
-      let parsedPlan: PlanDayItem[];
-      try {
-        const parsed = JSON.parse(content);
-        parsedPlan = Array.isArray(parsed) ? parsed : (parsed.plan || parsed.days || parsed.schedule || []);
-        if (!Array.isArray(parsedPlan)) {
-          throw new Error("Invalid plan format");
-        }
-      } catch {
-        console.error("AI 返回内容解析失败:", content);
-        return res.status(500).json({ error: "AI 返回的训练计划格式无效" });
-      }
+      // Expand each exercise into sessionsPerWeek individual slots
+      const allSlots: PlanSlot[] = exercisesInPlan.flatMap(e =>
+        Array.from({ length: e.sessionsPerWeek }, () => ({
+          exerciseId: e.id,
+          exerciseName: e.name,
+          targetValue: e.targetValue,
+          targetSets: e.targetSets,
+          unit: e.unit,
+          category: e.category,
+          weeklyContrib: e.weeklyContrib,
+        }))
+      );
 
-      const validExerciseIds = new Set(allExercises.map(e => e.id));
-      const exerciseNameToId = new Map(allExercises.map(e => [e.name, e.id]));
-      const exerciseIdToData = new Map(allExercises.map(e => [e.id, e]));
+      // Sort slots: higher weekly contribution first, then strength before cardio
+      const categoryRank = (c: string | null) => c === '力量' ? 0 : c === '有氧' ? 1 : 2;
+      allSlots.sort((a, b) =>
+        b.weeklyContrib - a.weeklyContrib || categoryRank(a.category) - categoryRank(b.category)
+      );
 
-      // Step 1: Resolve exercise IDs from AI response
-      parsedPlan = parsedPlan.map(day => ({
-        ...day,
-        dayName: dayNames[(day.day - 1)] || `第${day.day}天`,
-        exercises: day.exercises.map(ex => {
-          if (validExerciseIds.has(ex.exerciseId)) return ex;
-          const resolvedId = exerciseNameToId.get(ex.exerciseName);
-          if (resolvedId) {
-            const exData = exerciseIdToData.get(resolvedId);
-            return { ...ex, exerciseId: resolvedId, unit: exData?.unit || ex.unit, category: exData?.category || ex.category };
-          }
-          return null;
-        }).filter((ex): ex is NonNullable<typeof ex> => ex !== null),
-      })).filter(day => day.exercises.length > 0);
+      // Categorise training days by weekday vs weekend
+      const weekendDayIdxs = trainingDays.map((d, i) => ({ d, i })).filter(x => x.d >= 5).map(x => x.i);
+      const weekdayDayIdxs = trainingDays.map((d, i) => ({ d, i })).filter(x => x.d < 5).map(x => x.i);
 
-      // Step 2: Strip exercises from non-allowed days (hard enforcement of training days)
-      const allowedDaySet = new Set(trainingDays);
-      parsedPlan = parsedPlan
-        .filter(day => allowedDaySet.has(day.day))
-        .map(day => ({ ...day, exercises: day.exercises.filter(ex => validExerciseIds.has(ex.exerciseId)) }))
-        .filter(day => day.exercises.length > 0);
+      const dayBuckets = new Map<number, PlanSlot[]>(trainingDays.map(d => [d, []]));
+      const lastPlacedIdx = new Map<string, number>(); // exerciseId → index in trainingDays
 
-      // Step 3: Enforce REQUIRED_SESSIONS_THIS_WEEK counts
-      // Build a canonical exercise slot for each required exercise
-      const requiredSessionsMap = new Map(exercisesInPlan.map(e => [e.id, {
-        required: e.sessionsPerWeek,
-        slot: { exerciseId: e.id, exerciseName: e.name, targetValue: e.targetValue, targetSets: e.targetSets, unit: allExercises.find(x => x.id === e.id)?.unit ?? '', category: allExercises.find(x => x.id === e.id)?.category ?? null }
-      }]));
+      for (const slot of allSlots) {
+        // Preferred day-index order by category
+        const prefIdxs = slot.category === '力量'
+          ? [...weekendDayIdxs, ...weekdayDayIdxs]
+          : [...weekdayDayIdxs, ...weekendDayIdxs];
 
-      // Correct targetValue/targetSets that AI may have changed
-      parsedPlan = parsedPlan.map(day => ({
-        ...day,
-        exercises: day.exercises.map(ex => {
-          const spec = requiredSessionsMap.get(ex.exerciseId);
-          if (!spec) return ex;
-          return { ...ex, targetValue: spec.slot.targetValue, targetSets: spec.slot.targetSets };
-        }),
-      }));
+        // Filter out days that would be consecutive (training-day-index distance ≤ 1)
+        const lastIdx = lastPlacedIdx.get(slot.exerciseId);
+        const nonConsecIdxs = prefIdxs.filter(i =>
+          lastIdx === undefined || Math.abs(i - lastIdx) > 1
+        );
+        const candidateIdxs = nonConsecIdxs.length > 0 ? nonConsecIdxs : prefIdxs;
 
-      // Trim excess sessions (keep first N occurrences)
-      const seenCounts = new Map<string, number>();
-      parsedPlan = parsedPlan.map(day => ({
-        ...day,
-        exercises: day.exercises.filter(ex => {
-          const spec = requiredSessionsMap.get(ex.exerciseId);
-          if (!spec) return false; // remove exercises not in plan
-          const seen = seenCounts.get(ex.exerciseId) ?? 0;
-          if (seen < spec.required) {
-            seenCounts.set(ex.exerciseId, seen + 1);
-            return true;
-          }
-          return false; // excess occurrence
-        }),
-      })).filter(day => day.exercises.length > 0);
+        // Among candidates, pick day with fewest exercises (max 4 per day)
+        const sortedCandidates = [...candidateIdxs].sort((a, b) => {
+          const la = dayBuckets.get(trainingDays[a])!.length;
+          const lb = dayBuckets.get(trainingDays[b])!.length;
+          return la - lb;
+        });
 
-      // Add missing sessions — only onto allowed training days
-      const missingExercises: Array<{ id: string; needed: number }> = [];
-      for (const [exId, spec] of Array.from(requiredSessionsMap.entries())) {
-        const current = seenCounts.get(exId) ?? 0;
-        if (current < spec.required) {
-          missingExercises.push({ id: exId, needed: spec.required - current });
+        const chosenIdx = sortedCandidates.find(i =>
+          (dayBuckets.get(trainingDays[i])?.length ?? 0) < 4
+        ) ?? sortedCandidates[0]; // fallback: ignore max-4 if no choice
+
+        if (chosenIdx !== undefined) {
+          const chosenDay = trainingDays[chosenIdx];
+          dayBuckets.get(chosenDay)!.push(slot);
+          lastPlacedIdx.set(slot.exerciseId, chosenIdx);
         }
       }
 
-      if (missingExercises.length > 0) {
-        for (const { id, needed } of missingExercises) {
-          const spec = requiredSessionsMap.get(id)!;
-          let placed = 0;
-          const existingDayNums = new Set(parsedPlan.map(d => d.day));
-          let attempts = 0;
-          while (placed < needed && attempts < 14) {
-            attempts++;
-            // Pick an allowed training day without this exercise, fewest exercises first
-            const candidates = parsedPlan.filter(d =>
-              allowedDaySet.has(d.day) && !d.exercises.some(e => e.exerciseId === id)
-            );
-            if (candidates.length > 0) {
-              candidates.sort((a, b) => a.exercises.length - b.exercises.length);
-              candidates[0].exercises.push(spec.slot);
-              placed++;
-            } else {
-              // All allowed days already have this exercise; create an empty allowed day
-              const unusedAllowed = trainingDays.find(n => !existingDayNums.has(n));
-              if (unusedAllowed) {
-                parsedPlan.push({ day: unusedAllowed, dayName: dayNames[unusedAllowed - 1], exercises: [spec.slot] });
-                existingDayNums.add(unusedAllowed);
-                placed++;
-              } else {
-                break; // can't place more without violating same-day constraint
-              }
-            }
-          }
-        }
-        parsedPlan.sort((a, b) => a.day - b.day);
-      }
+      // Build final plan: sort exercises within day by category
+      const parsedPlan: PlanDayItem[] = trainingDays
+        .map(d => ({
+          day: d,
+          dayName: dayNames[d - 1],
+          exercises: (dayBuckets.get(d) ?? []).sort(
+            (a, b) => categoryRank(a.category) - categoryRank(b.category)
+          ),
+        }))
+        .filter(d => d.exercises.length > 0);
 
       const weekStart = getCurrentWeekStart();
       const saved = await storage.saveWeeklyPlan({
