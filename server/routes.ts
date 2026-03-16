@@ -654,20 +654,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         .reduce((s, wk) => s + (wk.s * genSW + wk.c * genCW + wk.a * genAW), 0);
       const rollingWeightedAvg = ROLLING_WEEKS > 0 ? weeklyWeightedSum / ROLLING_WEEKS : 0;
 
-      const weeklyRawBaselines = new Map<string, number>();
-      for (const entry of allEntries) {
-        const entryDate = new Date(entry.date);
-        if (entryDate < rollingCutoff || entryDate >= currentWeekStartDate) continue;
-        const day = entryDate.getUTCDay();
-        const diff = day === 0 ? -6 : 1 - day;
-        const weekStart = new Date(entryDate);
-        weekStart.setUTCDate(weekStart.getUTCDate() + diff);
-        const weekKey = weekStart.toISOString().substring(0, 10);
-        weeklyRawBaselines.set(weekKey, (weeklyRawBaselines.get(weekKey) ?? 0) + (entry.baselineValue ?? 0));
-      }
-      const rollingRawSum = Array.from(weeklyRawBaselines.values()).reduce((a, b) => a + b, 0);
-      const rollingRawAvg = ROLLING_WEEKS > 0 ? rollingRawSum / ROLLING_WEEKS : 0;
-
       const median = (arr: number[]) => {
         if (!arr.length) return null;
         const s = [...arr].sort((a, b) => a - b);
@@ -769,12 +755,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const targetBaseline = Math.round(rollingWeightedAvg * targetMultiplier);
-      const calibrationTarget = Math.round(rollingRawAvg * targetMultiplier);
+
+      const computeProjectedBaseline = (exercises: typeof exercisesInPlan) => {
+        let sTotal = 0, cTotal = 0, aTotal = 0;
+        for (const e of exercises) {
+          const raw = e.sessionsPerWeek * e.perSessionBaseline;
+          const ex = exerciseCatMapGen.get(e.id);
+          const splitRatio = (ex as Record<string, unknown>)?.splitRatio as number ?? 0;
+          const splitCat = (ex as Record<string, unknown>)?.splitCategory as string | null ?? null;
+          const addTo = (cat: string | null, val: number) => {
+            if (cat === '力量') sTotal += val;
+            else if (cat === '有氧') cTotal += val;
+            else if (cat === '活动量') aTotal += val;
+            else sTotal += val;
+          };
+          addTo(e.category, raw * (1 - splitRatio));
+          if (splitRatio > 0 && splitCat) addTo(splitCat, raw * splitRatio);
+        }
+        return sTotal * genSW + cTotal * genCW + aTotal * genAW;
+      };
 
       const calibrateVolume = (exercises: typeof exercisesInPlan) => {
-        const projectedBaseline = exercises.reduce((s, e) => s + e.sessionsPerWeek * e.perSessionBaseline, 0);
-        if (projectedBaseline > 0 && calibrationTarget > 0) {
-          const scale = calibrationTarget / projectedBaseline;
+        const projectedBaseline = computeProjectedBaseline(exercises);
+        if (projectedBaseline > 0 && targetBaseline > 0) {
+          const scale = targetBaseline / projectedBaseline;
           if (Math.abs(scale - 1) > 0.05) {
             for (const e of exercises) {
               const scaled = Math.max(1, Math.round(e.targetValue * scale));
@@ -912,6 +916,7 @@ If the user wants rest days on certain days, put those in excludedDays. If they 
           const idxOk = lastIdx === undefined || Math.abs(i - lastIdx) > 1;
           return calOk && idxOk;
         });
+        if (nonConsecIdxs.length === 0 && lastDay !== undefined) continue;
         const candidateIdxs = nonConsecIdxs.length > 0 ? nonConsecIdxs : prefIdxs;
 
         const sortedCandidates = [...candidateIdxs].sort((a, b) => {
