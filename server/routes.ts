@@ -1040,9 +1040,10 @@ Match exercise names exactly to the available exercises list. Return ONLY valid 
         .map(d => ({
           day: d,
           dayName: dayNames[d - 1],
-          exercises: (dayBuckets.get(d) ?? []).sort(
-            (a, b) => categoryRank(a.category) - categoryRank(b.category)
-          ),
+          exercises: (dayBuckets.get(d) ?? []).sort((a, b) => {
+            const rank = (c: string | null) => c === '力量' ? 0 : c === '有氧' ? 1 : 2;
+            return rank(a.category) - rank(b.category);
+          }),
         }))
         .filter(d => d.exercises.length > 0);
 
