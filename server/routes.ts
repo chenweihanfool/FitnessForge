@@ -733,23 +733,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
         sessionsPerWeek: e.category === '力量' ? Math.min(2, e.sessionsPerWeek) : e.sessionsPerWeek,
       }));
 
-      // --- Phase 1: Guarantee one slot per exercise (sorted by muscle coverage) ---
+      // --- Phase 1: Iterative greedy — guarantee one slot per exercise ---
       const coveredMuscles = new Set<string>();
       const exercisesInPlan: typeof cappedData = [];
       let runningTotal = 0;
+      const pool = [...cappedData];
 
-      const phase1 = [...cappedData].sort((a, b) => {
-        const aNew = [...a.muscleKeySet].filter(k => !coveredMuscles.has(k)).length;
-        const bNew = [...b.muscleKeySet].filter(k => !coveredMuscles.has(k)).length;
-        if (bNew !== aNew) return bNew - aNew;
-        return b.weeklyContrib - a.weeklyContrib;
-      });
-
-      for (const ex of phase1) {
-        if (runningTotal >= MAX_TOTAL_SLOTS) break;
-        exercisesInPlan.push({ ...ex, sessionsPerWeek: 1 });
+      while (runningTotal < MAX_TOTAL_SLOTS && pool.length > 0) {
+        let bestIdx = 0;
+        let bestNewMuscles = -1;
+        let bestContrib = -1;
+        for (let i = 0; i < pool.length; i++) {
+          const newMuscles = [...pool[i].muscleKeySet].filter(k => !coveredMuscles.has(k)).length;
+          if (newMuscles > bestNewMuscles || (newMuscles === bestNewMuscles && pool[i].weeklyContrib > bestContrib)) {
+            bestIdx = i;
+            bestNewMuscles = newMuscles;
+            bestContrib = pool[i].weeklyContrib;
+          }
+        }
+        const picked = pool.splice(bestIdx, 1)[0];
+        exercisesInPlan.push({ ...picked, sessionsPerWeek: 1 });
         runningTotal += 1;
-        for (const k of ex.muscleKeySet) coveredMuscles.add(k);
+        for (const k of picked.muscleKeySet) coveredMuscles.add(k);
       }
 
       // --- Phase 2: Distribute remaining slots by weeklyContrib priority ---
@@ -776,6 +781,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
         let sTotal = 0, cTotal = 0, aTotal = 0;
         for (const e of exercises) {
           const raw = e.sessionsPerWeek * e.perSessionBaseline;
+          const ex = exerciseCatMapGen.get(e.id);
+          const splitRatio = (ex as Record<string, unknown>)?.splitRatio as number ?? 0;
+          const splitCat = (ex as Record<string, unknown>)?.splitCategory as string | null ?? null;
+          const addTo = (cat: string | null, val: number) => {
+            if (cat === '力量') sTotal += val;
+            else if (cat === '有氧') cTotal += val;
+            else if (cat === '活动量') aTotal += val;
+            else sTotal += val;
+          };
+          addTo(e.category, raw * (1 - splitRatio));
+          if (splitRatio > 0 && splitCat) addTo(splitCat, raw * splitRatio);
+        }
+        return sTotal * genSW + cTotal * genCW + aTotal * genAW;
+      };
+
+      const computeScaledProjectedBaseline = (exercises: typeof exercisesInPlan) => {
+        let sTotal = 0, cTotal = 0, aTotal = 0;
+        for (const e of exercises) {
+          const scaleFactor = e.medianValueCap > 0 ? e.targetValue / e.medianValueCap : 1;
+          const raw = e.sessionsPerWeek * e.perSessionBaseline * scaleFactor;
           const ex = exerciseCatMapGen.get(e.id);
           const splitRatio = (ex as Record<string, unknown>)?.splitRatio as number ?? 0;
           const splitCat = (ex as Record<string, unknown>)?.splitCategory as string | null ?? null;
