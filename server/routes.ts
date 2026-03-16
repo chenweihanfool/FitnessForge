@@ -710,6 +710,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
             category: e.category,
             targetValue: medianValue,
             targetSets: medianSets,
+            medianValueCap: medianValue,
+            medianSetsCap: medianSets,
             perSessionBaseline,
             weeklyContrib,
             sessionsPerWeek,
@@ -772,7 +774,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const scale = targetBaseline / projectedWeighted;
         if (Math.abs(scale - 1) > 0.05) {
           for (const e of exercisesInPlan) {
-            e.targetValue = Math.max(1, Math.round(e.targetValue * scale));
+            const scaled = Math.max(1, Math.round(e.targetValue * scale));
+            e.targetValue = Math.min(scaled, e.medianValueCap);
           }
         }
       }
@@ -889,6 +892,7 @@ If the user wants rest days on certain days, put those in excludedDays. If they 
 
       const dayBuckets = new Map<number, PlanSlot[]>(trainingDays.map(d => [d, []]));
       const lastPlacedDay = new Map<string, number>();
+      const lastPlacedIdx = new Map<string, number>();
 
       for (const slot of allSlots) {
         const prefIdxs = slot.category === '力量'
@@ -896,11 +900,14 @@ If the user wants rest days on certain days, put those in excludedDays. If they 
           : [...weekdayDayIdxs, ...weekendDayIdxs];
 
         const lastDay = lastPlacedDay.get(slot.exerciseId);
+        const lastIdx = lastPlacedIdx.get(slot.exerciseId);
         const nonConsecIdxs = prefIdxs.filter(i => {
           if (lastDay === undefined) return true;
           const candidateDay = trainingDays[i];
-          const diff = Math.abs(candidateDay - lastDay);
-          return Math.min(diff, 7 - diff) > 1;
+          const calDiff = Math.abs(candidateDay - lastDay);
+          const calOk = Math.min(calDiff, 7 - calDiff) > 1;
+          const idxOk = lastIdx === undefined || Math.abs(i - lastIdx) > 1;
+          return calOk && idxOk;
         });
         const candidateIdxs = nonConsecIdxs.length > 0 ? nonConsecIdxs : prefIdxs;
 
@@ -918,6 +925,7 @@ If the user wants rest days on certain days, put those in excludedDays. If they 
           const chosenDay = trainingDays[chosenIdx];
           dayBuckets.get(chosenDay)!.push(slot);
           lastPlacedDay.set(slot.exerciseId, chosenDay);
+          lastPlacedIdx.set(slot.exerciseId, chosenIdx);
         }
       }
 
