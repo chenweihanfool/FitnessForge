@@ -829,52 +829,51 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       calibrateVolume(exercisesInPlan);
 
-      // --- Parse user custom request via OpenAI (if provided) ---
+      // --- Parse scheduling constraints from settings (planCustomRules) via OpenAI ---
       let aiDayPreference: number[] | null = null;
       let aiExcludedExerciseNames: string[] = [];
       let aiNotes = '';
-      if (userRequest && typeof userRequest === 'string' && userRequest.trim().length > 0) {
-        try {
-          const OpenAI = (await import('openai')).default;
-          const openai = new OpenAI({
-            apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
-            baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
-          });
-          const exerciseNames = allExercises.filter(e => e.name !== '每周平均步数').map(e => e.name);
-          const resp = await openai.chat.completions.create({
-            model: 'gpt-4o-mini',
-            max_completion_tokens: 512,
-            messages: [
-              {
-                role: 'system',
-                content: `You parse fitness scheduling requests into JSON. Days: 1=Mon,2=Tue,...,7=Sun.
+      const planCustomRules = genSettings['planCustomRules'] ?? DEFAULT_PLAN_CUSTOM_RULES;
+      try {
+        const OpenAI = (await import('openai')).default;
+        const openai = new OpenAI({
+          apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
+          baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+        });
+        const exerciseNames = allExercises.filter(e => e.name !== '每周平均步数').map(e => e.name);
+        const resp = await openai.chat.completions.create({
+          model: 'gpt-4o-mini',
+          max_completion_tokens: 512,
+          messages: [
+            {
+              role: 'system',
+              content: `You parse fitness scheduling preferences into JSON. Days: 1=Mon,2=Tue,...,7=Sun.
 Available exercises: ${exerciseNames.join(', ')}
 Return JSON: {"preferredDays":[numbers],"excludedDays":[numbers],"excludedExercises":["name"],"notes":"brief note"}
 If the user wants rest days on certain days, put those in excludedDays. If they want training on specific days, put those in preferredDays. Return ONLY valid JSON, no markdown.`
-              },
-              { role: 'user', content: userRequest.trim() }
-            ],
-            response_format: { type: 'json_object' },
-          });
-          const parsed = JSON.parse(resp.choices[0]?.message?.content || '{}');
-          if (Array.isArray(parsed.preferredDays) && parsed.preferredDays.length > 0) {
-            aiDayPreference = parsed.preferredDays.filter((d: unknown) => typeof d === 'number' && d >= 1 && d <= 7);
-          }
-          if (Array.isArray(parsed.excludedDays)) {
-            const excDays = new Set(parsed.excludedDays.filter((d: unknown) => typeof d === 'number' && d >= 1 && d <= 7));
-            if (excDays.size > 0 && !aiDayPreference) {
-              aiDayPreference = [1, 2, 3, 4, 5, 6, 7].filter(d => !excDays.has(d));
-            } else if (excDays.size > 0 && aiDayPreference) {
-              aiDayPreference = aiDayPreference.filter(d => !excDays.has(d));
-            }
-          }
-          if (Array.isArray(parsed.excludedExercises)) {
-            aiExcludedExerciseNames = parsed.excludedExercises.filter((n: unknown) => typeof n === 'string');
-          }
-          if (parsed.notes) aiNotes = String(parsed.notes);
-        } catch (aiErr) {
-          console.error("AI排課解析失敗，使用預設邏輯:", aiErr);
+            },
+            { role: 'user', content: planCustomRules.trim() }
+          ],
+          response_format: { type: 'json_object' },
+        });
+        const parsed = JSON.parse(resp.choices[0]?.message?.content || '{}');
+        if (Array.isArray(parsed.preferredDays) && parsed.preferredDays.length > 0) {
+          aiDayPreference = parsed.preferredDays.filter((d: unknown) => typeof d === 'number' && d >= 1 && d <= 7);
         }
+        if (Array.isArray(parsed.excludedDays)) {
+          const excDays = new Set(parsed.excludedDays.filter((d: unknown) => typeof d === 'number' && d >= 1 && d <= 7));
+          if (excDays.size > 0 && !aiDayPreference) {
+            aiDayPreference = [1, 2, 3, 4, 5, 6, 7].filter(d => !excDays.has(d));
+          } else if (excDays.size > 0 && aiDayPreference) {
+            aiDayPreference = aiDayPreference.filter(d => !excDays.has(d));
+          }
+        }
+        if (Array.isArray(parsed.excludedExercises)) {
+          aiExcludedExerciseNames = parsed.excludedExercises.filter((n: unknown) => typeof n === 'string');
+        }
+        if (parsed.notes) aiNotes = String(parsed.notes);
+      } catch (aiErr) {
+        console.error("AI排課偏好解析失敗，使用預設邏輯:", aiErr);
       }
 
       if (aiExcludedExerciseNames.length > 0) {
@@ -989,7 +988,6 @@ If the user wants rest days on certain days, put those in excludedDays. If they 
       const weekStart = getCurrentWeekStart();
       const planPayload = {
         targetBaseline,
-        userRequest: userRequest?.trim() || undefined,
         aiNotes: aiNotes || undefined,
         days: parsedPlan,
       };
