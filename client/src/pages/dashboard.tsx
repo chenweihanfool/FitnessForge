@@ -10,7 +10,6 @@ import { RankingData, WeeklyStats, RankingDetailResponse, Exercise, PlanProgress
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -332,14 +331,9 @@ export default function Dashboard() {
     }
   }, [planProgress?.mode, modeRecommendation, modeManuallyChanged]);
 
-  const [planUserRequest, setPlanUserRequest] = useState('');
-
   const generatePlanMutation = useMutation({
     mutationFn: async (mode: 'recovery' | 'normal') => {
-      return apiRequest("POST", "/api/plan/generate", {
-        mode,
-        userRequest: planUserRequest.trim() || undefined,
-      });
+      return apiRequest("POST", "/api/plan/generate", { mode });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/plan/progress"] });
@@ -865,14 +859,6 @@ export default function Dashboard() {
                 </div>
               )}
               <p className="text-sm text-muted-foreground">選擇訓練模式並生成本週計畫</p>
-              <Textarea
-                placeholder="輸入排課偏好（選填），例如：週一到週四排1-2天休息、週六安排有氧..."
-                value={planUserRequest}
-                onChange={(e) => setPlanUserRequest(e.target.value)}
-                className="text-sm resize-none"
-                rows={2}
-                data-testid="input-plan-user-request"
-              />
               <div className="flex items-center gap-3 flex-wrap">
                 <div className="flex gap-2">
                   <Button
@@ -956,15 +942,6 @@ export default function Dashboard() {
                   </Button>
                 </div>
               </div>
-
-              <Textarea
-                placeholder="輸入排課偏好（選填），重新生成時套用..."
-                value={planUserRequest}
-                onChange={(e) => setPlanUserRequest(e.target.value)}
-                className="text-sm resize-none"
-                rows={2}
-                data-testid="input-plan-user-request-active"
-              />
 
               {planProgress.targetBaseline > 0 && (
                 <div className="space-y-1.5 p-2.5 rounded-md bg-muted/40" data-testid="plan-baseline-progress">
