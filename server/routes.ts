@@ -654,6 +654,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
         .reduce((s, wk) => s + (wk.s * genSW + wk.c * genCW + wk.a * genAW), 0);
       const rollingWeightedAvg = ROLLING_WEEKS > 0 ? weeklyWeightedSum / ROLLING_WEEKS : 0;
 
+      const weeklyRawBaselines = new Map<string, number>();
+      for (const entry of allEntries) {
+        const entryDate = new Date(entry.date);
+        if (entryDate < rollingCutoff || entryDate >= currentWeekStartDate) continue;
+        const day = entryDate.getUTCDay();
+        const diff = day === 0 ? -6 : 1 - day;
+        const weekStart = new Date(entryDate);
+        weekStart.setUTCDate(weekStart.getUTCDate() + diff);
+        const weekKey = weekStart.toISOString().substring(0, 10);
+        weeklyRawBaselines.set(weekKey, (weeklyRawBaselines.get(weekKey) ?? 0) + (entry.baselineValue ?? 0));
+      }
+      const rollingRawSum = Array.from(weeklyRawBaselines.values()).reduce((a, b) => a + b, 0);
+      const rollingRawAvg = ROLLING_WEEKS > 0 ? rollingRawSum / ROLLING_WEEKS : 0;
+
       const median = (arr: number[]) => {
         if (!arr.length) return null;
         const s = [...arr].sort((a, b) => a - b);
@@ -755,24 +769,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const targetBaseline = Math.round(rollingWeightedAvg * targetMultiplier);
+      const calibrationTarget = Math.round(rollingRawAvg * targetMultiplier);
 
       const calibrateVolume = (exercises: typeof exercisesInPlan) => {
-        const projectedWeighted = exercises.reduce((s, e) => {
-          const raw = e.sessionsPerWeek * e.perSessionBaseline;
-          const ex = exerciseCatMapGen.get(e.id);
-          const splitRatio = (ex as Record<string, unknown>)?.splitRatio as number ?? 0;
-          const splitCat = (ex as Record<string, unknown>)?.splitCategory as string | null ?? null;
-          const primaryCat = e.category;
-          const catWeight = (cat: string | null) => {
-            if (cat === '力量') return genSW;
-            if (cat === '有氧') return genCW;
-            if (cat === '活动量') return genAW;
-            return genSW;
-          };
-          return s + raw * (1 - splitRatio) * catWeight(primaryCat) + raw * splitRatio * catWeight(splitCat);
-        }, 0);
-        if (projectedWeighted > 0 && targetBaseline > 0) {
-          const scale = targetBaseline / projectedWeighted;
+        const projectedBaseline = exercises.reduce((s, e) => s + e.sessionsPerWeek * e.perSessionBaseline, 0);
+        if (projectedBaseline > 0 && calibrationTarget > 0) {
+          const scale = calibrationTarget / projectedBaseline;
           if (Math.abs(scale - 1) > 0.05) {
             for (const e of exercises) {
               const scaled = Math.max(1, Math.round(e.targetValue * scale));
