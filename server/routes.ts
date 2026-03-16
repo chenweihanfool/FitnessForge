@@ -727,7 +727,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "沒有足夠的近期訓練數據來生成計畫，請先累積 4 週以上的訓練紀錄。" });
       }
 
-      const MAX_TOTAL_SLOTS = 15;
+      const MAX_TOTAL_SLOTS = mode === 'recovery' ? 9 : 15;
+      const MAX_TRAINING_DAYS = mode === 'recovery' ? 3 : 5;
       const cappedData = exerciseDataRaw.map(e => ({
         ...e,
         sessionsPerWeek: e.category === '力量' ? Math.min(2, e.sessionsPerWeek) : e.sessionsPerWeek,
@@ -887,7 +888,7 @@ If the user wants rest days on certain days, put those in excludedDays. If they 
       }
 
       // --- Select training days ---
-      const neededDays = Math.min(5, Math.max(1, Math.ceil(
+      const neededDays = Math.min(MAX_TRAINING_DAYS, Math.max(1, Math.ceil(
         exercisesInPlan.reduce((s, e) => s + e.sessionsPerWeek, 0) / 3
       )));
       let dayPreferenceOrder: number[];
