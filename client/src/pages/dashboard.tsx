@@ -10,6 +10,7 @@ import { RankingData, WeeklyStats, RankingDetailResponse, Exercise, PlanProgress
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -331,9 +332,14 @@ export default function Dashboard() {
     }
   }, [planProgress?.mode, modeRecommendation, modeManuallyChanged]);
 
+  const [planUserRequest, setPlanUserRequest] = useState('');
+
   const generatePlanMutation = useMutation({
     mutationFn: async (mode: 'recovery' | 'normal') => {
-      return apiRequest("POST", "/api/plan/generate", { mode });
+      return apiRequest("POST", "/api/plan/generate", {
+        mode,
+        userRequest: planUserRequest.trim() || undefined,
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/plan/progress"] });
@@ -859,6 +865,14 @@ export default function Dashboard() {
                 </div>
               )}
               <p className="text-sm text-muted-foreground">選擇訓練模式並生成本週計畫</p>
+              <Textarea
+                placeholder="輸入排課偏好（選填），例如：週一到週四排1-2天休息、週六安排有氧..."
+                value={planUserRequest}
+                onChange={(e) => setPlanUserRequest(e.target.value)}
+                className="text-sm resize-none"
+                rows={2}
+                data-testid="input-plan-user-request"
+              />
               <div className="flex items-center gap-3 flex-wrap">
                 <div className="flex gap-2">
                   <Button
@@ -943,6 +957,15 @@ export default function Dashboard() {
                 </div>
               </div>
 
+              <Textarea
+                placeholder="輸入排課偏好（選填），重新生成時套用..."
+                value={planUserRequest}
+                onChange={(e) => setPlanUserRequest(e.target.value)}
+                className="text-sm resize-none"
+                rows={2}
+                data-testid="input-plan-user-request-active"
+              />
+
               {planProgress.targetBaseline > 0 && (
                 <div className="space-y-1.5 p-2.5 rounded-md bg-muted/40" data-testid="plan-baseline-progress">
                   <div className="flex items-center justify-between text-xs">
@@ -977,36 +1000,43 @@ export default function Dashboard() {
                         return (
                           <div
                             key={`${day.day}-${ex.exerciseId}-${idx}`}
-                            className="flex items-center gap-2 text-sm"
+                            className="space-y-0.5"
                             data-testid={`plan-exercise-${day.day}-${idx}`}
                           >
-                            <div className="w-4 h-4 flex items-center justify-center flex-shrink-0">
-                              {ex.status === 'met' ? (
-                                <Check className="h-4 w-4 text-green-600 dark:text-green-400" />
-                              ) : ex.status === 'partial' ? (
-                                <div className="w-3 h-3 rounded-full border-2 border-primary bg-primary/30" />
-                              ) : (
-                                <div className="w-3 h-3 rounded-full border-2 border-muted-foreground/30" />
+                            <div className="flex items-center gap-2 text-sm">
+                              <div className="w-4 h-4 flex items-center justify-center flex-shrink-0">
+                                {ex.status === 'met' ? (
+                                  <Check className="h-4 w-4 text-green-600 dark:text-green-400" />
+                                ) : ex.status === 'partial' ? (
+                                  <div className="w-3 h-3 rounded-full border-2 border-primary bg-primary/30" />
+                                ) : (
+                                  <div className="w-3 h-3 rounded-full border-2 border-muted-foreground/30" />
+                                )}
+                              </div>
+                              <span className={`flex-shrink-0 ${ex.status === 'met' ? 'text-muted-foreground line-through' : ''}`}>
+                                {ex.exerciseName}
+                              </span>
+                              <span className="text-xs text-muted-foreground flex-shrink-0">
+                                {(ex.exerciseName === '跑步' || ex.exerciseName === '跑步機負重')
+                                  ? `${ex.targetValue}分鐘 + ${ex.targetSets}km`
+                                  : `${ex.targetValue}${ex.unit} x${ex.targetSets}`}
+                              </span>
+                              <div className="flex-1 min-w-12 h-1.5 bg-muted rounded-full overflow-hidden">
+                                <div
+                                  className={`h-full rounded-full transition-all ${ex.status === 'met' ? 'bg-green-500' : ex.status === 'partial' ? 'bg-primary/60' : 'bg-muted-foreground/20'}`}
+                                  style={{ width: `${progress}%` }}
+                                />
+                              </div>
+                              {ex.actualValue > 0 && (
+                                <span className="text-xs text-muted-foreground flex-shrink-0">
+                                  {ex.actualValue.toFixed(0)}
+                                </span>
                               )}
                             </div>
-                            <span className={`flex-shrink-0 ${ex.status === 'met' ? 'text-muted-foreground line-through' : ''}`}>
-                              {ex.exerciseName}
-                            </span>
-                            <span className="text-xs text-muted-foreground flex-shrink-0">
-                              {(ex.exerciseName === '跑步' || ex.exerciseName === '跑步機負重')
-                                ? `${ex.targetValue}分鐘 + ${ex.targetSets}km`
-                                : `${ex.targetValue}${ex.unit} x${ex.targetSets}`}
-                            </span>
-                            <div className="flex-1 min-w-12 h-1.5 bg-muted rounded-full overflow-hidden">
-                              <div
-                                className={`h-full rounded-full transition-all ${ex.status === 'met' ? 'bg-green-500' : ex.status === 'partial' ? 'bg-primary/60' : 'bg-muted-foreground/20'}`}
-                                style={{ width: `${progress}%` }}
-                              />
-                            </div>
-                            {ex.actualValue > 0 && (
-                              <span className="text-xs text-muted-foreground flex-shrink-0">
-                                {ex.actualValue.toFixed(0)}
-                              </span>
+                            {(ex.reason || ex.historyRef) && (
+                              <div className="pl-6 text-[11px] text-muted-foreground/70 leading-tight" data-testid={`plan-exercise-reason-${day.day}-${idx}`}>
+                                {ex.reason}{ex.historyRef ? ` (${ex.historyRef})` : ''}
+                              </div>
                             )}
                           </div>
                         );

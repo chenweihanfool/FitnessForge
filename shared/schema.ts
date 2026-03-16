@@ -172,6 +172,8 @@ export type PlanDayItem = {
     unit: string;
     category: string | null;
     weeklyContrib?: number;
+    reason?: string;
+    historyRef?: string;
   }>;
 };
 
@@ -190,6 +192,8 @@ export type PlanProgress = {
       unit: string;
       category: string | null;
       weeklyContrib?: number;
+      reason?: string;
+      historyRef?: string;
       actualValue: number;
       actualSets: number;
       status: PlanItemStatus;

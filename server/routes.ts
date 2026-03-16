@@ -587,7 +587,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/plan/generate", async (req, res) => {
     try {
-      const { mode } = req.body;
+      const { mode, userRequest } = req.body;
       if (!mode || !['recovery', 'normal'].includes(mode)) {
         return res.status(400).json({ error: "模式必须是 recovery 或 normal" });
       }
@@ -605,17 +605,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: `需要至少 ${MIN_ROLLING_WEEKS} 週完成的訓練數據才能生成計畫。目前有 ${rollingTotalStats?.weekCount ?? 0} 週數據。` });
       }
 
-      // Use only the rolling window entries for typicalValue/typicalSets/perSessionBaseline
-      // so that stale early-history records don't corrupt per-set medians.
       const currentWeekStartDate = new Date(getCurrentWeekStart());
       const rollingCutoff = new Date(currentWeekStartDate);
       rollingCutoff.setDate(rollingCutoff.getDate() - ROLLING_WEEKS * 7);
 
-      // Collect per-entry data within the rolling window
       const entryMap = new Map<string, { values: number[]; sets: number[]; baselines: number[] }>();
-      const weeklyBaselineMap = new Map<string, Map<string, number>>(); // exerciseId -> weekKey -> weekSum
+      const weeklyBaselineMap = new Map<string, Map<string, number>>();
       const exerciseCatMapGen = new Map(allExercises.map(ex => [ex.id, ex]));
-      // For weighted rolling avg: accumulate per-week category sums
       const weeklyWeightedCats = new Map<string, { s: number; c: number; a: number }>();
       for (const entry of allEntries) {
         const entryDate = new Date(entry.date);
@@ -626,7 +622,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         if (entry.sets != null && entry.sets > 0) rec.sets.push(entry.sets);
         if (entry.baselineValue != null && entry.baselineValue > 0) rec.baselines.push(entry.baselineValue);
 
-        // Track weekly baseline contribution per exercise
         const day = entryDate.getUTCDay();
         const diff = day === 0 ? -6 : 1 - day;
         const weekStart = new Date(entryDate);
@@ -636,7 +631,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const wm = weeklyBaselineMap.get(entry.exerciseId)!;
         wm.set(weekKey, (wm.get(weekKey) ?? 0) + (entry.baselineValue ?? 0));
 
-        // Accumulate per-week CATEGORY sums for weighted rolling avg
         if (!weeklyWeightedCats.has(weekKey)) weeklyWeightedCats.set(weekKey, { s: 0, c: 0, a: 0 });
         const wcat = weeklyWeightedCats.get(weekKey)!;
         const exCat = exerciseCatMapGen.get(entry.exerciseId);
@@ -653,8 +647,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         if (splitRatio > 0 && splitCat) addCat(splitCat, baseline * splitRatio);
       }
 
-      // Compute weighted rolling average — divide by ROLLING_WEEKS (not just weeks with data)
-      // to match the recommend-mode endpoint which includes zero-training weeks in the average.
       const genSW = parseFloat(genSettings['strengthWeight'] ?? '50') / 100;
       const genCW = parseFloat(genSettings['cardioWeight'] ?? '30') / 100;
       const genAW = parseFloat(genSettings['activityWeight'] ?? '20') / 100;
@@ -670,7 +662,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       };
       const avg = (arr: number[]) => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
 
-      const muscleLabels: Array<[string, string]> = [
+      const muscleKeys: Array<[string, string]> = [
         ['muscleChest', '胸'], ['muscleBack', '背'], ['muscleLegs', '腿'],
         ['muscleShoulders', '肩'], ['muscleArms', '二頭/三頭'],
         ['muscleCore', '核心'], ['muscleGlutes', '臀'], ['muscleFullBody', '全身'],
@@ -679,43 +671,52 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const dayNames = ['週一', '週二', '週三', '週四', '週五', '週六', '週日'];
       const targetMultiplier = mode === 'recovery' ? 0.75 : 1.05;
 
-      // Build exercise data with server-computed targets and session counts
       const exerciseDataRaw = allExercises
         .filter(e => e.name !== '每周平均步数')
         .map(e => {
           const hist = entryMap.get(e.id);
           if (!hist || hist.values.length === 0 || hist.sets.length === 0 || hist.baselines.length === 0) return null;
 
-          const targetValue = Math.max(1, Math.round(median(hist.values)!));
-          const targetSets = Math.max(1, Math.round(median(hist.sets)!));
+          const medianValue = Math.max(1, Math.round(median(hist.values)!));
+          const medianSets = Math.max(1, Math.round(median(hist.sets)!));
           const perSessionBaseline = median(hist.baselines)!;
 
-          // Avg weekly contribution for this exercise over the rolling window
           const weeklyVals = Array.from((weeklyBaselineMap.get(e.id) ?? new Map()).values());
-          const weeklyContrib = avg(weeklyVals); // avg weekly baseline points from this exercise
+          const weeklyContrib = avg(weeklyVals);
 
           if (weeklyContrib <= 0 || perSessionBaseline <= 0) return null;
 
-          // Sessions per week needed to hit the scaled target
           const rawSessions = (weeklyContrib * targetMultiplier) / perSessionBaseline;
           const sessionsPerWeek = Math.min(3, Math.max(1, Math.round(rawSessions)));
 
-          const muscles = muscleLabels
+          const muscleHits = muscleKeys
             .filter(([key]) => ((e as Record<string, unknown>)[key] as number ?? 0) > 0)
-            .map(([key, label]) => `${label}${(e as Record<string, unknown>)[key]}%`)
-            .join('/');
+            .map(([key, label]) => ({ key, label, pct: (e as Record<string, unknown>)[key] as number }));
+          const musclesStr = muscleHits.map(m => `${m.label}${m.pct}%`).join('/');
+          const muscleKeySet = new Set(muscleHits.map(m => m.key));
+
+          const historyRef = (e.name === '跑步' || e.name === '跑步機負重')
+            ? `${medianValue}分鐘 + ${medianSets}km`
+            : `${medianValue}${e.unit} x${medianSets}組`;
+
+          const weeksWithData = weeklyVals.length;
+          const avgPerWeek = weeksWithData > 0 ? (weeksWithData / ROLLING_WEEKS * sessionsPerWeek).toFixed(1) : '0';
+          const reason = `近${ROLLING_WEEKS}週均${avgPerWeek}次/週 | ${musclesStr || '通用'}`;
 
           return {
             id: e.id,
             name: e.name,
             unit: e.unit,
             category: e.category,
-            targetValue,
-            targetSets,
+            targetValue: medianValue,
+            targetSets: medianSets,
             perSessionBaseline,
             weeklyContrib,
             sessionsPerWeek,
-            muscles,
+            muscles: musclesStr,
+            muscleKeySet,
+            historyRef,
+            reason,
           };
         })
         .filter((e): e is NonNullable<typeof e> => e !== null);
@@ -724,55 +725,134 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "沒有足夠的近期訓練數據來生成計畫，請先累積 4 週以上的訓練紀錄。" });
       }
 
-      // --- Cap sessions per exercise and total session count ---
-      // Strength exercises need more recovery: max 2 sessions/week
-      // Total cap: 5 training days × 3 exercises = 15 slots
       const MAX_TOTAL_SLOTS = 15;
-      const cappedData = exerciseDataRaw
-        .map(e => ({
-          ...e,
-          sessionsPerWeek: e.category === '力量'
-            ? Math.min(2, e.sessionsPerWeek)
-            : e.sessionsPerWeek,
-        }))
-        .sort((a, b) => b.weeklyContrib - a.weeklyContrib); // highest-priority first
+      const cappedData = exerciseDataRaw.map(e => ({
+        ...e,
+        sessionsPerWeek: e.category === '力量' ? Math.min(2, e.sessionsPerWeek) : e.sessionsPerWeek,
+      }));
 
-      // Trim lower-priority exercises if total exceeds MAX_TOTAL_SLOTS
-      let runningTotal = 0;
+      // --- Muscle-coverage greedy selection ---
+      const coveredMuscles = new Set<string>();
       const exercisesInPlan: typeof cappedData = [];
-      for (const e of cappedData) {
-        if (runningTotal + e.sessionsPerWeek <= MAX_TOTAL_SLOTS) {
-          exercisesInPlan.push(e);
-          runningTotal += e.sessionsPerWeek;
-        } else if (runningTotal < MAX_TOTAL_SLOTS) {
-          // Partially include if there's still room for 1 session
-          exercisesInPlan.push({ ...e, sessionsPerWeek: 1 });
-          runningTotal += 1;
+      let runningTotal = 0;
+      const remaining = [...cappedData];
+
+      while (runningTotal < MAX_TOTAL_SLOTS && remaining.length > 0) {
+        remaining.sort((a, b) => {
+          const aNew = [...a.muscleKeySet].filter(k => !coveredMuscles.has(k)).length;
+          const bNew = [...b.muscleKeySet].filter(k => !coveredMuscles.has(k)).length;
+          if (bNew !== aNew) return bNew - aNew;
+          return b.weeklyContrib - a.weeklyContrib;
+        });
+
+        const best = remaining.shift()!;
+        const slots = Math.min(best.sessionsPerWeek, MAX_TOTAL_SLOTS - runningTotal);
+        exercisesInPlan.push({ ...best, sessionsPerWeek: slots });
+        runningTotal += slots;
+        for (const k of best.muscleKeySet) coveredMuscles.add(k);
+      }
+
+      // --- Volume calibration: scale targetValue so projected ≈ targetBaseline ---
+      const targetBaseline = Math.round(rollingWeightedAvg * targetMultiplier);
+      const projectedWeighted = exercisesInPlan.reduce((s, e) => {
+        const raw = e.sessionsPerWeek * e.perSessionBaseline;
+        const ex = exerciseCatMapGen.get(e.id);
+        const splitRatio = (ex as Record<string, unknown>)?.splitRatio as number ?? 0;
+        const splitCat = (ex as Record<string, unknown>)?.splitCategory as string | null ?? null;
+        const primaryCat = e.category;
+        const catWeight = (cat: string | null) => {
+          if (cat === '力量') return genSW;
+          if (cat === '有氧') return genCW;
+          if (cat === '活动量') return genAW;
+          return genSW;
+        };
+        return s + raw * (1 - splitRatio) * catWeight(primaryCat) + raw * splitRatio * catWeight(splitCat);
+      }, 0);
+      if (projectedWeighted > 0 && targetBaseline > 0) {
+        const scale = targetBaseline / projectedWeighted;
+        if (Math.abs(scale - 1) > 0.05) {
+          for (const e of exercisesInPlan) {
+            e.targetValue = Math.max(1, Math.round(e.targetValue * scale));
+          }
         }
-        // else skip this exercise
       }
 
       const totalSessions = exercisesInPlan.reduce((s, e) => s + e.sessionsPerWeek, 0);
 
-      // --- Select training days server-side ---
-      // Pattern: prefer weekends (Fri=5, Sat=6, Sun=7) for heavier load,
-      // allow select weekdays for remaining sessions.
-      // Mon-Thu contributes at most 2 training days (1-2 rest days as per custom rules).
-      const neededDays = Math.min(5, Math.max(1, Math.ceil(totalSessions / 3)));
-      // Day preference order: Sat(6) > Sun(7) > Fri(5) > Thu(4) > Tue(2) > Wed(3) > Mon(1)
-      const dayPreferenceOrder = [6, 7, 5, 4, 2, 3, 1];
+      // --- Parse user custom request via OpenAI (if provided) ---
+      let aiDayPreference: number[] | null = null;
+      let aiExcludedExerciseNames: string[] = [];
+      let aiNotes = '';
+      if (userRequest && typeof userRequest === 'string' && userRequest.trim().length > 0) {
+        try {
+          const OpenAI = (await import('openai')).default;
+          const openai = new OpenAI({
+            apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
+            baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+          });
+          const exerciseNames = allExercises.filter(e => e.name !== '每周平均步数').map(e => e.name);
+          const resp = await openai.chat.completions.create({
+            model: 'gpt-4o-mini',
+            max_completion_tokens: 512,
+            messages: [
+              {
+                role: 'system',
+                content: `You parse fitness scheduling requests into JSON. Days: 1=Mon,2=Tue,...,7=Sun.
+Available exercises: ${exerciseNames.join(', ')}
+Return JSON: {"preferredDays":[numbers],"excludedDays":[numbers],"excludedExercises":["name"],"notes":"brief note"}
+If the user wants rest days on certain days, put those in excludedDays. If they want training on specific days, put those in preferredDays. Return ONLY valid JSON, no markdown.`
+              },
+              { role: 'user', content: userRequest.trim() }
+            ],
+            response_format: { type: 'json_object' },
+          });
+          const parsed = JSON.parse(resp.choices[0]?.message?.content || '{}');
+          if (Array.isArray(parsed.preferredDays) && parsed.preferredDays.length > 0) {
+            aiDayPreference = parsed.preferredDays.filter((d: unknown) => typeof d === 'number' && d >= 1 && d <= 7);
+          }
+          if (Array.isArray(parsed.excludedDays)) {
+            const excDays = new Set(parsed.excludedDays.filter((d: unknown) => typeof d === 'number' && d >= 1 && d <= 7));
+            if (excDays.size > 0 && !aiDayPreference) {
+              aiDayPreference = [1, 2, 3, 4, 5, 6, 7].filter(d => !excDays.has(d));
+            } else if (excDays.size > 0 && aiDayPreference) {
+              aiDayPreference = aiDayPreference.filter(d => !excDays.has(d));
+            }
+          }
+          if (Array.isArray(parsed.excludedExercises)) {
+            aiExcludedExerciseNames = parsed.excludedExercises.filter((n: unknown) => typeof n === 'string');
+          }
+          if (parsed.notes) aiNotes = String(parsed.notes);
+        } catch (aiErr) {
+          console.error("AI排課解析失敗，使用預設邏輯:", aiErr);
+        }
+      }
+
+      // Apply AI exclusions
+      if (aiExcludedExerciseNames.length > 0) {
+        const excSet = new Set(aiExcludedExerciseNames.map(n => n.toLowerCase()));
+        const removed: typeof exercisesInPlan = [];
+        for (let i = exercisesInPlan.length - 1; i >= 0; i--) {
+          if (excSet.has(exercisesInPlan[i].name.toLowerCase())) {
+            removed.push(...exercisesInPlan.splice(i, 1));
+          }
+        }
+      }
+
+      // --- Select training days ---
+      const neededDays = Math.min(5, Math.max(1, Math.ceil(
+        exercisesInPlan.reduce((s, e) => s + e.sessionsPerWeek, 0) / 3
+      )));
+      let dayPreferenceOrder: number[];
+      if (aiDayPreference && aiDayPreference.length > 0) {
+        const aiSet = new Set(aiDayPreference);
+        const nonAi = [1, 2, 3, 4, 5, 6, 7].filter(d => !aiSet.has(d));
+        dayPreferenceOrder = [...aiDayPreference, ...nonAi];
+      } else {
+        dayPreferenceOrder = [6, 7, 5, 4, 2, 3, 1];
+      }
       const trainingDays = dayPreferenceOrder.slice(0, neededDays).sort((a, b) => a - b);
 
-      const weeklyTarget = rollingTotalStats.avg * targetMultiplier;
-      const projectedTotal = exercisesInPlan.reduce((s, e) => s + e.sessionsPerWeek * e.perSessionBaseline, 0);
-
-      // --- Deterministic scheduler (no AI needed) ---
-      // Rules:
-      // - Strength → prefer weekend days; Cardio/Other → prefer weekday days
-      // - Same exercise not on consecutive training days (by index in trainingDays array)
-      // - Max 4 exercises per training day; balance load evenly
-      // - Within each day, sort by category: 力量 first, then 有氧, then others
-
+      // --- Deterministic scheduler ---
       interface PlanSlot {
         exerciseId: string;
         exerciseName: string;
@@ -781,9 +861,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         unit: string;
         category: string | null;
         weeklyContrib: number;
+        reason: string;
+        historyRef: string;
       }
 
-      // Expand each exercise into sessionsPerWeek individual slots
       const allSlots: PlanSlot[] = exercisesInPlan.flatMap(e =>
         Array.from({ length: e.sessionsPerWeek }, () => ({
           exerciseId: e.id,
@@ -793,36 +874,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
           unit: e.unit,
           category: e.category,
           weeklyContrib: e.weeklyContrib,
+          reason: e.reason,
+          historyRef: e.historyRef,
         }))
       );
 
-      // Sort slots: higher weekly contribution first, then strength before cardio
       const categoryRank = (c: string | null) => c === '力量' ? 0 : c === '有氧' ? 1 : 2;
       allSlots.sort((a, b) =>
         b.weeklyContrib - a.weeklyContrib || categoryRank(a.category) - categoryRank(b.category)
       );
 
-      // Categorise training days by weekday vs weekend
       const weekendDayIdxs = trainingDays.map((d, i) => ({ d, i })).filter(x => x.d >= 5).map(x => x.i);
       const weekdayDayIdxs = trainingDays.map((d, i) => ({ d, i })).filter(x => x.d < 5).map(x => x.i);
 
       const dayBuckets = new Map<number, PlanSlot[]>(trainingDays.map(d => [d, []]));
-      const lastPlacedIdx = new Map<string, number>(); // exerciseId → index in trainingDays
+      const lastPlacedDay = new Map<string, number>();
 
       for (const slot of allSlots) {
-        // Preferred day-index order by category
         const prefIdxs = slot.category === '力量'
           ? [...weekendDayIdxs, ...weekdayDayIdxs]
           : [...weekdayDayIdxs, ...weekendDayIdxs];
 
-        // Filter out days that would be consecutive (training-day-index distance ≤ 1)
-        const lastIdx = lastPlacedIdx.get(slot.exerciseId);
-        const nonConsecIdxs = prefIdxs.filter(i =>
-          lastIdx === undefined || Math.abs(i - lastIdx) > 1
-        );
+        const lastDay = lastPlacedDay.get(slot.exerciseId);
+        const nonConsecIdxs = prefIdxs.filter(i => {
+          if (lastDay === undefined) return true;
+          const candidateDay = trainingDays[i];
+          const diff = Math.abs(candidateDay - lastDay);
+          return Math.min(diff, 7 - diff) > 1;
+        });
         const candidateIdxs = nonConsecIdxs.length > 0 ? nonConsecIdxs : prefIdxs;
 
-        // Among candidates, pick day with fewest exercises (max 4 per day)
         const sortedCandidates = [...candidateIdxs].sort((a, b) => {
           const la = dayBuckets.get(trainingDays[a])!.length;
           const lb = dayBuckets.get(trainingDays[b])!.length;
@@ -831,16 +912,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         const chosenIdx = sortedCandidates.find(i =>
           (dayBuckets.get(trainingDays[i])?.length ?? 0) < 4
-        ) ?? sortedCandidates[0]; // fallback: ignore max-4 if no choice
+        ) ?? sortedCandidates[0];
 
         if (chosenIdx !== undefined) {
           const chosenDay = trainingDays[chosenIdx];
           dayBuckets.get(chosenDay)!.push(slot);
-          lastPlacedIdx.set(slot.exerciseId, chosenIdx);
+          lastPlacedDay.set(slot.exerciseId, chosenDay);
         }
       }
 
-      // Build final plan: sort exercises within day by category
       const parsedPlan: PlanDayItem[] = trainingDays
         .map(d => ({
           day: d,
@@ -852,10 +932,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         .filter(d => d.exercises.length > 0);
 
       const weekStart = getCurrentWeekStart();
-      // Store WEIGHTED targetBaseline in planJson so the progress endpoint can read it
-      // without re-fetching all weekly stats (which is slow on production).
-      // rollingWeightedAvg uses category-weighted composite same as the dashboard total score.
-      const planPayload = { targetBaseline: Math.round(rollingWeightedAvg * targetMultiplier), days: parsedPlan };
+      const planPayload = {
+        targetBaseline,
+        userRequest: userRequest?.trim() || undefined,
+        aiNotes: aiNotes || undefined,
+        days: parsedPlan,
+      };
       const saved = await storage.saveWeeklyPlan({
         weekStart,
         mode: mode as 'recovery' | 'normal',
