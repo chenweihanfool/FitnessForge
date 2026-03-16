@@ -891,17 +891,31 @@ If the user wants rest days on certain days, put those in excludedDays. If they 
       const neededDays = Math.min(MAX_TRAINING_DAYS, Math.max(1, Math.ceil(
         exercisesInPlan.reduce((s, e) => s + e.sessionsPerWeek, 0) / 3
       )));
+
+      // Fisher-Yates shuffle helper
+      const shuffle = <T>(arr: T[]): T[] => {
+        const a = [...arr];
+        for (let i = a.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [a[i], a[j]] = [a[j], a[i]];
+        }
+        return a;
+      };
+
       let dayPreferenceOrder: number[];
       if (aiDayPreference && aiDayPreference.length > 0) {
         const aiSet = new Set(aiDayPreference);
-        const nonAi = [1, 2, 3, 4, 5, 6, 7].filter(d => !aiSet.has(d));
-        dayPreferenceOrder = [...aiDayPreference, ...nonAi];
+        const nonAi = shuffle([1, 2, 3, 4, 5, 6, 7].filter(d => !aiSet.has(d)));
+        dayPreferenceOrder = [...shuffle([...aiDayPreference]), ...nonAi];
       } else {
-        dayPreferenceOrder = [6, 7, 5, 4, 2, 3, 1];
+        // Randomly shuffle within weekends and weekdays, but keep weekends preferred
+        const weekends = shuffle([6, 7]);
+        const weekdays = shuffle([1, 2, 3, 4, 5]);
+        dayPreferenceOrder = [...weekends, ...weekdays];
       }
       const trainingDays = dayPreferenceOrder.slice(0, neededDays).sort((a, b) => a - b);
 
-      // --- Deterministic scheduler ---
+      // --- Randomised scheduler ---
       interface PlanSlot {
         exerciseId: string;
         exerciseName: string;
@@ -928,13 +942,22 @@ If the user wants rest days on certain days, put those in excludedDays. If they 
         }))
       );
 
-      const categoryRank = (c: string | null) => c === '力量' ? 0 : c === '有氧' ? 1 : 2;
-      allSlots.sort((a, b) =>
-        b.weeklyContrib - a.weeklyContrib || categoryRank(a.category) - categoryRank(b.category)
-      );
+      // Sort slots by priority tier, then shuffle within each tier for variety
+      const contribBuckets = new Map<number, PlanSlot[]>();
+      for (const s of allSlots) {
+        const bucket = Math.round(s.weeklyContrib / 10); // group into buckets of ~10
+        if (!contribBuckets.has(bucket)) contribBuckets.set(bucket, []);
+        contribBuckets.get(bucket)!.push(s);
+      }
+      const sortedBucketKeys = [...contribBuckets.keys()].sort((a, b) => b - a);
+      allSlots.length = 0;
+      for (const key of sortedBucketKeys) {
+        allSlots.push(...shuffle(contribBuckets.get(key)!));
+      }
 
-      const weekendDayIdxs = trainingDays.map((d, i) => ({ d, i })).filter(x => x.d >= 5).map(x => x.i);
-      const weekdayDayIdxs = trainingDays.map((d, i) => ({ d, i })).filter(x => x.d < 5).map(x => x.i);
+      // Shuffle weekend and weekday index lists so exercise-day pairing varies each generation
+      const weekendDayIdxs = shuffle(trainingDays.map((d, i) => ({ d, i })).filter(x => x.d >= 5).map(x => x.i));
+      const weekdayDayIdxs = shuffle(trainingDays.map((d, i) => ({ d, i })).filter(x => x.d < 5).map(x => x.i));
 
       const dayBuckets = new Map<number, PlanSlot[]>(trainingDays.map(d => [d, []]));
       const lastPlacedDay = new Map<string, number>();
