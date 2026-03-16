@@ -710,7 +710,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             category: e.category,
             targetValue: medianValue,
             targetSets: medianSets,
-            medianValueCap: Math.ceil(medianValue * Math.max(1, targetMultiplier)),
+            medianValueCap: medianValue,
             medianSetsCap: medianSets,
             perSessionBaseline,
             weeklyContrib,
@@ -733,25 +733,41 @@ export async function registerRoutes(app: Express): Promise<Server> {
         sessionsPerWeek: e.category === '力量' ? Math.min(2, e.sessionsPerWeek) : e.sessionsPerWeek,
       }));
 
-      // --- Muscle-coverage greedy selection ---
+      // --- Phase 1: Guarantee one slot per exercise (sorted by muscle coverage) ---
       const coveredMuscles = new Set<string>();
       const exercisesInPlan: typeof cappedData = [];
       let runningTotal = 0;
-      const remaining = [...cappedData];
 
-      while (runningTotal < MAX_TOTAL_SLOTS && remaining.length > 0) {
-        remaining.sort((a, b) => {
-          const aNew = [...a.muscleKeySet].filter(k => !coveredMuscles.has(k)).length;
-          const bNew = [...b.muscleKeySet].filter(k => !coveredMuscles.has(k)).length;
-          if (bNew !== aNew) return bNew - aNew;
-          return b.weeklyContrib - a.weeklyContrib;
-        });
+      const phase1 = [...cappedData].sort((a, b) => {
+        const aNew = [...a.muscleKeySet].filter(k => !coveredMuscles.has(k)).length;
+        const bNew = [...b.muscleKeySet].filter(k => !coveredMuscles.has(k)).length;
+        if (bNew !== aNew) return bNew - aNew;
+        return b.weeklyContrib - a.weeklyContrib;
+      });
 
-        const best = remaining.shift()!;
-        const slots = Math.min(best.sessionsPerWeek, MAX_TOTAL_SLOTS - runningTotal);
-        exercisesInPlan.push({ ...best, sessionsPerWeek: slots });
-        runningTotal += slots;
-        for (const k of best.muscleKeySet) coveredMuscles.add(k);
+      for (const ex of phase1) {
+        if (runningTotal >= MAX_TOTAL_SLOTS) break;
+        exercisesInPlan.push({ ...ex, sessionsPerWeek: 1 });
+        runningTotal += 1;
+        for (const k of ex.muscleKeySet) coveredMuscles.add(k);
+      }
+
+      // --- Phase 2: Distribute remaining slots by weeklyContrib priority ---
+      let remainingSlots = MAX_TOTAL_SLOTS - runningTotal;
+      if (remainingSlots > 0) {
+        const expansionOrder = exercisesInPlan
+          .map((_, i) => i)
+          .sort((a, b) => exercisesInPlan[b].weeklyContrib - exercisesInPlan[a].weeklyContrib);
+        for (const idx of expansionOrder) {
+          if (remainingSlots <= 0) break;
+          const ex = exercisesInPlan[idx];
+          const originalMax = cappedData.find(c => c.id === ex.id)!.sessionsPerWeek;
+          const canAdd = Math.min(originalMax - ex.sessionsPerWeek, remainingSlots);
+          if (canAdd > 0) {
+            ex.sessionsPerWeek += canAdd;
+            remainingSlots -= canAdd;
+          }
+        }
       }
 
       const targetBaseline = Math.round(rollingWeightedAvg * targetMultiplier);
@@ -776,14 +792,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       };
 
       const calibrateVolume = (exercises: typeof exercisesInPlan) => {
-        const projectedBaseline = computeProjectedBaseline(exercises);
-        if (projectedBaseline > 0 && targetBaseline > 0) {
-          const scale = targetBaseline / projectedBaseline;
-          if (Math.abs(scale - 1) > 0.05) {
-            for (const e of exercises) {
-              const scaled = Math.max(1, Math.round(e.targetValue * scale));
-              e.targetValue = Math.min(scaled, e.medianValueCap);
-            }
+        const projected = computeProjectedBaseline(exercises);
+        if (projected > 0 && targetBaseline > 0 && Math.abs(projected - targetBaseline) / targetBaseline > 0.05) {
+          const scale = targetBaseline / projected;
+          for (const e of exercises) {
+            e.targetValue = Math.min(Math.max(1, Math.round(e.targetValue * scale)), e.medianValueCap);
+            e.targetSets = Math.min(e.targetSets, e.medianSetsCap);
           }
         }
       };
