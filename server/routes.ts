@@ -833,6 +833,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // --- Parse scheduling constraints from settings (planCustomRules) via OpenAI ---
       let aiDayPreference: number[] | null = null;
       let aiExcludedExerciseNames: string[] = [];
+      let aiRequiredExercises: { name: string; minSessions: number }[] = [];
       let aiNotes = '';
       const planCustomRules = genSettings['planCustomRules'] ?? DEFAULT_PLAN_CUSTOM_RULES;
       try {
@@ -844,14 +845,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const exerciseNames = allExercises.filter(e => e.name !== '每周平均步数').map(e => e.name);
         const resp = await openai.chat.completions.create({
           model: 'gpt-4o-mini',
-          max_completion_tokens: 512,
+          max_completion_tokens: 800,
           messages: [
             {
               role: 'system',
               content: `You parse fitness scheduling preferences into JSON. Days: 1=Mon,2=Tue,...,7=Sun.
 Available exercises: ${exerciseNames.join(', ')}
-Return JSON: {"preferredDays":[numbers],"excludedDays":[numbers],"excludedExercises":["name"],"notes":"brief note"}
-If the user wants rest days on certain days, put those in excludedDays. If they want training on specific days, put those in preferredDays. Return ONLY valid JSON, no markdown.`
+Return JSON with these fields:
+- "preferredDays": [numbers] — days the user wants to train
+- "excludedDays": [numbers] — days the user wants to rest
+- "excludedExercises": ["name"] — exercises to exclude entirely
+- "requiredExercises": [{"name":"exercise name","minSessions":N}] — exercises that MUST appear at least N times per week (e.g. "每周至少深蹲一次" → [{"name":"深蹲","minSessions":1}])
+- "notes": "brief note"
+Match exercise names exactly to the available exercises list. Return ONLY valid JSON, no markdown.`
             },
             { role: 'user', content: planCustomRules.trim() }
           ],
@@ -872,6 +878,14 @@ If the user wants rest days on certain days, put those in excludedDays. If they 
         if (Array.isArray(parsed.excludedExercises)) {
           aiExcludedExerciseNames = parsed.excludedExercises.filter((n: unknown) => typeof n === 'string');
         }
+        if (Array.isArray(parsed.requiredExercises)) {
+          aiRequiredExercises = parsed.requiredExercises
+            .filter((r: unknown) => r && typeof (r as Record<string, unknown>).name === 'string')
+            .map((r: Record<string, unknown>) => ({
+              name: String(r.name),
+              minSessions: typeof r.minSessions === 'number' ? Math.max(1, Math.round(r.minSessions)) : 1,
+            }));
+        }
         if (parsed.notes) aiNotes = String(parsed.notes);
       } catch (aiErr) {
         console.error("AI排課偏好解析失敗，使用預設邏輯:", aiErr);
@@ -882,6 +896,29 @@ If the user wants rest days on certain days, put those in excludedDays. If they 
         for (let i = exercisesInPlan.length - 1; i >= 0; i--) {
           if (excSet.has(exercisesInPlan[i].name.toLowerCase())) {
             exercisesInPlan.splice(i, 1);
+          }
+        }
+        calibrateVolume(exercisesInPlan);
+      }
+
+      // --- Enforce required exercises from settings ---
+      if (aiRequiredExercises.length > 0) {
+        const inPlanNames = new Set(exercisesInPlan.map(e => e.name.toLowerCase()));
+        for (const req of aiRequiredExercises) {
+          const nameLc = req.name.toLowerCase();
+          const existing = exercisesInPlan.find(e => e.name.toLowerCase() === nameLc);
+          if (existing) {
+            // Ensure minimum sessions
+            if (existing.sessionsPerWeek < req.minSessions) {
+              existing.sessionsPerWeek = req.minSessions;
+            }
+          } else {
+            // Add from cappedData if available, else from exerciseDataRaw
+            const source = cappedData.find(e => e.name.toLowerCase() === nameLc)
+              ?? exerciseDataRaw.find(e => e.name.toLowerCase() === nameLc);
+            if (source) {
+              exercisesInPlan.push({ ...source, sessionsPerWeek: req.minSessions });
+            }
           }
         }
         calibrateVolume(exercisesInPlan);
