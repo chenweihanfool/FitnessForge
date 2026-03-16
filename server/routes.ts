@@ -710,7 +710,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             category: e.category,
             targetValue: medianValue,
             targetSets: medianSets,
-            medianValueCap: medianValue,
+            medianValueCap: Math.ceil(medianValue * Math.max(1, targetMultiplier)),
             medianSetsCap: medianSets,
             perSessionBaseline,
             weeklyContrib,
