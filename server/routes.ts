@@ -754,33 +754,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
         for (const k of best.muscleKeySet) coveredMuscles.add(k);
       }
 
-      // --- Volume calibration: scale targetValue so projected ≈ targetBaseline ---
       const targetBaseline = Math.round(rollingWeightedAvg * targetMultiplier);
-      const projectedWeighted = exercisesInPlan.reduce((s, e) => {
-        const raw = e.sessionsPerWeek * e.perSessionBaseline;
-        const ex = exerciseCatMapGen.get(e.id);
-        const splitRatio = (ex as Record<string, unknown>)?.splitRatio as number ?? 0;
-        const splitCat = (ex as Record<string, unknown>)?.splitCategory as string | null ?? null;
-        const primaryCat = e.category;
-        const catWeight = (cat: string | null) => {
-          if (cat === '力量') return genSW;
-          if (cat === '有氧') return genCW;
-          if (cat === '活动量') return genAW;
-          return genSW;
-        };
-        return s + raw * (1 - splitRatio) * catWeight(primaryCat) + raw * splitRatio * catWeight(splitCat);
-      }, 0);
-      if (projectedWeighted > 0 && targetBaseline > 0) {
-        const scale = targetBaseline / projectedWeighted;
-        if (Math.abs(scale - 1) > 0.05) {
-          for (const e of exercisesInPlan) {
-            const scaled = Math.max(1, Math.round(e.targetValue * scale));
-            e.targetValue = Math.min(scaled, e.medianValueCap);
+
+      const calibrateVolume = (exercises: typeof exercisesInPlan) => {
+        const projectedWeighted = exercises.reduce((s, e) => {
+          const raw = e.sessionsPerWeek * e.perSessionBaseline;
+          const ex = exerciseCatMapGen.get(e.id);
+          const splitRatio = (ex as Record<string, unknown>)?.splitRatio as number ?? 0;
+          const splitCat = (ex as Record<string, unknown>)?.splitCategory as string | null ?? null;
+          const primaryCat = e.category;
+          const catWeight = (cat: string | null) => {
+            if (cat === '力量') return genSW;
+            if (cat === '有氧') return genCW;
+            if (cat === '活动量') return genAW;
+            return genSW;
+          };
+          return s + raw * (1 - splitRatio) * catWeight(primaryCat) + raw * splitRatio * catWeight(splitCat);
+        }, 0);
+        if (projectedWeighted > 0 && targetBaseline > 0) {
+          const scale = targetBaseline / projectedWeighted;
+          if (Math.abs(scale - 1) > 0.05) {
+            for (const e of exercises) {
+              const scaled = Math.max(1, Math.round(e.targetValue * scale));
+              e.targetValue = Math.min(scaled, e.medianValueCap);
+            }
           }
         }
-      }
+      };
 
-      const totalSessions = exercisesInPlan.reduce((s, e) => s + e.sessionsPerWeek, 0);
+      calibrateVolume(exercisesInPlan);
 
       // --- Parse user custom request via OpenAI (if provided) ---
       let aiDayPreference: number[] | null = null;
@@ -830,15 +832,14 @@ If the user wants rest days on certain days, put those in excludedDays. If they 
         }
       }
 
-      // Apply AI exclusions
       if (aiExcludedExerciseNames.length > 0) {
         const excSet = new Set(aiExcludedExerciseNames.map(n => n.toLowerCase()));
-        const removed: typeof exercisesInPlan = [];
         for (let i = exercisesInPlan.length - 1; i >= 0; i--) {
           if (excSet.has(exercisesInPlan[i].name.toLowerCase())) {
-            removed.push(...exercisesInPlan.splice(i, 1));
+            exercisesInPlan.splice(i, 1);
           }
         }
+        calibrateVolume(exercisesInPlan);
       }
 
       // --- Select training days ---
