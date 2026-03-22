@@ -7,7 +7,12 @@ import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { Plus, Home } from "lucide-react";
+import { changelog } from "@/data/changelog";
+import { useState } from "react";
 import Dashboard from "@/pages/dashboard";
 import Exercises from "@/pages/exercises";
 import Entries from "@/pages/entries";
@@ -33,6 +38,9 @@ function Router() {
 }
 
 export default function App() {
+  const [showChangelog, setShowChangelog] = useState(false);
+  const latestVersion = changelog[0]?.version ?? "";
+
   const style = {
     "--sidebar-width": "16rem",
     "--sidebar-width-icon": "3rem",
@@ -53,6 +61,15 @@ export default function App() {
                       <Home className="h-4 w-4" />
                     </Link>
                   </Button>
+                  <button
+                    onClick={() => setShowChangelog(true)}
+                    data-testid="button-version-badge"
+                    className="focus:outline-none"
+                  >
+                    <Badge variant="outline" className="font-mono text-xs cursor-pointer no-default-active-elevate">
+                      {latestVersion}
+                    </Badge>
+                  </button>
                 </div>
                 <div className="flex items-center gap-2">
                   <Button size="icon" variant="default" data-testid="button-quick-add" asChild>
@@ -70,6 +87,41 @@ export default function App() {
           </div>
         </SidebarProvider>
         <Toaster />
+
+        <Dialog open={showChangelog} onOpenChange={setShowChangelog}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>版本歷程</DialogTitle>
+            </DialogHeader>
+            <ScrollArea className="max-h-[60vh] pr-3">
+              <div className="space-y-5 py-1">
+                {changelog.map((entry, idx) => (
+                  <div key={entry.version} className="relative pl-4">
+                    <div className="absolute left-0 top-1.5 h-2 w-2 rounded-full bg-primary" />
+                    {idx < changelog.length - 1 && (
+                      <div className="absolute left-[3px] top-3.5 bottom-[-14px] w-px bg-border" />
+                    )}
+                    <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+                      <Badge variant="secondary" className="font-mono text-xs" data-testid={`badge-version-${entry.version}`}>
+                        {entry.version}
+                      </Badge>
+                      <span className="text-xs text-muted-foreground tabular-nums">{entry.date}</span>
+                      <span className="text-sm font-medium">{entry.title}</span>
+                    </div>
+                    <ul className="space-y-0.5">
+                      {entry.items.map((item, i) => (
+                        <li key={i} className="text-xs text-muted-foreground flex items-start gap-1.5">
+                          <span className="mt-1 h-1 w-1 rounded-full bg-muted-foreground/50 flex-shrink-0" />
+                          {item}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ))}
+              </div>
+            </ScrollArea>
+          </DialogContent>
+        </Dialog>
       </TooltipProvider>
     </QueryClientProvider>
   );
