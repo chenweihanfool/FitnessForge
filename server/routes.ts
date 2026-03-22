@@ -970,11 +970,19 @@ Match exercise names exactly to the available exercises list. Return ONLY valid 
         weightFactor?: number;
       }
 
+      const getCatWeightGen = (cat: string | null) =>
+        cat === '力量' ? genSW : cat === '有氧' ? genCW : cat === '活动量' ? genAW : genSW;
+
       const allSlots: PlanSlot[] = exercisesInPlan.flatMap(e => {
         // Scale perSessionBaseline by how much targetValue was scaled from median
         const scaleFactor = e.medianValueCap > 0 ? e.targetValue / e.medianValueCap : 1;
-        const targetItemBaseline = Math.round(e.perSessionBaseline * scaleFactor);
         const exObj = exerciseCatMapGen.get(e.id);
+        const splitRatio = (exObj as Record<string, unknown>)?.splitRatio as number ?? 0;
+        const splitCat = (exObj as Record<string, unknown>)?.splitCategory as string | null ?? null;
+        // Weight targetItemBaseline by category so per-exercise values sum to ~targetBaseline
+        const effectiveWeight = getCatWeightGen(e.category) * (1 - splitRatio)
+          + (splitRatio > 0 && splitCat ? getCatWeightGen(splitCat) * splitRatio : 0);
+        const targetItemBaseline = Math.round(e.perSessionBaseline * scaleFactor * effectiveWeight);
         const wf = (exObj as Record<string, unknown>)?.weightFactor as number ?? 0;
         return Array.from({ length: e.sessionsPerWeek }, () => ({
           exerciseId: e.id,
@@ -1191,7 +1199,14 @@ Match exercise names exactly to the available exercises list. Return ONLY valid 
           const matched = occurrenceMatch.get(`${ex.exerciseId}__${dayIndex}`);
           const volume = matched?.volume ?? 0;
           const setsActual = matched?.sets ?? 0;
-          const actualBaselineValue = Math.round((matched?.baselineValue ?? 0) * 10) / 10;
+          // Apply category weight so per-exercise values are consistent with the weighted header total
+          const exObj2 = exerciseMap.get(ex.exerciseId);
+          const getCatWeightProg = (cat: string | null) => cat === '力量' ? sW : cat === '有氧' ? cW : cat === '活动量' ? aW : sW;
+          const exSplitRatio = (exObj2 as Record<string, unknown>)?.splitRatio as number ?? 0;
+          const exSplitCat = (exObj2 as Record<string, unknown>)?.splitCategory as string | null ?? null;
+          const exEffWeight = getCatWeightProg(exObj2?.category ?? null) * (1 - exSplitRatio)
+            + (exSplitRatio > 0 && exSplitCat ? getCatWeightProg(exSplitCat) * exSplitRatio : 0);
+          const actualBaselineValue = Math.round((matched?.baselineValue ?? 0) * exEffWeight * 10) / 10;
           const targetItemBaseline = (ex as Record<string, unknown>).targetItemBaseline as number ?? 0;
 
           let status: 'met' | 'partial' | 'not_met';
