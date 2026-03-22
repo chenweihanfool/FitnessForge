@@ -8,18 +8,18 @@ export interface ChangelogEntry {
 export const changelog: ChangelogEntry[] = [
   {
     version: "v1.6",
-    date: "2025-03-22",
+    date: "2026-03-22",
     title: "AI 課表全面升級",
     items: [
       "課表進度顯示力量動作重量（如 80kg × 5下 × 2組）",
       "進度條右側改為基準分數對比（實際/目標）",
       "課表全部達標後顯示恭賀橫幅與重新生成按鈕",
-      "版本歷程卡片顯示於首頁",
+      "頂部標題列顯示版本號，點擊展開歷程對話框",
     ],
   },
   {
     version: "v1.5",
-    date: "2025-03-10",
+    date: "2026-03-10",
     title: "AI 課表排課系統",
     items: [
       "AI 生成個人化每週訓練計畫（恢復周 / 正常周）",
@@ -31,7 +31,7 @@ export const changelog: ChangelogEntry[] = [
   },
   {
     version: "v1.4",
-    date: "2025-02-20",
+    date: "2026-02-20",
     title: "里程碑系統與肌群可視化",
     items: [
       "五階段里程碑系統：參與、紀律、容量、強度、突破",
@@ -42,7 +42,7 @@ export const changelog: ChangelogEntry[] = [
   },
   {
     version: "v1.3",
-    date: "2025-02-01",
+    date: "2026-02-01",
     title: "排名系統與趨勢圖升級",
     items: [
       "四維度統合排名（總分、力量、有氧、活動量）",
@@ -53,7 +53,7 @@ export const changelog: ChangelogEntry[] = [
   },
   {
     version: "v1.2",
-    date: "2025-01-15",
+    date: "2025-12-15",
     title: "混合類別與計分公式",
     items: [
       "支援混合類別動作（splitCategory / splitRatio）",
@@ -64,7 +64,7 @@ export const changelog: ChangelogEntry[] = [
   },
   {
     version: "v1.1",
-    date: "2025-01-01",
+    date: "2025-11-20",
     title: "基礎功能完善",
     items: [
       "自訂動作管理（單位、重量係數、類別、肌群比例）",
@@ -76,7 +76,7 @@ export const changelog: ChangelogEntry[] = [
   },
   {
     version: "v1.0",
-    date: "2024-12-15",
+    date: "2025-10-01",
     title: "初始發布",
     items: [
       "健身紀錄 CRUD（UTC+8 台北時間）",
