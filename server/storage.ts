@@ -1481,22 +1481,18 @@ export class MemStorage implements IStorage {
       const rank = sortedByTotal.findIndex(w => w.weekStart === week.weekStart && w.weekEnd === week.weekEnd) + 1;
       const percentile = (rank / allWeeklyStats.length) * 100;
 
-      // 计算星星数量（5个里程碑）
+      // 计算星星数量（5个里程碑阶段，对应仪表板里程碑）
+      // 1.参与: 有训练记录  2.紀律: 进前70%  3.容量: 总分超平均
+      // 4.强度: 三项均超各自平均  5.突破: 进前10%
       let stars = 0;
-      const inTop70 = percentile <= 70;
-      const inTop10 = percentile <= 10;
-      const totalAbove = week.totalBaselineValue >= avgTotal;
+      if (week.totalBaselineValue > 0) stars++;                                          // 参与
+      if (percentile <= 70) stars++;                                                      // 纪律
+      if (week.totalBaselineValue >= avgTotal) stars++;                                   // 容量
       const strengthAbove = week.strengthValue >= avgStrength && avgStrength > 0;
       const cardioAbove = week.cardioValue >= avgCardio && avgCardio > 0;
       const activityAbove = week.activityValue >= avgActivity && avgActivity > 0;
-      const threeAbove = strengthAbove && cardioAbove && activityAbove;
-
-      if (inTop70) stars++;
-      if (totalAbove) stars++;
-      if (threeAbove) stars++;
-      // 全项超越需要查看每个运动的表现，简化为三项达标+总分达标
-      if (threeAbove && totalAbove) stars++;
-      if (inTop10) stars++;
+      if (strengthAbove && cardioAbove && activityAbove) stars++;                         // 强度
+      if (percentile <= 10) stars++;                                                      // 突破
 
       return {
         weekStart: week.weekStart,
@@ -3111,21 +3107,16 @@ export class DbStorage implements IStorage {
       const rank = sortedByTotal.findIndex(w => w.weekStart === week.weekStart && w.weekEnd === week.weekEnd) + 1;
       const percentile = (rank / allWeeklyStats.length) * 100;
 
-      // 计算星星数量（5个里程碑）
+      // 计算星星数量（5个里程碑阶段，对应仪表板里程碑）
       let stars = 0;
-      const inTop70 = percentile <= 70;
-      const inTop10 = percentile <= 10;
-      const totalAbove = week.totalBaselineValue >= avgTotal;
+      if (week.totalBaselineValue > 0) stars++;
+      if (percentile <= 70) stars++;
+      if (week.totalBaselineValue >= avgTotal) stars++;
       const strengthAbove = week.strengthValue >= avgStrength && avgStrength > 0;
       const cardioAbove = week.cardioValue >= avgCardio && avgCardio > 0;
       const activityAbove = week.activityValue >= avgActivity && avgActivity > 0;
-      const threeAbove = strengthAbove && cardioAbove && activityAbove;
-
-      if (inTop70) stars++;
-      if (totalAbove) stars++;
-      if (threeAbove) stars++;
-      if (threeAbove && totalAbove) stars++;
-      if (inTop10) stars++;
+      if (strengthAbove && cardioAbove && activityAbove) stars++;
+      if (percentile <= 10) stars++;
 
       return {
         weekStart: week.weekStart,
