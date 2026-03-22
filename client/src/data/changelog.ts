@@ -7,6 +7,16 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: "v1.7",
+    date: "2026-03-22",
+    title: "星星評分修正",
+    items: [
+      "修正生涯頁面星星計算邏輯（移除雙重計分缺陷）",
+      "五星標準現對應五個里程碑：參與、紀律、容量、強度、突破",
+      "紀律以前70%排名為代理指標，突破維持前10%門檻",
+    ],
+  },
+  {
     version: "v1.6",
     date: "2026-03-22",
     title: "AI 課表全面升級",
