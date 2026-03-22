@@ -972,8 +972,20 @@ export default function Dashboard() {
                     </div>
                     <div className="grid gap-1.5 pl-2">
                       {day.exercises.map((ex, idx) => {
-                        const targetTotal = ex.targetValue * ex.targetSets;
-                        const progress = targetTotal > 0 ? Math.min(100, (ex.actualValue / targetTotal) * 100) : 0;
+                        const hasBaseline = (ex.targetItemBaseline ?? 0) > 0;
+                        const progress = hasBaseline
+                          ? Math.min(100, ((ex.actualBaselineValue ?? 0) / ex.targetItemBaseline!) * 100)
+                          : (() => {
+                              const targetTotal = ex.targetValue * ex.targetSets;
+                              return targetTotal > 0 ? Math.min(100, (ex.actualValue / targetTotal) * 100) : 0;
+                            })();
+
+                        const specLabel = (ex.exerciseName === '跑步' || ex.exerciseName === '跑步機負重')
+                          ? `${ex.targetValue}分鐘 + ${ex.targetSets}km`
+                          : ex.weightFactor
+                            ? `${ex.weightFactor}kg × ${ex.targetValue}${ex.unit} × ${ex.targetSets}組`
+                            : `${ex.targetValue}${ex.unit} × ${ex.targetSets}組`;
+
                         return (
                           <div
                             key={`${day.day}-${ex.exerciseId}-${idx}`}
@@ -994,9 +1006,7 @@ export default function Dashboard() {
                                 {ex.exerciseName}
                               </span>
                               <span className="text-xs text-muted-foreground flex-shrink-0">
-                                {(ex.exerciseName === '跑步' || ex.exerciseName === '跑步機負重')
-                                  ? `${ex.targetValue}分鐘 + ${ex.targetSets}km`
-                                  : `${ex.targetValue}${ex.unit} x${ex.targetSets}`}
+                                {specLabel}
                               </span>
                               <div className="flex-1 min-w-12 h-1.5 bg-muted rounded-full overflow-hidden">
                                 <div
@@ -1004,11 +1014,17 @@ export default function Dashboard() {
                                   style={{ width: `${progress}%` }}
                                 />
                               </div>
-                              {ex.actualValue > 0 && (
-                                <span className="text-xs text-muted-foreground flex-shrink-0">
+                              {hasBaseline ? (
+                                <span className="text-xs text-muted-foreground flex-shrink-0 tabular-nums">
+                                  {(ex.actualBaselineValue ?? 0) > 0
+                                    ? `${(ex.actualBaselineValue ?? 0).toFixed(0)}/${ex.targetItemBaseline!.toFixed(0)}`
+                                    : ex.targetItemBaseline!.toFixed(0)}
+                                </span>
+                              ) : ex.actualValue > 0 ? (
+                                <span className="text-xs text-muted-foreground flex-shrink-0 tabular-nums">
                                   {ex.actualValue.toFixed(0)}
                                 </span>
-                              )}
+                              ) : null}
                             </div>
                             {(ex.reason || ex.historyRef) && (
                               <div className="pl-6 text-[11px] text-muted-foreground/70 leading-tight" data-testid={`plan-exercise-reason-${day.day}-${idx}`}>

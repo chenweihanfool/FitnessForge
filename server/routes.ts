@@ -695,9 +695,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const musclesStr = muscleHits.map(m => `${m.label}${m.pct}%`).join('/');
           const muscleKeySet = new Set(muscleHits.map(m => m.key));
 
+          const weightFactor = (e as Record<string, unknown>).weightFactor as number ?? 1;
           const historyRef = (e.name === '跑步' || e.name === '跑步機負重')
             ? `${medianValue}分鐘 + ${medianSets}km`
-            : `${medianValue}${e.unit} x${medianSets}組`;
+            : (e.category === '力量' && weightFactor > 1)
+              ? `${weightFactor}kg × ${medianValue}${e.unit} × ${medianSets}組`
+              : `${medianValue}${e.unit} × ${medianSets}組`;
 
           const weeksWithData = weeklyVals.length;
           const avgPerWeek = weeksWithData > 0 ? (weeksWithData / ROLLING_WEEKS * sessionsPerWeek).toFixed(1) : '0';
@@ -963,10 +966,17 @@ Match exercise names exactly to the available exercises list. Return ONLY valid 
         weeklyContrib: number;
         reason: string;
         historyRef: string;
+        targetItemBaseline: number;
+        weightFactor?: number;
       }
 
-      const allSlots: PlanSlot[] = exercisesInPlan.flatMap(e =>
-        Array.from({ length: e.sessionsPerWeek }, () => ({
+      const allSlots: PlanSlot[] = exercisesInPlan.flatMap(e => {
+        // Scale perSessionBaseline by how much targetValue was scaled from median
+        const scaleFactor = e.medianValueCap > 0 ? e.targetValue / e.medianValueCap : 1;
+        const targetItemBaseline = Math.round(e.perSessionBaseline * scaleFactor);
+        const exObj = exerciseCatMapGen.get(e.id);
+        const wf = (exObj as Record<string, unknown>)?.weightFactor as number ?? 0;
+        return Array.from({ length: e.sessionsPerWeek }, () => ({
           exerciseId: e.id,
           exerciseName: e.name,
           targetValue: e.targetValue,
@@ -976,8 +986,10 @@ Match exercise names exactly to the available exercises list. Return ONLY valid 
           weeklyContrib: e.weeklyContrib,
           reason: e.reason,
           historyRef: e.historyRef,
-        }))
-      );
+          targetItemBaseline,
+          weightFactor: wf > 1 ? wf : undefined,
+        }));
+      });
 
       // Sort slots by priority tier, then shuffle within each tier for variety
       const contribBuckets = new Map<number, PlanSlot[]>();
@@ -1179,6 +1191,8 @@ Match exercise names exactly to the available exercises list. Return ONLY valid 
           const matched = occurrenceMatch.get(`${ex.exerciseId}__${dayIndex}`);
           const volume = matched?.volume ?? 0;
           const setsActual = matched?.sets ?? 0;
+          const actualBaselineValue = Math.round((matched?.baselineValue ?? 0) * 10) / 10;
+          const targetItemBaseline = (ex as Record<string, unknown>).targetItemBaseline as number ?? 0;
 
           let status: 'met' | 'partial' | 'not_met';
           if (volume >= itemTarget) {
@@ -1194,6 +1208,8 @@ Match exercise names exactly to the available exercises list. Return ONLY valid 
             ...ex,
             actualValue: Math.round(volume * 10) / 10,
             actualSets: setsActual,
+            actualBaselineValue,
+            targetItemBaseline,
             status,
           };
         }),

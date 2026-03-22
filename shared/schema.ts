@@ -194,8 +194,11 @@ export type PlanProgress = {
       weeklyContrib?: number;
       reason?: string;
       historyRef?: string;
+      targetItemBaseline?: number;
+      weightFactor?: number;
       actualValue: number;
       actualSets: number;
+      actualBaselineValue?: number;
       status: PlanItemStatus;
     }>;
   }>;
