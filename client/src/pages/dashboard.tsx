@@ -31,6 +31,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { changelog } from "@/data/changelog";
 
 type WeekDetails = {
   weekStart: string;
@@ -1689,6 +1690,43 @@ export default function Dashboard() {
           </div>
         </CollapsibleContent>
       </Collapsible>
+
+      {/* 版本歷程 */}
+      <Card data-testid="card-changelog">
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center gap-2">
+            <ClipboardList className="h-5 w-5" />
+            版本歷程
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-5">
+            {changelog.map((entry, idx) => (
+              <div key={entry.version} className="relative pl-4">
+                <div className="absolute left-0 top-1.5 h-2 w-2 rounded-full bg-primary" />
+                {idx < changelog.length - 1 && (
+                  <div className="absolute left-[3px] top-3.5 bottom-[-14px] w-px bg-border" />
+                )}
+                <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+                  <Badge variant="secondary" className="font-mono text-xs" data-testid={`badge-version-${entry.version}`}>
+                    {entry.version}
+                  </Badge>
+                  <span className="text-xs text-muted-foreground tabular-nums">{entry.date}</span>
+                  <span className="text-sm font-medium">{entry.title}</span>
+                </div>
+                <ul className="space-y-0.5">
+                  {entry.items.map((item, i) => (
+                    <li key={i} className="text-xs text-muted-foreground flex items-start gap-1.5">
+                      <span className="mt-1 h-1 w-1 rounded-full bg-muted-foreground/50 flex-shrink-0" />
+                      {item}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
 
       <Dialog open={showStepsDialog} onOpenChange={setShowStepsDialog}>
         <DialogContent className="sm:max-w-[360px]">
