@@ -1458,62 +1458,89 @@ export class MemStorage implements IStorage {
 
   async getCareerOverview() {
     const allWeeklyStats = await this.getAllWeeklyStats();
-    
-    if (allWeeklyStats.length === 0) {
-      return { weeks: [], totalStars: 0, averageStars: 0 };
+    if (allWeeklyStats.length === 0) return { weeks: [], totalStars: 0, averageStars: 0 };
+
+    const avgTotal = allWeeklyStats.reduce((sum, w) => sum + w.totalBaselineValue, 0) / allWeeklyStats.length;
+
+    // 肌群配置映射
+    const MUSCLE_NAMES = ['胸', '背', '腿', '肩', '二头肌', '核心', '臀', '三头肌'];
+    const MUSCLE_EX_KEYS: Record<string, string> = { '胸': 'muscleChest', '背': 'muscleBack', '腿': 'muscleLegs', '肩': 'muscleShoulders', '二头肌': 'muscleArms', '核心': 'muscleCore', '臀': 'muscleGlutes', '三头肌': 'muscleFullBody' };
+    const MUSCLE_STAT_KEYS: Record<string, string> = { '胸': 'chestValue', '背': 'backValue', '腿': 'legsValue', '肩': 'shouldersValue', '二头肌': 'armsValue', '核心': 'coreValue', '臀': 'glutesValue', '三头肌': 'fullBodyValue' };
+
+    // 计算各肌群全期平均训练量
+    const muscleStatRecords = Array.from(this.weeklyMuscleStatsStore.values());
+    const muscleAvgVol: Record<string, number> = {};
+    if (muscleStatRecords.length > 0) {
+      for (const name of MUSCLE_NAMES) {
+        muscleAvgVol[name] = muscleStatRecords.reduce((s, r) => s + (((r as any)[MUSCLE_STAT_KEYS[name]]) || 0), 0) / muscleStatRecords.length;
+      }
     }
 
-    // 计算各项平均值
-    const avgTotal = allWeeklyStats.reduce((sum, w) => sum + w.totalBaselineValue, 0) / allWeeklyStats.length;
-    const avgStrength = allWeeklyStats.reduce((sum, w) => sum + w.strengthValue, 0) / allWeeklyStats.length;
-    const avgCardio = allWeeklyStats.reduce((sum, w) => sum + w.cardioValue, 0) / allWeeklyStats.length;
-    const avgActivity = allWeeklyStats.reduce((sum, w) => sum + w.activityValue, 0) / allWeeklyStats.length;
+    // 单次遍历所有记录，按周汇总训练天数与肌群组数
+    const weekDataMap = new Map<string, { daySet: Set<string>; mSetMap: Record<string, number> }>();
+    for (const entry of this.workoutEntries.values()) {
+      const ex = this.exercises.get(entry.exerciseId);
+      if (!ex || ex.name === '每周平均步数') continue;
+      const entryDate = new Date(entry.date);
+      const wsKey = this.getWeekStart(entryDate).toISOString();
+      if (!weekDataMap.has(wsKey)) weekDataMap.set(wsKey, { daySet: new Set(), mSetMap: {} });
+      const wd = weekDataMap.get(wsKey)!;
+      const taipeiDate = new Date(entryDate.getTime() + this.TAIPEI_OFFSET);
+      wd.daySet.add(`${taipeiDate.getUTCFullYear()}-${taipeiDate.getUTCMonth()}-${taipeiDate.getUTCDate()}`);
+      const entrySetCount = entry.sets || 1;
+      for (const [mName, exKey] of Object.entries(MUSCLE_EX_KEYS)) {
+        const pct = ((ex as any)[exKey] as number) || 0;
+        if (pct > 0) wd.mSetMap[mName] = (wd.mSetMap[mName] || 0) + entrySetCount * (pct / 100);
+      }
+    }
 
-    // 按总分排序计算百分比
+    const sortedByTime = [...allWeeklyStats].sort((a, b) => new Date(a.weekStart).getTime() - new Date(b.weekStart).getTime());
     const sortedByTotal = [...allWeeklyStats].sort((a, b) => b.totalBaselineValue - a.totalBaselineValue);
 
     const weeks = allWeeklyStats.map((week) => {
-      const weekStart = new Date(week.weekStart);
-      const year = this.getISOYear(weekStart);
-      const weekNumber = this.getWeekNumber(weekStart);
-
-      // 计算百分位排名
-      const rank = sortedByTotal.findIndex(w => w.weekStart === week.weekStart && w.weekEnd === week.weekEnd) + 1;
+      const weekStartDate = new Date(week.weekStart);
+      const year = this.getISOYear(weekStartDate);
+      const weekNumber = this.getWeekNumber(weekStartDate);
+      const wd = weekDataMap.get(week.weekStart) || { daySet: new Set<string>(), mSetMap: {} };
+      const trainingDays = wd.daySet.size;
+      const rank = sortedByTotal.findIndex(w => w.weekStart === week.weekStart) + 1;
       const percentile = (rank / allWeeklyStats.length) * 100;
 
-      // 计算星星数量（5个里程碑阶段，对应仪表板里程碑）
-      // 1.参与: 有训练记录  2.紀律: 进前70%  3.容量: 总分超平均
-      // 4.强度: 三项均超各自平均  5.突破: 进前10%
-      let stars = 0;
-      if (week.totalBaselineValue > 0) stars++;                                          // 参与
-      if (percentile <= 70) stars++;                                                      // 纪律
-      if (week.totalBaselineValue >= avgTotal) stars++;                                   // 容量
-      const strengthAbove = week.strengthValue >= avgStrength && avgStrength > 0;
-      const cardioAbove = week.cardioValue >= avgCardio && avgCardio > 0;
-      const activityAbove = week.activityValue >= avgActivity && avgActivity > 0;
-      if (strengthAbove && cardioAbove && activityAbove) stars++;                         // 强度
-      if (percentile <= 10) stars++;                                                      // 突破
+      // 里程碑1：参与（有训练记录）
+      const hasEntry = trainingDays >= 1;
+      // 里程碑2：纪律（训练天数 ≥ 3）
+      const hasDiscipline = trainingDays >= 3;
+      // 里程碑3：容量（总基准值超过生涯均值）
+      const totalAbove = week.totalBaselineValue >= avgTotal && avgTotal > 0;
+      // 里程碑4：强度（≥50% 已训练肌群达到 组数≥4 AND 训练量≥均值）
+      const weekDateKey = this.formatTaipeiDate(weekStartDate);
+      const wms = this.weeklyMuscleStatsStore.get(weekDateKey);
+      const trainedMuscles = MUSCLE_NAMES.filter(n => (wd.mSetMap[n] || 0) > 0);
+      let musclesMetCount = 0;
+      for (const n of trainedMuscles) {
+        const setsOk = (wd.mSetMap[n] || 0) >= 4;
+        const weekVol = wms ? ((wms as any)[MUSCLE_STAT_KEYS[n]] || 0) : 0;
+        const avgVol = muscleAvgVol[n] || 0;
+        if (setsOk && (avgVol === 0 || weekVol >= avgVol)) musclesMetCount++;
+      }
+      const allMusclesAtMaintenance = trainedMuscles.length > 0 && musclesMetCount / trainedMuscles.length >= 0.5;
+      // 里程碑5：突破（前10% OR 近4周新高）
+      const inTop10 = percentile <= 10;
+      const weekIndex = sortedByTime.findIndex(w => w.weekStart === week.weekStart);
+      const prev4 = sortedByTime.slice(Math.max(0, weekIndex - 4), weekIndex);
+      const maxPrev = prev4.length > 0 ? Math.max(...prev4.map(w => w.totalBaselineValue)) : 0;
+      const breakthrough = inTop10 || (week.totalBaselineValue > 0 && (prev4.length === 0 || week.totalBaselineValue > maxPrev));
 
-      return {
-        weekStart: week.weekStart,
-        weekEnd: week.weekEnd,
-        year,
-        weekNumber,
-        totalScore: week.totalBaselineValue,
-        strengthScore: week.strengthValue,
-        cardioScore: week.cardioValue,
-        activityScore: week.activityValue,
-        stars,
-        percentile,
-      };
+      // 顺序计算（必须完成第N级才能计入第N+1级）
+      let stars = 0;
+      if (hasEntry) { stars++; if (hasDiscipline) { stars++; if (totalAbove) { stars++; if (allMusclesAtMaintenance) { stars++; if (breakthrough) stars++; } } } }
+
+      return { weekStart: week.weekStart, weekEnd: week.weekEnd, year, weekNumber, totalScore: week.totalBaselineValue, strengthScore: week.strengthValue, cardioScore: week.cardioValue, activityScore: week.activityValue, stars, percentile };
     });
 
-    // 按时间倒序排列（最新的在前）
     weeks.sort((a, b) => new Date(b.weekStart).getTime() - new Date(a.weekStart).getTime());
-
     const totalStars = weeks.reduce((sum, w) => sum + w.stars, 0);
     const averageStars = weeks.length > 0 ? totalStars / weeks.length : 0;
-
     return { weeks, totalStars, averageStars };
   }
 
@@ -3084,52 +3111,104 @@ export class DbStorage implements IStorage {
 
   async getCareerOverview() {
     const allWeeklyStats = await this.getAllWeeklyStats();
-    
-    if (allWeeklyStats.length === 0) {
-      return { weeks: [], totalStars: 0, averageStars: 0 };
+    if (allWeeklyStats.length === 0) return { weeks: [], totalStars: 0, averageStars: 0, yearlyStats: [] };
+
+    const avgTotal = allWeeklyStats.reduce((sum, w) => sum + w.totalBaselineValue, 0) / allWeeklyStats.length;
+
+    // 肌群配置映射
+    const MUSCLE_NAMES = ['胸', '背', '腿', '肩', '二头肌', '核心', '臀', '三头肌'];
+    const MUSCLE_EX_KEYS: Record<string, string> = { '胸': 'muscleChest', '背': 'muscleBack', '腿': 'muscleLegs', '肩': 'muscleShoulders', '二头肌': 'muscleArms', '核心': 'muscleCore', '臀': 'muscleGlutes', '三头肌': 'muscleFullBody' };
+    const MUSCLE_STAT_KEYS: Record<string, string> = { '胸': 'chestValue', '背': 'backValue', '腿': 'legsValue', '肩': 'shouldersValue', '二头肌': 'armsValue', '核心': 'coreValue', '臀': 'glutesValue', '三头肌': 'fullBodyValue' };
+
+    // 查询所有肌群周统计记录，计算各肌群全期均值
+    const allMuscleStats = await this.db.select().from(weeklyMuscleStats);
+    const muscleAvgVol: Record<string, number> = {};
+    if (allMuscleStats.length > 0) {
+      for (const name of MUSCLE_NAMES) {
+        muscleAvgVol[name] = allMuscleStats.reduce((s, r) => s + (((r as any)[MUSCLE_STAT_KEYS[name]]) || 0), 0) / allMuscleStats.length;
+      }
+    }
+    // 建立肌群统计索引（key = Taipei日期字符串，如 "2026-03-15"）
+    const muscleStatsByKey = new Map<string, typeof allMuscleStats[0]>();
+    for (const r of allMuscleStats) muscleStatsByKey.set(r.weekStart, r);
+
+    // 查询所有记录（含运动类型），按周汇总训练天数与肌群组数
+    const allEntriesWithEx = await this.db
+      .select({
+        date: workoutEntries.date,
+        sets: workoutEntries.sets,
+        exerciseName: exercises.name,
+        muscleChest: exercises.muscleChest,
+        muscleBack: exercises.muscleBack,
+        muscleLegs: exercises.muscleLegs,
+        muscleShoulders: exercises.muscleShoulders,
+        muscleArms: exercises.muscleArms,
+        muscleCore: exercises.muscleCore,
+        muscleGlutes: exercises.muscleGlutes,
+        muscleFullBody: exercises.muscleFullBody,
+      })
+      .from(workoutEntries)
+      .innerJoin(exercises, eq(workoutEntries.exerciseId, exercises.id));
+
+    const weekDataMap = new Map<string, { daySet: Set<string>; mSetMap: Record<string, number> }>();
+    const TAIPEI_OFFSET = 8 * 60 * 60 * 1000;
+    for (const entry of allEntriesWithEx) {
+      if (entry.exerciseName === '每周平均步数') continue;
+      const entryDate = new Date(entry.date);
+      const wsKey = this.getWeekStart(entryDate).toISOString();
+      if (!weekDataMap.has(wsKey)) weekDataMap.set(wsKey, { daySet: new Set(), mSetMap: {} });
+      const wd = weekDataMap.get(wsKey)!;
+      const taipeiDate = new Date(entryDate.getTime() + TAIPEI_OFFSET);
+      wd.daySet.add(`${taipeiDate.getUTCFullYear()}-${taipeiDate.getUTCMonth()}-${taipeiDate.getUTCDate()}`);
+      const entrySetCount = entry.sets || 1;
+      for (const [mName, exKey] of Object.entries(MUSCLE_EX_KEYS)) {
+        const pct = ((entry as any)[exKey] as number) || 0;
+        if (pct > 0) wd.mSetMap[mName] = (wd.mSetMap[mName] || 0) + entrySetCount * (pct / 100);
+      }
     }
 
-    // 计算各项平均值
-    const avgTotal = allWeeklyStats.reduce((sum, w) => sum + w.totalBaselineValue, 0) / allWeeklyStats.length;
-    const avgStrength = allWeeklyStats.reduce((sum, w) => sum + w.strengthValue, 0) / allWeeklyStats.length;
-    const avgCardio = allWeeklyStats.reduce((sum, w) => sum + w.cardioValue, 0) / allWeeklyStats.length;
-    const avgActivity = allWeeklyStats.reduce((sum, w) => sum + w.activityValue, 0) / allWeeklyStats.length;
-
-    // 按总分排序计算百分比
+    const sortedByTime = [...allWeeklyStats].sort((a, b) => new Date(a.weekStart).getTime() - new Date(b.weekStart).getTime());
     const sortedByTotal = [...allWeeklyStats].sort((a, b) => b.totalBaselineValue - a.totalBaselineValue);
 
     const weeks = allWeeklyStats.map((week) => {
-      const weekStart = new Date(week.weekStart);
-      const year = this.getISOYear(weekStart);
-      const weekNumber = this.getWeekNumber(weekStart);
-
-      // 计算百分位排名
-      const rank = sortedByTotal.findIndex(w => w.weekStart === week.weekStart && w.weekEnd === week.weekEnd) + 1;
+      const weekStartDate = new Date(week.weekStart);
+      const year = this.getISOYear(weekStartDate);
+      const weekNumber = this.getWeekNumber(weekStartDate);
+      const wd = weekDataMap.get(week.weekStart) || { daySet: new Set<string>(), mSetMap: {} };
+      const trainingDays = wd.daySet.size;
+      const rank = sortedByTotal.findIndex(w => w.weekStart === week.weekStart) + 1;
       const percentile = (rank / allWeeklyStats.length) * 100;
 
-      // 计算星星数量（5个里程碑阶段，对应仪表板里程碑）
-      let stars = 0;
-      if (week.totalBaselineValue > 0) stars++;
-      if (percentile <= 70) stars++;
-      if (week.totalBaselineValue >= avgTotal) stars++;
-      const strengthAbove = week.strengthValue >= avgStrength && avgStrength > 0;
-      const cardioAbove = week.cardioValue >= avgCardio && avgCardio > 0;
-      const activityAbove = week.activityValue >= avgActivity && avgActivity > 0;
-      if (strengthAbove && cardioAbove && activityAbove) stars++;
-      if (percentile <= 10) stars++;
+      // 里程碑1：参与（有训练记录）
+      const hasEntry = trainingDays >= 1;
+      // 里程碑2：纪律（训练天数 ≥ 3）
+      const hasDiscipline = trainingDays >= 3;
+      // 里程碑3：容量（总基准值超过生涯均值）
+      const totalAbove = week.totalBaselineValue >= avgTotal && avgTotal > 0;
+      // 里程碑4：强度（≥50% 已训练肌群达到 组数≥4 AND 训练量≥均值）
+      const weekDateKey = this.formatTaipeiDate(weekStartDate);
+      const wms = muscleStatsByKey.get(weekDateKey);
+      const trainedMuscles = MUSCLE_NAMES.filter(n => (wd.mSetMap[n] || 0) > 0);
+      let musclesMetCount = 0;
+      for (const n of trainedMuscles) {
+        const setsOk = (wd.mSetMap[n] || 0) >= 4;
+        const weekVol = wms ? ((wms as any)[MUSCLE_STAT_KEYS[n]] || 0) : 0;
+        const avgVol = muscleAvgVol[n] || 0;
+        if (setsOk && (avgVol === 0 || weekVol >= avgVol)) musclesMetCount++;
+      }
+      const allMusclesAtMaintenance = trainedMuscles.length > 0 && musclesMetCount / trainedMuscles.length >= 0.5;
+      // 里程碑5：突破（前10% OR 近4周新高）
+      const inTop10 = percentile <= 10;
+      const weekIndex = sortedByTime.findIndex(w => w.weekStart === week.weekStart);
+      const prev4 = sortedByTime.slice(Math.max(0, weekIndex - 4), weekIndex);
+      const maxPrev = prev4.length > 0 ? Math.max(...prev4.map(w => w.totalBaselineValue)) : 0;
+      const breakthrough = inTop10 || (week.totalBaselineValue > 0 && (prev4.length === 0 || week.totalBaselineValue > maxPrev));
 
-      return {
-        weekStart: week.weekStart,
-        weekEnd: week.weekEnd,
-        year,
-        weekNumber,
-        totalScore: week.totalBaselineValue,
-        strengthScore: week.strengthValue,
-        cardioScore: week.cardioValue,
-        activityScore: week.activityValue,
-        stars,
-        percentile,
-      };
+      // 顺序计算（必须完成第N级才能计入第N+1级）
+      let stars = 0;
+      if (hasEntry) { stars++; if (hasDiscipline) { stars++; if (totalAbove) { stars++; if (allMusclesAtMaintenance) { stars++; if (breakthrough) stars++; } } } }
+
+      return { weekStart: week.weekStart, weekEnd: week.weekEnd, year, weekNumber, totalScore: week.totalBaselineValue, strengthScore: week.strengthValue, cardioScore: week.cardioValue, activityScore: week.activityValue, stars, percentile };
     });
 
     // 按时间倒序排列（最新的在前）

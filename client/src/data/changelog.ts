@@ -7,6 +7,18 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: "v1.8",
+    date: "2026-03-22",
+    title: "里程碑星星精準對齊",
+    items: [
+      "生涯頁面星星計算完全對齊儀表板里程碑定義",
+      "參與：本週有訓練紀錄；紀律：訓練天數 ≥ 3",
+      "容量：總基準值超過生涯均值",
+      "強度：≥50% 已訓練肌群達成組數 ≥ 4 且量 ≥ 歷史均值",
+      "突破：前10% 排名或近4週最高成績（五個階段循序解鎖）",
+    ],
+  },
+  {
     version: "v1.7",
     date: "2026-03-22",
     title: "星星評分修正",
