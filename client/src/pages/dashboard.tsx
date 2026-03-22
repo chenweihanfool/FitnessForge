@@ -5,7 +5,7 @@ import { useLocation } from "wouter";
 import { RankingMetricCard } from "@/components/ranking-metric-card";
 import { RankingDetailDialog } from "@/components/ranking-detail-dialog";
 import { ScaleProgressBar } from "@/components/scale-progress-bar";
-import { Activity, TrendingUp, Award, X, TrendingDown, Dumbbell, Heart, Footprints, Plus, Check, Minus, Star, Pencil, ClipboardList, RefreshCw, Loader2, ChevronDown, ChevronRight } from "lucide-react";
+import { Activity, TrendingUp, Award, X, TrendingDown, Dumbbell, Heart, Footprints, Plus, Check, Minus, Star, Pencil, ClipboardList, RefreshCw, Loader2, ChevronDown, ChevronRight, Trophy } from "lucide-react";
 import { RankingData, WeeklyStats, RankingDetailResponse, Exercise, PlanProgress, PlanItemStatus } from "@shared/schema";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -958,6 +958,32 @@ export default function Dashboard() {
                       style={{ width: `${Math.min(100, planProgress.baselinePercentage)}%` }}
                     />
                   </div>
+                </div>
+              )}
+
+              {planProgress.completionPercentage >= 100 && (
+                <div className="flex items-center justify-between gap-3 p-3 rounded-md bg-green-500/10 border border-green-500/20" data-testid="plan-completion-banner">
+                  <div className="flex items-center gap-2">
+                    <Trophy className="h-4 w-4 text-green-600 dark:text-green-400 flex-shrink-0" />
+                    <div>
+                      <p className="text-sm font-medium text-green-700 dark:text-green-300">本週課表全部達標！</p>
+                      <p className="text-xs text-green-600/80 dark:text-green-400/80">出色的完成度，要繼續挑戰嗎？</p>
+                    </div>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => generatePlanMutation.mutate(selectedPlanMode)}
+                    disabled={generatePlanMutation.isPending}
+                    data-testid="button-regenerate-plan-complete"
+                  >
+                    {generatePlanMutation.isPending ? (
+                      <Loader2 className="h-4 w-4 animate-spin mr-1.5" />
+                    ) : (
+                      <RefreshCw className="h-4 w-4 mr-1.5" />
+                    )}
+                    重新生成
+                  </Button>
                 </div>
               )}
 
