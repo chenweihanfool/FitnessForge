@@ -7,6 +7,17 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: "v1.9",
+    date: "2026-03-22",
+    title: "課表基準分數顯示一致性",
+    items: [
+      "修正每項運動右側分數與頭部總分不一致的問題",
+      "右側實際分與目標分現均為加權後數值（力量×50%、有氧×30%、活動量×20%）",
+      "各項目加總現與頭部顯示的加權總分相符",
+      "重新生成課表後目標分也同步更新為加權格式",
+    ],
+  },
+  {
     version: "v1.8",
     date: "2026-03-22",
     title: "里程碑星星精準對齊",
