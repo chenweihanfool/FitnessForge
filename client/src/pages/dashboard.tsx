@@ -185,6 +185,7 @@ export default function Dashboard() {
   const [rankingDetailMetric, setRankingDetailMetric] = useState<'total' | 'strength' | 'cardio' | 'activity' | null>(null);
   const [selectedDayDate, setSelectedDayDate] = useState<string | null>(null);
   const [selectedDayName, setSelectedDayName] = useState<string>("");
+  const [showMuscleDetail, setShowMuscleDetail] = useState(false);
   
   const handleAddEntry = (exerciseId: string) => {
     setLocation(`/entries?addExercise=${exerciseId}`);
@@ -699,11 +700,21 @@ export default function Dashboard() {
           return { name, pct, baseline: 100 };
         });
         return (
-          <Card data-testid="card-muscle-radar">
+          <Card
+            data-testid="card-muscle-radar"
+            className="cursor-pointer hover-elevate active-elevate-2"
+            onClick={() => setShowMuscleDetail(v => !v)}
+          >
             <CardHeader className="pb-2">
-              <CardTitle className="flex items-center gap-2 text-base">
-                <RadarIcon className="h-5 w-5" />
-                本周肌群均衡度
+              <CardTitle className="flex items-center justify-between gap-2 text-base">
+                <span className="flex items-center gap-2">
+                  <RadarIcon className="h-5 w-5" />
+                  本周肌群均衡度
+                </span>
+                {showMuscleDetail
+                  ? <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                  : <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                }
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -756,6 +767,139 @@ export default function Dashboard() {
           </Card>
         );
       })()}
+
+      {/* 本周肌群训练详情 - 点击雷达图展开 */}
+      {showMuscleDetail && !muscleGroupLoading && (
+        <Card data-testid="card-muscle-group-stats">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Dumbbell className="h-5 w-5" />
+              本周肌群训练
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              {(() => {
+                const ALL_MUSCLES = ['胸', '背', '腿', '肩', '二头肌', '核心', '臀', '三头肌'];
+
+                const weekMap = new Map(
+                  (muscleGroupStats?.muscleGroups || []).map(g => [g.muscleGroup, g])
+                );
+
+                const getSetStatus = (sets: number) => {
+                  if (sets === 0) return { color: 'bg-muted-foreground/20', textColor: 'text-muted-foreground', label: '未訓練' };
+                  if (sets < 4) return { color: 'bg-red-500', textColor: 'text-red-600 dark:text-red-400', label: '低于维持量' };
+                  if (sets <= 8) return { color: 'bg-yellow-500', textColor: 'text-yellow-600 dark:text-yellow-400', label: '维持中' };
+                  if (sets <= 15) return { color: 'bg-green-500', textColor: 'text-green-600 dark:text-green-400', label: '最佳区间' };
+                  if (sets <= 20) return { color: 'bg-green-500', textColor: 'text-green-600 dark:text-green-400', label: '高强度' };
+                  return { color: 'bg-purple-500', textColor: 'text-purple-600 dark:text-purple-400', label: '超量警示' };
+                };
+
+                const getCombinedStatus = (sets: number, setsOk: boolean, volumeOk: boolean, hasHistory: boolean) => {
+                  if (sets === 0) return { label: '--', badgeClass: 'bg-muted text-muted-foreground', tintClass: '' };
+                  if (!hasHistory) return { label: '--', badgeClass: 'bg-muted text-muted-foreground', tintClass: '' };
+                  if (setsOk && volumeOk) return { label: '全達標', badgeClass: 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400', tintClass: 'bg-green-50 dark:bg-green-950/20 border border-green-200/50 dark:border-green-800/30' };
+                  if (!setsOk && volumeOk) return { label: '缺組數', badgeClass: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400', tintClass: 'bg-amber-50/50 dark:bg-amber-950/10 border border-amber-200/40 dark:border-amber-800/20' };
+                  if (setsOk && !volumeOk) return { label: '缺容量', badgeClass: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400', tintClass: 'bg-amber-50/50 dark:bg-amber-950/10 border border-amber-200/40 dark:border-amber-800/20' };
+                  return { label: '未達標', badgeClass: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400', tintClass: 'bg-red-50/50 dark:bg-red-950/10 border border-red-200/40 dark:border-red-800/20' };
+                };
+
+                const getSortPriority = (name: string) => {
+                  const g = weekMap.get(name);
+                  const sets = g?.totalSets || 0;
+                  const vol = g?.totalVolume || 0;
+                  const vd = muscleVolumeMap[name];
+                  const avg = vd?.avg || 0;
+                  const hasHist = avg > 0;
+                  if (sets === 0) return hasHist ? 2 : 4;
+                  const sok = sets >= 4;
+                  const vok = hasHist && vol >= avg;
+                  if (!sok && !vok) return 0;
+                  if (!sok || !vok) return 1;
+                  return 3;
+                };
+                const sortedMuscles = [...ALL_MUSCLES].sort((a, b) => getSortPriority(a) - getSortPriority(b));
+
+                return sortedMuscles.map((muscleName) => {
+                  const group = weekMap.get(muscleName);
+                  const totalSets = group?.totalSets || 0;
+                  const totalVolume = group?.totalVolume || 0;
+                  const status = getSetStatus(totalSets);
+                  const maxSets = 20;
+                  const volData = muscleVolumeMap[muscleName];
+                  const volAvg = volData?.avg || 0;
+                  const hasVolHistory = volAvg > 0;
+                  const setsOk = totalSets >= 4;
+                  const volumeOk = hasVolHistory && totalVolume >= volAvg;
+
+                  const combined = getCombinedStatus(totalSets, setsOk, volumeOk, hasVolHistory);
+
+                  const volDiffPercent = hasVolHistory && volAvg > 0 && totalSets > 0
+                    ? Math.round(((totalVolume - volAvg) / volAvg) * 100)
+                    : 0;
+
+                  return (
+                    <div
+                      key={muscleName}
+                      className={`space-y-2 p-3 rounded-lg ${combined.tintClass || 'bg-muted/50'}`}
+                      data-testid={`muscle-group-stat-${muscleName}`}
+                    >
+                      <div className="flex justify-between items-center gap-1">
+                        <span className="text-sm font-medium">{muscleName}</span>
+                        <Badge
+                          variant="secondary"
+                          className={`text-[10px] px-1.5 py-0 h-5 no-default-hover-elevate no-default-active-elevate ${combined.badgeClass}`}
+                          data-testid={`combined-status-${muscleName}`}
+                        >
+                          {combined.label}
+                        </Badge>
+                      </div>
+                      <div className="flex justify-between items-center gap-2">
+                        <span className="text-xs text-muted-foreground" data-testid={`sets-${muscleName}`}>
+                          {totalSets} 组
+                        </span>
+                        <span className="text-sm font-bold" data-testid={`volume-${muscleName}`}>
+                          {totalVolume.toFixed(1)}
+                        </span>
+                      </div>
+                      <div className="pt-4">
+                        <ScaleProgressBar
+                          currentValue={totalSets}
+                          maxValue={Math.max(totalSets, maxSets)}
+                          markers={[
+                            { value: 4, label: '维', colorClass: 'bg-yellow-500', textColorClass: 'text-yellow-600 dark:text-yellow-400' },
+                            { value: 15, label: '优', colorClass: 'bg-chart-3', textColorClass: 'text-chart-3' }
+                          ]}
+                          barColorClass={status.color}
+                          height="h-2"
+                          showLabels={false}
+                        />
+                      </div>
+                      <div className="flex justify-between items-center gap-1">
+                        <span className={`text-xs ${status.textColor}`} data-testid={`status-${muscleName}`}>
+                          {status.label}
+                        </span>
+                        {hasVolHistory && totalSets > 0 ? (
+                          <span
+                            className={`text-xs ${volDiffPercent >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}
+                            data-testid={`volume-status-${muscleName}`}
+                          >
+                            容量 {totalVolume.toFixed(0)} / 均 {volAvg.toFixed(0)} ({volDiffPercent >= 0 ? '+' : ''}{volDiffPercent}%)
+                          </span>
+                        ) : (
+                          <span className="text-xs text-muted-foreground" data-testid={`volume-status-${muscleName}`}>
+                            {hasVolHistory ? `均 ${volAvg.toFixed(0)}` : '--'}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                });
+              })()}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {stepsLoaded && stepsExerciseId && (
         <Card data-testid="card-steps-quick-update">
@@ -1479,140 +1623,6 @@ export default function Dashboard() {
                     </div>
                   );
                 })}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* 本周肌群训练量 - 始终显示所有8个肌群 */}
-      {!muscleGroupLoading && (
-        <Card data-testid="card-muscle-group-stats">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Dumbbell className="h-5 w-5" />
-              本周肌群训练
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              {(() => {
-                const ALL_MUSCLES = ['胸', '背', '腿', '肩', '二头肌', '核心', '臀', '三头肌'];
-
-                const weekMap = new Map(
-                  (muscleGroupStats?.muscleGroups || []).map(g => [g.muscleGroup, g])
-                );
-
-                const getSetStatus = (sets: number) => {
-                  if (sets === 0) return { color: 'bg-muted-foreground/20', textColor: 'text-muted-foreground', label: '未訓練' };
-                  if (sets < 4) return { color: 'bg-red-500', textColor: 'text-red-600 dark:text-red-400', label: '低于维持量' };
-                  if (sets <= 8) return { color: 'bg-yellow-500', textColor: 'text-yellow-600 dark:text-yellow-400', label: '维持中' };
-                  if (sets <= 15) return { color: 'bg-green-500', textColor: 'text-green-600 dark:text-green-400', label: '最佳区间' };
-                  if (sets <= 20) return { color: 'bg-green-500', textColor: 'text-green-600 dark:text-green-400', label: '高强度' };
-                  return { color: 'bg-purple-500', textColor: 'text-purple-600 dark:text-purple-400', label: '超量警示' };
-                };
-
-                const getCombinedStatus = (sets: number, setsOk: boolean, volumeOk: boolean, hasHistory: boolean) => {
-                  if (sets === 0) return { label: '--', badgeClass: 'bg-muted text-muted-foreground', tintClass: '' };
-                  if (!hasHistory) return { label: '--', badgeClass: 'bg-muted text-muted-foreground', tintClass: '' };
-                  if (setsOk && volumeOk) return { label: '全達標', badgeClass: 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400', tintClass: 'bg-green-50 dark:bg-green-950/20 border border-green-200/50 dark:border-green-800/30' };
-                  if (!setsOk && volumeOk) return { label: '缺組數', badgeClass: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400', tintClass: 'bg-amber-50/50 dark:bg-amber-950/10 border border-amber-200/40 dark:border-amber-800/20' };
-                  if (setsOk && !volumeOk) return { label: '缺容量', badgeClass: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400', tintClass: 'bg-amber-50/50 dark:bg-amber-950/10 border border-amber-200/40 dark:border-amber-800/20' };
-                  return { label: '未達標', badgeClass: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400', tintClass: 'bg-red-50/50 dark:bg-red-950/10 border border-red-200/40 dark:border-red-800/20' };
-                };
-
-                // Sort: 未達標 → 缺組數/缺容量 → 未訓練(有歷史) → 全達標 → 未訓練(無歷史)
-                const getSortPriority = (name: string) => {
-                  const g = weekMap.get(name);
-                  const sets = g?.totalSets || 0;
-                  const vol = g?.totalVolume || 0;
-                  const vd = muscleVolumeMap[name];
-                  const avg = vd?.avg || 0;
-                  const hasHist = avg > 0;
-                  if (sets === 0) return hasHist ? 2 : 4;
-                  const sok = sets >= 4;
-                  const vok = hasHist && vol >= avg;
-                  if (!sok && !vok) return 0;     // 未達標
-                  if (!sok || !vok) return 1;     // 缺組數 / 缺容量
-                  return 3;                        // 全達標
-                };
-                const sortedMuscles = [...ALL_MUSCLES].sort((a, b) => getSortPriority(a) - getSortPriority(b));
-
-                return sortedMuscles.map((muscleName) => {
-                  const group = weekMap.get(muscleName);
-                  const totalSets = group?.totalSets || 0;
-                  const totalVolume = group?.totalVolume || 0;
-                  const status = getSetStatus(totalSets);
-                  const maxSets = 20;
-                  const volData = muscleVolumeMap[muscleName];
-                  const volAvg = volData?.avg || 0;
-                  const hasVolHistory = volAvg > 0;
-                  const setsOk = totalSets >= 4;
-                  const volumeOk = hasVolHistory && totalVolume >= volAvg;
-
-                  const combined = getCombinedStatus(totalSets, setsOk, volumeOk, hasVolHistory);
-
-                  const volDiffPercent = hasVolHistory && volAvg > 0 && totalSets > 0
-                    ? Math.round(((totalVolume - volAvg) / volAvg) * 100)
-                    : 0;
-
-                  return (
-                    <div
-                      key={muscleName}
-                      className={`space-y-2 p-3 rounded-lg ${combined.tintClass || 'bg-muted/50'}`}
-                      data-testid={`muscle-group-stat-${muscleName}`}
-                    >
-                      <div className="flex justify-between items-center gap-1">
-                        <span className="text-sm font-medium">{muscleName}</span>
-                        <Badge
-                          variant="secondary"
-                          className={`text-[10px] px-1.5 py-0 h-5 no-default-hover-elevate no-default-active-elevate ${combined.badgeClass}`}
-                          data-testid={`combined-status-${muscleName}`}
-                        >
-                          {combined.label}
-                        </Badge>
-                      </div>
-                      <div className="flex justify-between items-center gap-2">
-                        <span className="text-xs text-muted-foreground" data-testid={`sets-${muscleName}`}>
-                          {totalSets} 组
-                        </span>
-                        <span className="text-sm font-bold" data-testid={`volume-${muscleName}`}>
-                          {totalVolume.toFixed(1)}
-                        </span>
-                      </div>
-                      <div className="pt-4">
-                        <ScaleProgressBar
-                          currentValue={totalSets}
-                          maxValue={Math.max(totalSets, maxSets)}
-                          markers={[
-                            { value: 4, label: '维', colorClass: 'bg-yellow-500', textColorClass: 'text-yellow-600 dark:text-yellow-400' },
-                            { value: 15, label: '优', colorClass: 'bg-chart-3', textColorClass: 'text-chart-3' }
-                          ]}
-                          barColorClass={status.color}
-                          height="h-2"
-                          showLabels={false}
-                        />
-                      </div>
-                      <div className="flex justify-between items-center gap-1">
-                        <span className={`text-xs ${status.textColor}`} data-testid={`status-${muscleName}`}>
-                          {status.label}
-                        </span>
-                        {hasVolHistory && totalSets > 0 ? (
-                          <span
-                            className={`text-xs ${volDiffPercent >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}
-                            data-testid={`volume-status-${muscleName}`}
-                          >
-                            容量 {totalVolume.toFixed(0)} / 均 {volAvg.toFixed(0)} ({volDiffPercent >= 0 ? '+' : ''}{volDiffPercent}%)
-                          </span>
-                        ) : (
-                          <span className="text-xs text-muted-foreground" data-testid={`volume-status-${muscleName}`}>
-                            {hasVolHistory ? `均 ${volAvg.toFixed(0)}` : '--'}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  );
-                });
-              })()}
             </div>
           </CardContent>
         </Card>
