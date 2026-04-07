@@ -5,7 +5,8 @@ import { useLocation } from "wouter";
 import { RankingMetricCard } from "@/components/ranking-metric-card";
 import { RankingDetailDialog } from "@/components/ranking-detail-dialog";
 import { ScaleProgressBar } from "@/components/scale-progress-bar";
-import { Activity, TrendingUp, Award, X, TrendingDown, Dumbbell, Heart, Footprints, Plus, Check, Minus, Star, Pencil, ClipboardList, RefreshCw, Loader2, ChevronDown, ChevronRight, Trophy } from "lucide-react";
+import { Activity, TrendingUp, Award, X, TrendingDown, Dumbbell, Heart, Footprints, Plus, Check, Minus, Star, Pencil, ClipboardList, RefreshCw, Loader2, ChevronDown, ChevronRight, Trophy, Radar as RadarIcon } from "lucide-react";
+import { RadarChart, Radar, PolarGrid, PolarAngleAxis, ResponsiveContainer } from "recharts";
 import { RankingData, WeeklyStats, RankingDetailResponse, Exercise, PlanProgress, PlanItemStatus } from "@shared/schema";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -686,6 +687,68 @@ export default function Dashboard() {
         </Card>
       )}
 
+      {/* 本周肌群均衡度 雷達圖 */}
+      {(() => {
+        const muscleNames = ['胸', '背', '腿', '肩', '二头肌', '核心', '臀', '三头肌'];
+        const hasAnyAvg = muscleNames.some(name => (muscleVolumeMap[name]?.avg ?? 0) > 0);
+        if (!hasAnyAvg) return null;
+        const radarData = muscleNames.map(name => {
+          const avg = muscleVolumeMap[name]?.avg ?? 0;
+          const current = muscleGroupStats?.muscleGroups.find(g => g.muscleGroup === name)?.totalVolume ?? 0;
+          const pct = avg > 0 ? Math.min(Math.round((current / avg) * 100), 160) : 0;
+          return { name, pct, baseline: 100 };
+        });
+        return (
+          <Card data-testid="card-muscle-radar">
+            <CardHeader className="pb-2">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <RadarIcon className="h-5 w-5" />
+                本周肌群均衡度
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ResponsiveContainer width="100%" height={260}>
+                <RadarChart data={radarData} outerRadius="75%">
+                  <PolarGrid stroke="hsl(var(--muted-foreground) / 0.25)" />
+                  <PolarAngleAxis
+                    dataKey="name"
+                    tick={{ fontSize: 12, fill: 'hsl(var(--foreground) / 0.75)' }}
+                  />
+                  <Radar
+                    name="維持量"
+                    dataKey="baseline"
+                    stroke="#d4a900"
+                    strokeDasharray="4 3"
+                    strokeWidth={1.5}
+                    fill="transparent"
+                    dot={false}
+                  />
+                  <Radar
+                    name="本周"
+                    dataKey="pct"
+                    stroke="hsl(var(--primary))"
+                    strokeWidth={2}
+                    fill="hsl(var(--primary))"
+                    fillOpacity={0.25}
+                    dot={false}
+                  />
+                </RadarChart>
+              </ResponsiveContainer>
+              <div className="flex items-center justify-center gap-4 text-xs text-muted-foreground -mt-2">
+                <span className="flex items-center gap-1.5">
+                  <span className="inline-block w-5 border-t-2 border-dashed border-yellow-600" />
+                  維持量（均值）
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <span className="inline-block w-5 border-t-2 border-primary" />
+                  本周實際
+                </span>
+              </div>
+            </CardContent>
+          </Card>
+        );
+      })()}
+
       {stepsLoaded && stepsExerciseId && (
         <Card data-testid="card-steps-quick-update">
           <CardContent className="flex items-center justify-between gap-4 py-3 px-4">
@@ -1015,8 +1078,9 @@ export default function Dashboard() {
                         return (
                           <div
                             key={`${day.day}-${ex.exerciseId}-${idx}`}
-                            className="space-y-0.5"
+                            className={`space-y-0.5 rounded-md p-1 -m-1 ${ex.status !== 'met' ? 'cursor-pointer hover-elevate' : ''}`}
                             data-testid={`plan-exercise-${day.day}-${idx}`}
+                            onClick={ex.status !== 'met' ? () => handleAddEntry(ex.exerciseId) : undefined}
                           >
                             <div className="flex items-center gap-2 text-sm">
                               <div className="w-4 h-4 flex items-center justify-center flex-shrink-0">
