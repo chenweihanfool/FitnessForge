@@ -6,7 +6,7 @@ import { RankingMetricCard } from "@/components/ranking-metric-card";
 import { RankingDetailDialog } from "@/components/ranking-detail-dialog";
 import { ScaleProgressBar } from "@/components/scale-progress-bar";
 import { Activity, TrendingUp, Award, X, TrendingDown, Dumbbell, Heart, Footprints, Plus, Check, Minus, Star, Pencil, ClipboardList, RefreshCw, Loader2, ChevronDown, ChevronRight, Trophy, Radar as RadarIcon } from "lucide-react";
-import { RadarChart, Radar, PolarGrid, PolarAngleAxis, ResponsiveContainer } from "recharts";
+import { RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer } from "recharts";
 import { RankingData, WeeklyStats, RankingDetailResponse, Exercise, PlanProgress, PlanItemStatus } from "@shared/schema";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -695,7 +695,7 @@ export default function Dashboard() {
         const radarData = muscleNames.map(name => {
           const avg = muscleVolumeMap[name]?.avg ?? 0;
           const current = muscleGroupStats?.muscleGroups.find(g => g.muscleGroup === name)?.totalVolume ?? 0;
-          const pct = avg > 0 ? Math.min(Math.round((current / avg) * 100), 160) : 0;
+          const pct = avg > 0 ? Math.min(Math.round((current / avg) * 100), 150) : 0;
           return { name, pct, baseline: 100 };
         });
         return (
@@ -708,11 +708,19 @@ export default function Dashboard() {
             </CardHeader>
             <CardContent>
               <ResponsiveContainer width="100%" height={260}>
-                <RadarChart data={radarData} outerRadius="75%">
+                <RadarChart data={radarData} outerRadius="68%">
                   <PolarGrid stroke="hsl(var(--muted-foreground) / 0.25)" />
                   <PolarAngleAxis
                     dataKey="name"
                     tick={{ fontSize: 12, fill: 'hsl(var(--foreground) / 0.75)' }}
+                  />
+                  <PolarRadiusAxis
+                    domain={[0, 150]}
+                    ticks={[0, 50, 100, 150]}
+                    tickFormatter={(v: number) => v === 100 ? '維持' : `${v}%`}
+                    tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
+                    axisLine={false}
+                    angle={90}
                   />
                   <Radar
                     name="維持量"
