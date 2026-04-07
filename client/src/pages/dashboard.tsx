@@ -718,8 +718,8 @@ export default function Dashboard() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <ResponsiveContainer width="100%" height={260}>
-                <RadarChart data={radarData} outerRadius="68%">
+              <ResponsiveContainer width="100%" height={380}>
+                <RadarChart data={radarData} outerRadius="78%">
                   <PolarGrid stroke="hsl(var(--muted-foreground) / 0.25)" />
                   <PolarAngleAxis
                     dataKey="name"
