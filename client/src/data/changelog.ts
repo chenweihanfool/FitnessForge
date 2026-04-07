@@ -7,6 +7,17 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: "v2.0",
+    date: "2026-04-07",
+    title: "肌群雷達圖與課表互動升級",
+    items: [
+      "新增「本周肌群均衡度」八維雷達圖（金色虛線為均值維持量，填色面積為本週實際）",
+      "雷達圖點擊可展開肌群訓練詳情卡，預設收起保持版面整潔",
+      "課表未完成項目點擊直接跳轉新增記錄並預填該動作",
+      "肌群詳情卡移至綜合摘要正下方，資訊層級更清晰",
+    ],
+  },
+  {
     version: "v1.9",
     date: "2026-03-22",
     title: "課表基準分數顯示一致性",
