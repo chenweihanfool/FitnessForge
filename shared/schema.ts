@@ -1,4 +1,4 @@
-import { pgTable, text, varchar, real, timestamp, boolean } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, real, timestamp, boolean, json } from "drizzle-orm/pg-core";
 import { z } from "zod";
 import { sql } from "drizzle-orm";
 
@@ -266,3 +266,10 @@ export type RankingDetailResponse = {
   surrounding: RankingSnapshot[];
   careerAverage: number; // 生涯平均值（基于所有历史周数据）
 };
+
+// Session 表 — 由 connect-pg-simple 管理，需在 schema 中宣告以免被 Drizzle 誤刪
+export const sessionTable = pgTable("session", {
+  sid: varchar("sid").primaryKey(),
+  sess: json("sess").notNull(),
+  expire: timestamp("expire", { precision: 6 }).notNull(),
+});
