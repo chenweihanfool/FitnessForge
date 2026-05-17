@@ -829,32 +829,63 @@ export default function Dashboard() {
                 </div>
 
                 {/* AI-style recommendations */}
-                {recommendations.length > 0 && (
-                  <div className="mt-4 rounded-lg border bg-muted/30 p-3 space-y-2">
-                    <p className="text-xs font-semibold flex items-center gap-1.5">
-                      <Lightbulb className="h-3.5 w-3.5 text-yellow-500" />
-                      系統建議：最需加強的肌群
-                    </p>
-                    <div className="space-y-1.5">
-                      {recommendations.map((r, i) => {
-                        const priority = ['🔴', '🟠', '🟡'][i] ?? '•';
-                        const deficit = 100 - r.pct;
-                        const reason = r.volumePct !== null
-                          ? `複合分 ${r.pct}%（組數 ${r.setsPct}% / 容量 ${r.volumePct}%），不足 ${deficit}%`
-                          : `組數分 ${r.setsPct}%（本週 ${r.sets} 組 / 維持需 ${SETS_MAINTENANCE} 組）`;
-                        return (
-                          <div key={r.name} className="flex items-start gap-2 text-xs">
-                            <span className="mt-0.5">{priority}</span>
-                            <div>
-                              <span className="font-semibold">{r.name}</span>
-                              <span className="text-muted-foreground ml-1.5">{reason}</span>
+                {recommendations.length > 0 && (() => {
+                  // Map Chinese muscle group names → exercise muscle field keys
+                  const muscleFieldMap: Record<string, keyof Exercise> = {
+                    '胸': 'muscleChest', '背': 'muscleBack', '腿': 'muscleLegs',
+                    '肩': 'muscleShoulders', '二头肌': 'muscleArms', '三头肌': 'muscleArms',
+                    '核心': 'muscleCore', '臀': 'muscleGlutes',
+                  };
+                  return (
+                    <div className="mt-4 rounded-lg border bg-muted/30 p-3 space-y-2">
+                      <p className="text-xs font-semibold flex items-center gap-1.5">
+                        <Lightbulb className="h-3.5 w-3.5 text-yellow-500" />
+                        系統建議：最需加強的肌群
+                      </p>
+                      <div className="space-y-2.5">
+                        {recommendations.map((r, i) => {
+                          const priority = ['🔴', '🟠', '🟡'][i] ?? '•';
+                          const deficit = 100 - r.pct;
+                          const reason = r.volumePct !== null
+                            ? `複合分 ${r.pct}%（組數 ${r.setsPct}% / 容量 ${r.volumePct}%），不足 ${deficit}%`
+                            : `組數分 ${r.setsPct}%（本週 ${r.sets} 組 / 維持需 ${SETS_MAINTENANCE} 組）`;
+                          const field = muscleFieldMap[r.name];
+                          const suggestedExercises = field
+                            ? (exercises ?? [])
+                                .filter(e => ((e[field] as number) ?? 0) >= 20)
+                                .sort((a, b) => ((b[field] as number) ?? 0) - ((a[field] as number) ?? 0))
+                                .slice(0, 4)
+                            : [];
+                          return (
+                            <div key={r.name} className="flex items-start gap-2 text-xs">
+                              <span className="mt-0.5">{priority}</span>
+                              <div className="flex-1 min-w-0">
+                                <div>
+                                  <span className="font-semibold">{r.name}</span>
+                                  <span className="text-muted-foreground ml-1.5">{reason}</span>
+                                </div>
+                                {suggestedExercises.length > 0 && (
+                                  <div className="flex flex-wrap gap-1 mt-1.5">
+                                    {suggestedExercises.map(ex => (
+                                      <button
+                                        key={ex.id}
+                                        onClick={() => handleAddEntry(ex.id)}
+                                        className="inline-flex items-center gap-1 rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary hover:bg-primary/20 transition-colors"
+                                      >
+                                        <Plus className="h-2.5 w-2.5" />
+                                        {ex.name}
+                                      </button>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
                             </div>
-                          </div>
-                        );
-                      })}
+                          );
+                        })}
+                      </div>
                     </div>
-                  </div>
-                )}
+                  );
+                })()}
 
                 {recommendations.length === 0 && radarData.every(d => d.pct >= 80) && (
                   <div className="mt-4 rounded-lg border bg-green-50 dark:bg-green-950/20 border-green-200 dark:border-green-800/30 p-3">

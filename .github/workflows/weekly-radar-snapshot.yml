@@ -1,0 +1,35 @@
+name: Weekly Radar Snapshot
+
+on:
+  schedule:
+    # 每週日 UTC 14:00 = 台灣時間 22:00
+    - cron: '0 14 * * 0'
+  # 允許手動觸發（測試用）
+  workflow_dispatch:
+
+jobs:
+  snapshot:
+    name: Save weekly radar snapshot
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Call auto-snapshot API
+        run: |
+          echo "📡 Triggering radar snapshot at $(date -u '+%Y-%m-%d %H:%M:%S') UTC"
+
+          HTTP_STATUS=$(curl -s -o /tmp/response.json -w "%{http_code}" \
+            --max-time 60 \
+            -X POST https://fitnessforge.replit.app/api/stats/radar-snapshot/auto \
+            -H "Content-Type: application/json" \
+            -H "x-snapshot-secret: ${{ secrets.SNAPSHOT_SECRET }}")
+
+          echo "HTTP Status: $HTTP_STATUS"
+          echo "Response: $(cat /tmp/response.json)"
+
+          if [ "$HTTP_STATUS" = "200" ]; then
+            echo "✅ Radar snapshot saved successfully"
+          else
+            echo "❌ Snapshot failed (HTTP $HTTP_STATUS)"
+            exit 1
+          fi

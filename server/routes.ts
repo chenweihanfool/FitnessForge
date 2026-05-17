@@ -77,6 +77,66 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Auto-snapshot endpoint — called by GitHub Actions, protected by SNAPSHOT_SECRET header
+  app.post("/api/stats/radar-snapshot/auto", async (req, res) => {
+    const secret = process.env.SNAPSHOT_SECRET;
+    if (!secret || req.headers["x-snapshot-secret"] !== secret) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+    try {
+      const SETS_MAINTENANCE = 4;
+      const MUSCLE_NAMES = ['胸', '背', '腿', '肩', '二头肌', '核心', '臀', '三头肌'] as const;
+      const AVG_FIELD: Record<string, string> = {
+        '胸': 'chestAvg', '背': 'backAvg', '腿': 'legsAvg', '肩': 'shouldersAvg',
+        '二头肌': 'armsAvg', '核心': 'coreAvg', '臀': 'glutesAvg', '三头肌': 'armsAvg',
+      };
+
+      const [weeklyStats, averages] = await Promise.all([
+        storage.getMuscleGroupWeeklyStats(),
+        storage.getMuscleGroupAverages(),
+      ]);
+
+      if (!weeklyStats?.weekStart) {
+        return res.status(200).json({ skipped: true, reason: "no data for current week" });
+      }
+
+      const scores: Record<string, number> = {};
+      const weakMuscles: string[] = [];
+
+      for (const name of MUSCLE_NAMES) {
+        const g = weeklyStats.muscleGroups.find(m => m.muscleGroup === name);
+        const sets = g?.totalSets ?? 0;
+        const volume = g?.totalVolume ?? 0;
+        const avgKey = AVG_FIELD[name];
+        const avgVolume = avgKey ? ((averages as any)?.[avgKey] ?? 0) : 0;
+
+        const setsPct = Math.min(Math.round((sets / SETS_MAINTENANCE) * 100), 150);
+        const volumePct = avgVolume > 0 ? Math.min(Math.round((volume / avgVolume) * 100), 150) : null;
+        const composite = volumePct !== null
+          ? Math.round(0.4 * setsPct + 0.6 * volumePct)
+          : setsPct;
+
+        scores[name] = composite;
+        if (avgVolume > 0 && composite < 80) weakMuscles.push(name);
+      }
+
+      const weakSorted = weakMuscles
+        .sort((a, b) => scores[a] - scores[b])
+        .slice(0, 3);
+
+      const snap = await storage.upsertRadarSnapshot(
+        weeklyStats.weekStart,
+        JSON.stringify(scores),
+        JSON.stringify(weakSorted),
+      );
+      console.log(`[auto-snapshot] 已儲存 ${weeklyStats.weekStart} 雷達圖快照`);
+      res.json({ success: true, weekStart: snap.weekStart, scores, recommendations: weakSorted });
+    } catch (err) {
+      console.error("[auto-snapshot] error:", err);
+      res.status(500).json({ error: "Failed to compute or save snapshot" });
+    }
+  });
+
   // ==================== 运动类型 API ====================
   
   // 获取所有运动类型
