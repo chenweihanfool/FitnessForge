@@ -1,4 +1,4 @@
-import { pgTable, text, varchar, real, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, real, timestamp, boolean } from "drizzle-orm/pg-core";
 import { z } from "zod";
 import { sql } from "drizzle-orm";
 
@@ -209,6 +209,45 @@ export type PlanProgress = {
   actualBaseline: number;
   baselinePercentage: number;
 };
+
+// ==================== 用戶認證表 ====================
+
+export const users = pgTable("users", {
+  replitUserId: varchar("replit_user_id").primaryKey(),
+  username: text("username").notNull(),
+  role: text("role").notNull().default("user"), // 'admin' | 'user'
+  profileImage: text("profile_image"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  lastSeenAt: timestamp("last_seen_at").notNull().defaultNow(),
+});
+
+export type User = typeof users.$inferSelect;
+export type InsertUser = typeof users.$inferInsert;
+
+// 白名單表
+export const whitelist = pgTable("whitelist", {
+  username: varchar("username").primaryKey(),
+  addedBy: text("added_by").notNull(),
+  addedAt: timestamp("added_at").notNull().defaultNow(),
+  note: text("note"),
+});
+
+export type WhitelistEntry = typeof whitelist.$inferSelect;
+export type InsertWhitelistEntry = typeof whitelist.$inferInsert;
+
+// 雷達圖快照表
+export const radarSnapshots = pgTable("radar_snapshots", {
+  weekStart: varchar("week_start").primaryKey(),
+  scoresJson: text("scores_json").notNull(), // JSON: { [muscleName]: compositeScore }
+  recommendationsJson: text("recommendations_json").notNull(), // JSON: string[]
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export type RadarSnapshot = typeof radarSnapshots.$inferSelect;
+export type InsertRadarSnapshot = typeof radarSnapshots.$inferInsert;
+
+export type RadarScores = Record<string, number>;
 
 // 排名快照类型（用于排名详情）
 export type RankingSnapshot = {

@@ -1,7 +1,8 @@
-import { Home, Dumbbell, BarChart3, FileUp, FileDown, Settings, Trophy, Star } from "lucide-react";
+import { Home, Dumbbell, BarChart3, FileUp, FileDown, Settings, Trophy, Star, Shield, User } from "lucide-react";
 import { useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { RankingData } from "@shared/schema";
+import { useAuth } from "@/hooks/use-auth";
 import {
   Sidebar,
   SidebarContent,
@@ -14,47 +15,21 @@ import {
   SidebarHeader,
   SidebarFooter,
 } from "@/components/ui/sidebar";
+import { Badge } from "@/components/ui/badge";
 
 const menuItems = [
-  {
-    title: "仪表板",
-    url: "/",
-    icon: Home,
-  },
-  {
-    title: "运动管理",
-    url: "/exercises",
-    icon: Dumbbell,
-  },
-  {
-    title: "数据记录",
-    url: "/entries",
-    icon: BarChart3,
-  },
-  {
-    title: "生涯全览",
-    url: "/career",
-    icon: Trophy,
-  },
-  {
-    title: "数据导入",
-    url: "/import",
-    icon: FileUp,
-  },
-  {
-    title: "数据导出",
-    url: "/export",
-    icon: FileDown,
-  },
-  {
-    title: "设置",
-    url: "/settings",
-    icon: Settings,
-  },
+  { title: "仪表板", url: "/", icon: Home },
+  { title: "运动管理", url: "/exercises", icon: Dumbbell },
+  { title: "数据记录", url: "/entries", icon: BarChart3 },
+  { title: "生涯全览", url: "/career", icon: Trophy },
+  { title: "数据导入", url: "/import", icon: FileUp },
+  { title: "数据导出", url: "/export", icon: FileDown },
+  { title: "设置", url: "/settings", icon: Settings },
 ];
 
 export function AppSidebar() {
   const [location] = useLocation();
+  const { user, isAdmin } = useAuth();
 
   const { data: rankingData } = useQuery<RankingData>({
     queryKey: ["/api/stats/ranking"],
@@ -112,6 +87,16 @@ export function AppSidebar() {
                   </SidebarMenuItem>
                 );
               })}
+              {isAdmin && (
+                <SidebarMenuItem>
+                  <SidebarMenuButton asChild isActive={location === "/admin"} data-testid="nav-admin">
+                    <a href="/admin">
+                      <Shield className="h-4 w-4" />
+                      <span>管理員後台</span>
+                    </a>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              )}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
@@ -162,7 +147,24 @@ export function AppSidebar() {
           </SidebarGroup>
         )}
       </SidebarContent>
-      <SidebarFooter className="p-4">
+      <SidebarFooter className="p-4 space-y-2">
+        {user && (
+          <div className="flex items-center gap-2 px-1">
+            {user.profileImage ? (
+              <img src={user.profileImage} alt={user.username} className="h-7 w-7 rounded-full object-cover" />
+            ) : (
+              <div className="flex h-7 w-7 items-center justify-center rounded-full bg-muted">
+                <User className="h-4 w-4 text-muted-foreground" />
+              </div>
+            )}
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-medium text-sidebar-foreground truncate">{user.username}</p>
+            </div>
+            {isAdmin && (
+              <Badge variant="secondary" className="text-[10px] px-1.5 py-0 shrink-0">管理員</Badge>
+            )}
+          </div>
+        )}
         <div className="rounded-md bg-sidebar-accent p-3">
           <p className="text-xs text-sidebar-accent-foreground/80">
             追踪您的健身数据，突破个人记录

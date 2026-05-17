@@ -15,6 +15,12 @@ import {
   type WeeklyPlan,
   type InsertWeeklyPlan,
   type PlanDayItem,
+  users,
+  whitelist,
+  radarSnapshots,
+  type User,
+  type WhitelistEntry,
+  type RadarSnapshot,
 } from "@shared/schema";
 import { randomUUID } from "crypto";
 import { drizzle } from "drizzle-orm/node-postgres";
@@ -242,6 +248,19 @@ export interface IStorage {
   // 每周训练计划
   getWeeklyPlan(weekStart: string): Promise<WeeklyPlan | null>;
   saveWeeklyPlan(plan: InsertWeeklyPlan): Promise<WeeklyPlan>;
+
+  // 用戶認證 & 白名單
+  upsertUser(data: { replitUserId: string; username: string; profileImage: string | null }): Promise<User>;
+  getUserByReplitId(replitUserId: string): Promise<User | null>;
+  setUserAdmin(replitUserId: string): Promise<void>;
+  isWhitelisted(username: string): Promise<boolean>;
+  getWhitelist(): Promise<WhitelistEntry[]>;
+  addToWhitelist(username: string, addedBy: string, note?: string): Promise<WhitelistEntry>;
+  removeFromWhitelist(username: string): Promise<boolean>;
+
+  // 雷達圖快照
+  upsertRadarSnapshot(weekStart: string, scoresJson: string, recommendationsJson: string): Promise<RadarSnapshot>;
+  getRadarSnapshot(weekStart: string): Promise<RadarSnapshot | null>;
 }
 
 type WeeklyMuscleStatsRecord = {
@@ -1798,6 +1817,63 @@ export class MemStorage implements IStorage {
     };
     this.weeklyPlansStore.set(plan.weekStart, saved);
     return saved;
+  }
+
+  // ---- Auth / whitelist stubs for MemStorage ----
+  private usersStore: Map<string, User> = new Map();
+  private whitelistStore: Map<string, WhitelistEntry> = new Map();
+  private radarSnapshotStore: Map<string, RadarSnapshot> = new Map();
+
+  async upsertUser(data: { replitUserId: string; username: string; profileImage: string | null }): Promise<User> {
+    const existing = this.usersStore.get(data.replitUserId);
+    const isFirstUser = this.usersStore.size === 0;
+    const user: User = {
+      replitUserId: data.replitUserId,
+      username: data.username,
+      role: existing?.role ?? (isFirstUser ? "admin" : "user"),
+      profileImage: data.profileImage,
+      createdAt: existing?.createdAt ?? new Date(),
+      lastSeenAt: new Date(),
+    };
+    this.usersStore.set(data.replitUserId, user);
+    return user;
+  }
+
+  async getUserByReplitId(replitUserId: string): Promise<User | null> {
+    return this.usersStore.get(replitUserId) ?? null;
+  }
+
+  async setUserAdmin(replitUserId: string): Promise<void> {
+    const u = this.usersStore.get(replitUserId);
+    if (u) this.usersStore.set(replitUserId, { ...u, role: "admin" });
+  }
+
+  async isWhitelisted(username: string): Promise<boolean> {
+    return this.whitelistStore.has(username);
+  }
+
+  async getWhitelist(): Promise<WhitelistEntry[]> {
+    return Array.from(this.whitelistStore.values());
+  }
+
+  async addToWhitelist(username: string, addedBy: string, note?: string): Promise<WhitelistEntry> {
+    const entry: WhitelistEntry = { username, addedBy, addedAt: new Date(), note: note ?? null };
+    this.whitelistStore.set(username, entry);
+    return entry;
+  }
+
+  async removeFromWhitelist(username: string): Promise<boolean> {
+    return this.whitelistStore.delete(username);
+  }
+
+  async upsertRadarSnapshot(weekStart: string, scoresJson: string, recommendationsJson: string): Promise<RadarSnapshot> {
+    const snap: RadarSnapshot = { weekStart, scoresJson, recommendationsJson, createdAt: new Date(), updatedAt: new Date() };
+    this.radarSnapshotStore.set(weekStart, snap);
+    return snap;
+  }
+
+  async getRadarSnapshot(weekStart: string): Promise<RadarSnapshot | null> {
+    return this.radarSnapshotStore.get(weekStart) ?? null;
   }
 }
 
@@ -3664,6 +3740,83 @@ export class DbStorage implements IStorage {
       })
       .returning();
     return rows[0];
+  }
+
+  // ---- Auth / whitelist / radar (DbStorage) ----
+
+  async upsertUser(data: { replitUserId: string; username: string; profileImage: string | null }): Promise<User> {
+    // Check if any admin exists; first-ever user becomes admin
+    const existingUsers = await this.db.select().from(users).limit(1);
+    const isFirstUser = existingUsers.length === 0;
+
+    const rows = await this.db
+      .insert(users)
+      .values({
+        replitUserId: data.replitUserId,
+        username: data.username,
+        role: isFirstUser ? "admin" : "user",
+        profileImage: data.profileImage,
+        lastSeenAt: new Date(),
+      })
+      .onConflictDoUpdate({
+        target: users.replitUserId,
+        set: {
+          username: data.username,
+          profileImage: data.profileImage,
+          lastSeenAt: new Date(),
+        },
+      })
+      .returning();
+    return rows[0];
+  }
+
+  async getUserByReplitId(replitUserId: string): Promise<User | null> {
+    const rows = await this.db.select().from(users).where(eq(users.replitUserId, replitUserId));
+    return rows[0] ?? null;
+  }
+
+  async setUserAdmin(replitUserId: string): Promise<void> {
+    await this.db.update(users).set({ role: "admin" }).where(eq(users.replitUserId, replitUserId));
+  }
+
+  async isWhitelisted(username: string): Promise<boolean> {
+    const rows = await this.db.select().from(whitelist).where(eq(whitelist.username, username));
+    return rows.length > 0;
+  }
+
+  async getWhitelist(): Promise<WhitelistEntry[]> {
+    return this.db.select().from(whitelist);
+  }
+
+  async addToWhitelist(username: string, addedBy: string, note?: string): Promise<WhitelistEntry> {
+    const rows = await this.db
+      .insert(whitelist)
+      .values({ username, addedBy, note: note ?? null })
+      .onConflictDoUpdate({ target: whitelist.username, set: { addedBy, note: note ?? null } })
+      .returning();
+    return rows[0];
+  }
+
+  async removeFromWhitelist(username: string): Promise<boolean> {
+    const rows = await this.db.delete(whitelist).where(eq(whitelist.username, username)).returning();
+    return rows.length > 0;
+  }
+
+  async upsertRadarSnapshot(weekStart: string, scoresJson: string, recommendationsJson: string): Promise<RadarSnapshot> {
+    const rows = await this.db
+      .insert(radarSnapshots)
+      .values({ weekStart, scoresJson, recommendationsJson, updatedAt: new Date() })
+      .onConflictDoUpdate({
+        target: radarSnapshots.weekStart,
+        set: { scoresJson, recommendationsJson, updatedAt: new Date() },
+      })
+      .returning();
+    return rows[0];
+  }
+
+  async getRadarSnapshot(weekStart: string): Promise<RadarSnapshot | null> {
+    const rows = await this.db.select().from(radarSnapshots).where(eq(radarSnapshots.weekStart, weekStart));
+    return rows[0] ?? null;
   }
 }
 

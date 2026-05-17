@@ -5,8 +5,8 @@ import { useLocation } from "wouter";
 import { RankingMetricCard } from "@/components/ranking-metric-card";
 import { RankingDetailDialog } from "@/components/ranking-detail-dialog";
 import { ScaleProgressBar } from "@/components/scale-progress-bar";
-import { Activity, TrendingUp, Award, X, TrendingDown, Dumbbell, Heart, Footprints, Plus, Check, Minus, Star, Pencil, ClipboardList, RefreshCw, Loader2, ChevronDown, ChevronRight, Trophy, Radar as RadarIcon } from "lucide-react";
-import { RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer } from "recharts";
+import { Activity, TrendingUp, Award, X, TrendingDown, Dumbbell, Heart, Footprints, Plus, Check, Minus, Star, Pencil, ClipboardList, RefreshCw, Loader2, ChevronDown, ChevronRight, Trophy, Radar as RadarIcon, Lightbulb, Save } from "lucide-react";
+import { RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer, Legend, Tooltip as RechartsTooltip } from "recharts";
 import { RankingData, WeeklyStats, RankingDetailResponse, Exercise, PlanProgress, PlanItemStatus } from "@shared/schema";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -688,83 +688,185 @@ export default function Dashboard() {
         </Card>
       )}
 
-      {/* 本周肌群均衡度 雷達圖 */}
+      {/* 本周肌群均衡度 雷達圖（組數+容量複合分） */}
       {(() => {
         const muscleNames = ['胸', '背', '腿', '肩', '二头肌', '核心', '臀', '三头肌'];
         const hasAnyAvg = muscleNames.some(name => (muscleVolumeMap[name]?.avg ?? 0) > 0);
         if (!hasAnyAvg) return null;
+
+        const SETS_MAINTENANCE = 4; // 週維持組數基準
+
         const radarData = muscleNames.map(name => {
-          const avg = muscleVolumeMap[name]?.avg ?? 0;
-          const current = muscleGroupStats?.muscleGroups.find(g => g.muscleGroup === name)?.totalVolume ?? 0;
-          const pct = avg > 0 ? Math.min(Math.round((current / avg) * 100), 150) : 0;
-          return { name, pct, baseline: 100 };
+          const volData = muscleVolumeMap[name];
+          const g = muscleGroupStats?.muscleGroups.find(g => g.muscleGroup === name);
+          const sets = g?.totalSets ?? 0;
+          const volume = g?.totalVolume ?? 0;
+          const avgVolume = volData?.avg ?? 0;
+
+          // Sets score: sets / SETS_MAINTENANCE * 100, capped at 150
+          const setsPct = Math.min(Math.round((sets / SETS_MAINTENANCE) * 100), 150);
+          // Volume score: volume / avgVolume * 100, capped at 150 (only if history exists)
+          const volumePct = avgVolume > 0 ? Math.min(Math.round((volume / avgVolume) * 100), 150) : null;
+          // Composite: 40% sets + 60% volume (or 100% sets if no history)
+          const composite = volumePct !== null
+            ? Math.round(0.4 * setsPct + 0.6 * volumePct)
+            : setsPct;
+
+          return { name, pct: composite, setsPct, volumePct, baseline: 100, sets, volume, avgVolume };
         });
+
+        // Recommendations: weakest muscles with composite < 80 that have volume history
+        const recommendations = radarData
+          .filter(d => d.avgVolume > 0 && d.pct < 80)
+          .sort((a, b) => a.pct - b.pct)
+          .slice(0, 3);
+
+        const weekStart = muscleGroupStats?.weekStart;
+        const scores = Object.fromEntries(radarData.map(d => [d.name, d.pct]));
+
         return (
-          <Card
-            data-testid="card-muscle-radar"
-            className="cursor-pointer hover-elevate active-elevate-2"
-            onClick={() => setShowMuscleDetail(v => !v)}
-          >
-            <CardHeader className="pb-2">
-              <CardTitle className="flex items-center justify-between gap-2 text-base">
-                <span className="flex items-center gap-2">
-                  <RadarIcon className="h-5 w-5" />
-                  本周肌群均衡度
-                </span>
-                {showMuscleDetail
-                  ? <ChevronDown className="h-4 w-4 text-muted-foreground" />
-                  : <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                }
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <ResponsiveContainer width="100%" height={380}>
-                <RadarChart data={radarData} outerRadius="78%">
-                  <PolarGrid stroke="hsl(var(--muted-foreground) / 0.25)" />
-                  <PolarAngleAxis
-                    dataKey="name"
-                    tick={{ fontSize: 12, fill: 'hsl(var(--foreground) / 0.75)' }}
-                  />
-                  <PolarRadiusAxis
-                    domain={[0, 150]}
-                    ticks={[0, 50, 100, 150]}
-                    tickFormatter={(v: number) => v === 100 ? '維持' : `${v}%`}
-                    tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
-                    axisLine={false}
-                    angle={90}
-                  />
-                  <Radar
-                    name="維持量"
-                    dataKey="baseline"
-                    stroke="#d4a900"
-                    strokeDasharray="4 3"
-                    strokeWidth={1.5}
-                    fill="transparent"
-                    dot={false}
-                  />
-                  <Radar
-                    name="本周"
-                    dataKey="pct"
-                    stroke="hsl(var(--primary))"
-                    strokeWidth={2}
-                    fill="hsl(var(--primary))"
-                    fillOpacity={0.25}
-                    dot={false}
-                  />
-                </RadarChart>
-              </ResponsiveContainer>
-              <div className="flex items-center justify-center gap-4 text-xs text-muted-foreground -mt-2">
-                <span className="flex items-center gap-1.5">
-                  <span className="inline-block w-5 border-t-2 border-dashed border-yellow-600" />
-                  維持量（均值）
-                </span>
-                <span className="flex items-center gap-1.5">
-                  <span className="inline-block w-5 border-t-2 border-primary" />
-                  本周實際
-                </span>
-              </div>
-            </CardContent>
-          </Card>
+          <>
+            <Card data-testid="card-muscle-radar">
+              <CardHeader className="pb-2">
+                <CardTitle className="flex items-center justify-between gap-2 text-base flex-wrap">
+                  <span
+                    className="flex items-center gap-2 cursor-pointer"
+                    onClick={() => setShowMuscleDetail(v => !v)}
+                  >
+                    <RadarIcon className="h-5 w-5" />
+                    本周肌群均衡度
+                    {showMuscleDetail
+                      ? <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                      : <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                    }
+                  </span>
+                  {weekStart && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="text-xs h-7 gap-1"
+                      onClick={async () => {
+                        try {
+                          await apiRequest("POST", "/api/stats/radar-snapshot", {
+                            weekStart,
+                            scores,
+                            recommendations: recommendations.map(r => r.name),
+                          });
+                          toast({ title: "雷達圖已儲存", description: `第 ${weekStart} 週快照已保存` });
+                        } catch {
+                          toast({ title: "儲存失敗", variant: "destructive" });
+                        }
+                      }}
+                    >
+                      <Save className="h-3 w-3" />
+                      儲存快照
+                    </Button>
+                  )}
+                </CardTitle>
+                <p className="text-xs text-muted-foreground mt-1">複合評分 = 組數 40% + 容量 60%，對比歷史均值</p>
+              </CardHeader>
+              <CardContent>
+                <ResponsiveContainer width="100%" height={380}>
+                  <RadarChart data={radarData} outerRadius="78%">
+                    <PolarGrid stroke="hsl(var(--muted-foreground) / 0.25)" />
+                    <PolarAngleAxis
+                      dataKey="name"
+                      tick={{ fontSize: 12, fill: 'hsl(var(--foreground) / 0.75)' }}
+                    />
+                    <PolarRadiusAxis
+                      domain={[0, 150]}
+                      ticks={[0, 50, 100, 150] as any}
+                      tickFormatter={(v: number) => v === 100 ? '維持' : `${v}%`}
+                      tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
+                      axisLine={false}
+                      angle={90}
+                    />
+                    <RechartsTooltip
+                      content={({ active, payload }) => {
+                        if (!active || !payload?.length) return null;
+                        const d = payload[0].payload;
+                        return (
+                          <div className="rounded-md border bg-popover p-2.5 shadow-md text-xs space-y-0.5">
+                            <p className="font-semibold">{d.name}</p>
+                            <p className="text-muted-foreground">複合分: <span className="font-bold text-foreground">{d.pct}%</span></p>
+                            <p className="text-muted-foreground">組數分: <span className="font-medium">{d.setsPct}%</span> ({d.sets} 組)</p>
+                            {d.volumePct !== null && (
+                              <p className="text-muted-foreground">容量分: <span className="font-medium">{d.volumePct}%</span></p>
+                            )}
+                          </div>
+                        );
+                      }}
+                    />
+                    <Radar
+                      name="維持量"
+                      dataKey="baseline"
+                      stroke="#d4a900"
+                      strokeDasharray="4 3"
+                      strokeWidth={1.5}
+                      fill="transparent"
+                      dot={false}
+                    />
+                    <Radar
+                      name="本周複合分"
+                      dataKey="pct"
+                      stroke="hsl(var(--primary))"
+                      strokeWidth={2}
+                      fill="hsl(var(--primary))"
+                      fillOpacity={0.25}
+                      dot={false}
+                    />
+                  </RadarChart>
+                </ResponsiveContainer>
+                <div className="flex items-center justify-center gap-4 text-xs text-muted-foreground -mt-2">
+                  <span className="flex items-center gap-1.5">
+                    <span className="inline-block w-5 border-t-2 border-dashed border-yellow-600" />
+                    維持量基準
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <span className="inline-block w-5 border-t-2 border-primary" />
+                    本周複合分
+                  </span>
+                </div>
+
+                {/* AI-style recommendations */}
+                {recommendations.length > 0 && (
+                  <div className="mt-4 rounded-lg border bg-muted/30 p-3 space-y-2">
+                    <p className="text-xs font-semibold flex items-center gap-1.5">
+                      <Lightbulb className="h-3.5 w-3.5 text-yellow-500" />
+                      系統建議：最需加強的肌群
+                    </p>
+                    <div className="space-y-1.5">
+                      {recommendations.map((r, i) => {
+                        const priority = ['🔴', '🟠', '🟡'][i] ?? '•';
+                        const deficit = 100 - r.pct;
+                        const reason = r.volumePct !== null
+                          ? `複合分 ${r.pct}%（組數 ${r.setsPct}% / 容量 ${r.volumePct}%），不足 ${deficit}%`
+                          : `組數分 ${r.setsPct}%（本週 ${r.sets} 組 / 維持需 ${SETS_MAINTENANCE} 組）`;
+                        return (
+                          <div key={r.name} className="flex items-start gap-2 text-xs">
+                            <span className="mt-0.5">{priority}</span>
+                            <div>
+                              <span className="font-semibold">{r.name}</span>
+                              <span className="text-muted-foreground ml-1.5">{reason}</span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {recommendations.length === 0 && radarData.every(d => d.pct >= 80) && (
+                  <div className="mt-4 rounded-lg border bg-green-50 dark:bg-green-950/20 border-green-200 dark:border-green-800/30 p-3">
+                    <p className="text-xs text-green-700 dark:text-green-400 flex items-center gap-1.5">
+                      <Check className="h-3.5 w-3.5" />
+                      本週所有肌群均衡度良好，繼續保持！
+                    </p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </>
         );
       })()}
 

@@ -1,13 +1,107 @@
-import type { Express } from "express";
+import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { insertExerciseSchema, insertWorkoutEntrySchema, type PlanDayItem } from "@shared/schema";
 import multer from "multer";
 import Papa from "papaparse";
+import { authMiddleware, adminMiddleware } from "./auth";
 
 const upload = multer({ storage: multer.memoryStorage() });
 
 export async function registerRoutes(app: Express): Promise<Server> {
+  // ==================== 認證 API (公開) ====================
+
+  // 返回 Replit 登入 URL
+  app.get("/api/auth/login-url", (req, res) => {
+    const host = req.headers.host || "";
+    const loginUrl = `https://replit.com/auth_with_repl_site?domain=${host}`;
+    res.json({ loginUrl });
+  });
+
+  // 返回當前登入用戶（不需要 authMiddleware，因為未登入時回傳 null）
+  app.get("/api/auth/me", async (req, res) => {
+    const replitUserId = req.headers["x-replit-user-id"] as string | undefined;
+    const username = req.headers["x-replit-user-name"] as string | undefined;
+    const profileImage = req.headers["x-replit-user-profile-image"] as string | undefined;
+    if (!replitUserId || !username) {
+      return res.json({ user: null });
+    }
+    try {
+      const user = await storage.upsertUser({ replitUserId, username, profileImage: profileImage || null });
+      const isWhitelisted = user.role === "admin" || await storage.isWhitelisted(username);
+      res.json({ user: { replitUserId: user.replitUserId, username: user.username, role: user.role, profileImage: user.profileImage }, isWhitelisted });
+    } catch (err) {
+      res.status(500).json({ error: "Failed to resolve user" });
+    }
+  });
+
+  // ==================== 受保護 API 中間件 ====================
+  // 所有 /api 路由（除上面的公開路由）都需要認證
+  app.use("/api/entries", authMiddleware);
+  app.use("/api/exercises", authMiddleware);
+  app.use("/api/stats", authMiddleware);
+  app.use("/api/settings", authMiddleware);
+  app.use("/api/plan", authMiddleware);
+  app.use("/api/import", authMiddleware);
+
+  // ==================== 管理員 API ====================
+
+  app.get("/api/admin/whitelist", authMiddleware, adminMiddleware, async (req, res) => {
+    try {
+      const list = await storage.getWhitelist();
+      res.json(list);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to get whitelist" });
+    }
+  });
+
+  app.post("/api/admin/whitelist", authMiddleware, adminMiddleware, async (req, res) => {
+    const { username, note } = req.body;
+    if (!username || typeof username !== "string") {
+      return res.status(400).json({ error: "username 必填" });
+    }
+    try {
+      const entry = await storage.addToWhitelist(username.trim(), req.user!.username, note);
+      res.status(201).json(entry);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to add to whitelist" });
+    }
+  });
+
+  app.delete("/api/admin/whitelist/:username", authMiddleware, adminMiddleware, async (req, res) => {
+    try {
+      const ok = await storage.removeFromWhitelist(req.params.username);
+      if (!ok) return res.status(404).json({ error: "Not found" });
+      res.status(204).send();
+    } catch (err) {
+      res.status(500).json({ error: "Failed to remove from whitelist" });
+    }
+  });
+
+  // ==================== 雷達圖快照 API ====================
+
+  app.post("/api/stats/radar-snapshot", authMiddleware, async (req, res) => {
+    const { weekStart, scores, recommendations } = req.body;
+    if (!weekStart || !scores) return res.status(400).json({ error: "weekStart and scores required" });
+    try {
+      const snap = await storage.upsertRadarSnapshot(weekStart, JSON.stringify(scores), JSON.stringify(recommendations || []));
+      res.json(snap);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to save radar snapshot" });
+    }
+  });
+
+  app.get("/api/stats/radar-snapshot", authMiddleware, async (req, res) => {
+    const { weekStart } = req.query;
+    if (!weekStart) return res.status(400).json({ error: "weekStart required" });
+    try {
+      const snap = await storage.getRadarSnapshot(weekStart as string);
+      res.json(snap ?? null);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to get radar snapshot" });
+    }
+  });
+
   // ==================== 运动类型 API ====================
   
   // 获取所有运动类型
