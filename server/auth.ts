@@ -15,8 +15,6 @@
 
 import type { Express, Request, Response, NextFunction } from "express";
 import session from "express-session";
-import connectPgSimple from "connect-pg-simple";
-import pg from "pg";
 import {
   discovery,
   randomState,
@@ -76,20 +74,11 @@ function getCallbackUrl(): string {
 const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
 
 export function createSession() {
-  const PgSession = connectPgSimple(session);
-  const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
-
   return session({
     secret: process.env.SESSION_SECRET ?? "fitness-forge-dev-secret",
     resave: false,
     saveUninitialized: false,
-    store: new PgSession({
-      pool,
-      tableName: "session",
-      createTableIfMissing: true,
-      ttl: THIRTY_DAYS_MS / 1000,
-      pruneSessionInterval: 60 * 60,
-    }),
+    // MemoryStore — no DB table needed, works across single-instance Replit deploy
     cookie: {
       secure: process.env.NODE_ENV === "production",
       httpOnly: true,
