@@ -1,5 +1,3 @@
-import { useEffect } from "react";
-import { useQuery } from "@tanstack/react-query";
 import { Dumbbell, LogIn, ShieldAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,15 +7,15 @@ interface LoginPageProps {
   username?: string;
 }
 
-export default function LoginPage({ isWhitelistDenied, username }: LoginPageProps) {
-  const { data: loginData } = useQuery<{ loginUrl: string }>({
-    queryKey: ["/api/auth/login-url"],
-  });
+function getReplitLoginUrl(): string {
+  // Use the browser's actual hostname (no port) — this is what Replit's auth_with_repl_site expects
+  const domain = window.location.hostname;
+  return `https://replit.com/auth_with_repl_site?domain=${domain}`;
+}
 
+export default function LoginPage({ isWhitelistDenied, username }: LoginPageProps) {
   const handleLogin = () => {
-    if (loginData?.loginUrl) {
-      window.location.href = loginData.loginUrl;
-    }
+    window.location.href = getReplitLoginUrl();
   };
 
   return (

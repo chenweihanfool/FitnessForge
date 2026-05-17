@@ -9,12 +9,23 @@ import { authMiddleware, adminMiddleware } from "./auth";
 const upload = multer({ storage: multer.memoryStorage() });
 
 export async function registerRoutes(app: Express): Promise<Server> {
+  // ==================== Replit Auth Callback ====================
+  // Replit redirects to /__replauthcallback?token=<jwt> after auth_with_repl_site
+  // We just redirect home; X-Replit headers will be set on subsequent requests
+  app.get("/__replauthcallback", (req, res) => {
+    res.redirect("/");
+  });
+
   // ==================== 認證 API (公開) ====================
 
-  // 返回 Replit 登入 URL
+  // 返回 Replit 登入 URL（用 x-forwarded-host 取得真實公開域名）
   app.get("/api/auth/login-url", (req, res) => {
-    const host = req.headers.host || "";
-    const loginUrl = `https://replit.com/auth_with_repl_site?domain=${host}`;
+    const host = (req.headers["x-forwarded-host"] as string | undefined)
+      || req.headers.host
+      || "";
+    // Remove port if present (Replit expects bare hostname)
+    const domain = host.split(":")[0];
+    const loginUrl = `https://replit.com/auth_with_repl_site?domain=${domain}`;
     res.json({ loginUrl });
   });
 
