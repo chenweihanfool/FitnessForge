@@ -4,60 +4,24 @@ import { storage } from "./storage";
 import { insertExerciseSchema, insertWorkoutEntrySchema, type PlanDayItem } from "@shared/schema";
 import multer from "multer";
 import Papa from "papaparse";
-import { authMiddleware, adminMiddleware } from "./auth";
+import { requireAuth, requireAdmin } from "./auth";
 
 const upload = multer({ storage: multer.memoryStorage() });
 
 export async function registerRoutes(app: Express): Promise<Server> {
-  // ==================== Replit Auth Callback ====================
-  // Replit redirects to /__replauthcallback?token=<jwt> after auth_with_repl_site
-  // We just redirect home; X-Replit headers will be set on subsequent requests
-  app.get("/__replauthcallback", (req, res) => {
-    res.redirect("/");
-  });
-
-  // ==================== 認證 API (公開) ====================
-
-  // 返回 Replit 登入 URL（用 x-forwarded-host 取得真實公開域名）
-  app.get("/api/auth/login-url", (req, res) => {
-    const host = (req.headers["x-forwarded-host"] as string | undefined)
-      || req.headers.host
-      || "";
-    // Remove port if present (Replit expects bare hostname)
-    const domain = host.split(":")[0];
-    const loginUrl = `https://replit.com/auth_with_repl_site?domain=${domain}`;
-    res.json({ loginUrl });
-  });
-
-  // 返回當前登入用戶（不需要 authMiddleware，因為未登入時回傳 null）
-  app.get("/api/auth/me", async (req, res) => {
-    const replitUserId = req.headers["x-replit-user-id"] as string | undefined;
-    const username = req.headers["x-replit-user-name"] as string | undefined;
-    const profileImage = req.headers["x-replit-user-profile-image"] as string | undefined;
-    if (!replitUserId || !username) {
-      return res.json({ user: null });
-    }
-    try {
-      const user = await storage.upsertUser({ replitUserId, username, profileImage: profileImage || null });
-      const isWhitelisted = user.role === "admin" || await storage.isWhitelisted(username);
-      res.json({ user: { replitUserId: user.replitUserId, username: user.username, role: user.role, profileImage: user.profileImage }, isWhitelisted });
-    } catch (err) {
-      res.status(500).json({ error: "Failed to resolve user" });
-    }
-  });
-
   // ==================== 受保護 API 中間件 ====================
-  // 所有 /api 路由（除上面的公開路由）都需要認證
-  app.use("/api/entries", authMiddleware);
-  app.use("/api/exercises", authMiddleware);
-  app.use("/api/stats", authMiddleware);
-  app.use("/api/settings", authMiddleware);
-  app.use("/api/plan", authMiddleware);
-  app.use("/api/import", authMiddleware);
+  // /api/auth/* 由 auth.ts 的 setupReplitAuth 處理（公開路由）
+  // 其餘 /api/* 都需要登入
+  app.use("/api/entries", requireAuth);
+  app.use("/api/exercises", requireAuth);
+  app.use("/api/stats", requireAuth);
+  app.use("/api/settings", requireAuth);
+  app.use("/api/plan", requireAuth);
+  app.use("/api/import", requireAuth);
 
   // ==================== 管理員 API ====================
 
-  app.get("/api/admin/whitelist", authMiddleware, adminMiddleware, async (req, res) => {
+  app.get("/api/admin/whitelist", requireAuth, requireAdmin, async (req, res) => {
     try {
       const list = await storage.getWhitelist();
       res.json(list);
@@ -66,7 +30,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/admin/whitelist", authMiddleware, adminMiddleware, async (req, res) => {
+  app.post("/api/admin/whitelist", requireAuth, requireAdmin, async (req, res) => {
     const { username, note } = req.body;
     if (!username || typeof username !== "string") {
       return res.status(400).json({ error: "username 必填" });
@@ -79,7 +43,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete("/api/admin/whitelist/:username", authMiddleware, adminMiddleware, async (req, res) => {
+  app.delete("/api/admin/whitelist/:username", requireAuth, requireAdmin, async (req, res) => {
     try {
       const ok = await storage.removeFromWhitelist(req.params.username);
       if (!ok) return res.status(404).json({ error: "Not found" });
@@ -91,7 +55,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // ==================== 雷達圖快照 API ====================
 
-  app.post("/api/stats/radar-snapshot", authMiddleware, async (req, res) => {
+  app.post("/api/stats/radar-snapshot", requireAuth, async (req, res) => {
     const { weekStart, scores, recommendations } = req.body;
     if (!weekStart || !scores) return res.status(400).json({ error: "weekStart and scores required" });
     try {
@@ -102,7 +66,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/stats/radar-snapshot", authMiddleware, async (req, res) => {
+  app.get("/api/stats/radar-snapshot", requireAuth, async (req, res) => {
     const { weekStart } = req.query;
     if (!weekStart) return res.status(400).json({ error: "weekStart required" });
     try {

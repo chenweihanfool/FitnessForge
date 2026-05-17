@@ -1,22 +1,15 @@
 import { Dumbbell, LogIn, ShieldAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { useAuth } from "@/hooks/use-auth";
 
 interface LoginPageProps {
   isWhitelistDenied?: boolean;
   username?: string;
 }
 
-function getReplitLoginUrl(): string {
-  // Use the browser's actual hostname (no port) — this is what Replit's auth_with_repl_site expects
-  const domain = window.location.hostname;
-  return `https://replit.com/auth_with_repl_site?domain=${domain}`;
-}
-
 export default function LoginPage({ isWhitelistDenied, username }: LoginPageProps) {
-  const handleLogin = () => {
-    window.location.href = getReplitLoginUrl();
-  };
+  const { loginWithReplit } = useAuth();
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
@@ -29,9 +22,7 @@ export default function LoginPage({ isWhitelistDenied, username }: LoginPageProp
           </div>
           <CardTitle className="text-2xl">健身追蹤</CardTitle>
           <CardDescription>
-            {isWhitelistDenied
-              ? "此帳號尚未獲得授權"
-              : "請使用 Replit 帳號登入"}
+            {isWhitelistDenied ? "此帳號尚未獲得授權" : "請使用 Replit 帳號登入"}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -48,13 +39,13 @@ export default function LoginPage({ isWhitelistDenied, username }: LoginPageProp
                   )}
                 </div>
               </div>
-              <Button variant="outline" className="w-full" onClick={handleLogin}>
+              <Button variant="outline" className="w-full" onClick={loginWithReplit}>
                 <LogIn className="h-4 w-4 mr-2" />
                 切換其他帳號登入
               </Button>
             </div>
           ) : (
-            <Button className="w-full" onClick={handleLogin}>
+            <Button className="w-full" onClick={loginWithReplit}>
               <LogIn className="h-4 w-4 mr-2" />
               使用 Replit 帳號登入
             </Button>

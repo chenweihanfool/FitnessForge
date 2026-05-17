@@ -13,7 +13,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Plus, Home } from "lucide-react";
 import { changelog } from "@/data/changelog";
 import { useState } from "react";
-import { useAuth } from "@/hooks/use-auth";
+import { useAuth, AuthProvider } from "@/hooks/use-auth";
 import Dashboard from "@/pages/dashboard";
 import Exercises from "@/pages/exercises";
 import Entries from "@/pages/entries";
@@ -147,8 +147,10 @@ export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
-        <AppShell />
-        <Toaster />
+        <AuthProvider>
+          <AppShell />
+          <Toaster />
+        </AuthProvider>
       </TooltipProvider>
     </QueryClientProvider>
   );
