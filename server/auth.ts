@@ -86,6 +86,7 @@ export function createSession() {
     store: new PgSession({
       pool,
       tableName: "session",
+      createTableIfMissing: true,
       ttl: THIRTY_DAYS_MS / 1000,
       pruneSessionInterval: 60 * 60,
     }),
