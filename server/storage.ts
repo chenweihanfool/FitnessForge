@@ -261,6 +261,7 @@ export interface IStorage {
   // 雷達圖快照
   upsertRadarSnapshot(weekStart: string, scoresJson: string, recommendationsJson: string): Promise<RadarSnapshot>;
   getRadarSnapshot(weekStart: string): Promise<RadarSnapshot | null>;
+  getAllRadarSnapshots(): Promise<RadarSnapshot[]>;
 }
 
 type WeeklyMuscleStatsRecord = {
@@ -1874,6 +1875,10 @@ export class MemStorage implements IStorage {
 
   async getRadarSnapshot(weekStart: string): Promise<RadarSnapshot | null> {
     return this.radarSnapshotStore.get(weekStart) ?? null;
+  }
+
+  async getAllRadarSnapshots(): Promise<RadarSnapshot[]> {
+    return Array.from(this.radarSnapshotStore.values()).sort((a, b) => b.weekStart.localeCompare(a.weekStart));
   }
 }
 
@@ -3817,6 +3822,10 @@ export class DbStorage implements IStorage {
   async getRadarSnapshot(weekStart: string): Promise<RadarSnapshot | null> {
     const rows = await this.db.select().from(radarSnapshots).where(eq(radarSnapshots.weekStart, weekStart));
     return rows[0] ?? null;
+  }
+
+  async getAllRadarSnapshots(): Promise<RadarSnapshot[]> {
+    return await this.db.select().from(radarSnapshots).orderBy(radarSnapshots.weekStart);
   }
 }
 

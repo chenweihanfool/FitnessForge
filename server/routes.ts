@@ -77,6 +77,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.get("/api/stats/radar-snapshots", requireAuth, async (_req, res) => {
+    try {
+      const snaps = await storage.getAllRadarSnapshots();
+      res.json(snaps);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to get radar snapshots" });
+    }
+  });
+
   // Auto-snapshot endpoint — called by GitHub Actions, protected by SNAPSHOT_SECRET header
   app.post("/api/stats/radar-snapshot/auto", async (req, res) => {
     const secret = process.env.SNAPSHOT_SECRET;

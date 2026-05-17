@@ -5,7 +5,7 @@ import { useLocation } from "wouter";
 import { RankingMetricCard } from "@/components/ranking-metric-card";
 import { RankingDetailDialog } from "@/components/ranking-detail-dialog";
 import { ScaleProgressBar } from "@/components/scale-progress-bar";
-import { Activity, TrendingUp, Award, X, TrendingDown, Dumbbell, Heart, Footprints, Plus, Check, Minus, Star, Pencil, ClipboardList, RefreshCw, Loader2, ChevronDown, ChevronRight, Trophy, Radar as RadarIcon, Lightbulb, Save } from "lucide-react";
+import { Activity, TrendingUp, Award, X, TrendingDown, Dumbbell, Heart, Footprints, Plus, Check, Minus, Star, Pencil, ClipboardList, RefreshCw, Loader2, ChevronDown, ChevronRight, Trophy, Radar as RadarIcon, Lightbulb, Save, History } from "lucide-react";
 import { RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer, Legend, Tooltip as RechartsTooltip } from "recharts";
 import { RankingData, WeeklyStats, RankingDetailResponse, Exercise, PlanProgress, PlanItemStatus } from "@shared/schema";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -186,6 +186,7 @@ export default function Dashboard() {
   const [selectedDayDate, setSelectedDayDate] = useState<string | null>(null);
   const [selectedDayName, setSelectedDayName] = useState<string>("");
   const [showMuscleDetail, setShowMuscleDetail] = useState(false);
+  const [showSnapshotHistory, setShowSnapshotHistory] = useState(false);
   
   const handleAddEntry = (exerciseId: string) => {
     setLocation(`/entries?addExercise=${exerciseId}`);
@@ -235,6 +236,16 @@ export default function Dashboard() {
 
   const { data: muscleGroupHistory } = useQuery<MuscleGroupHistoryRecord[]>({
     queryKey: ["/api/stats/muscle-group-history"],
+  });
+
+  const { data: radarSnapshotHistory } = useQuery<Array<{
+    weekStart: string;
+    scoresJson: string;
+    recommendationsJson: string;
+    createdAt: string;
+  }>>({
+    queryKey: ["/api/stats/radar-snapshots"],
+    enabled: showSnapshotHistory,
   });
 
   const { data: dayEntriesData, isLoading: dayEntriesLoading } = useQuery<DayEntriesData>({
@@ -900,6 +911,81 @@ export default function Dashboard() {
           </>
         );
       })()}
+
+      {/* 歷史雷達圖快照 */}
+      <Card data-testid="card-radar-history">
+        <CardHeader className="pb-2">
+          <CardTitle
+            className="flex items-center gap-2 text-base cursor-pointer"
+            onClick={() => setShowSnapshotHistory(v => !v)}
+          >
+            <History className="h-5 w-5" />
+            歷史週雷達圖快照
+            {showSnapshotHistory
+              ? <ChevronDown className="h-4 w-4 text-muted-foreground" />
+              : <ChevronRight className="h-4 w-4 text-muted-foreground" />
+            }
+          </CardTitle>
+        </CardHeader>
+        {showSnapshotHistory && (
+          <CardContent>
+            {!radarSnapshotHistory ? (
+              <div className="flex justify-center py-6"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
+            ) : radarSnapshotHistory.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-6">尚無儲存的快照。每周日晚間 GitHub Actions 會自動儲存，或點雷達圖右上角「儲存快照」手動儲存。</p>
+            ) : (
+              <div className="space-y-4">
+                {radarSnapshotHistory.map(snap => {
+                  const scores: Record<string, number> = JSON.parse(snap.scoresJson);
+                  const recs: string[] = JSON.parse(snap.recommendationsJson);
+                  const muscleNames = ['胸', '背', '腿', '肩', '二头肌', '核心', '臀', '三头肌'];
+                  const radarData = muscleNames.map(name => ({
+                    name,
+                    pct: scores[name] ?? 0,
+                    baseline: 100,
+                  }));
+                  return (
+                    <div key={snap.weekStart} className="rounded-lg border p-3 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-semibold">{snap.weekStart} 當週</span>
+                        <span className="text-xs text-muted-foreground">
+                          儲存於 {new Date(snap.createdAt).toLocaleDateString('zh-TW')}
+                        </span>
+                      </div>
+                      <ResponsiveContainer width="100%" height={220}>
+                        <RadarChart data={radarData} outerRadius="72%">
+                          <PolarGrid stroke="hsl(var(--muted-foreground) / 0.2)" />
+                          <PolarAngleAxis dataKey="name" tick={{ fontSize: 11, fill: 'hsl(var(--foreground) / 0.7)' }} />
+                          <PolarRadiusAxis domain={[0, 150]} ticks={[0, 50, 100, 150] as any} tickFormatter={(v: number) => v === 100 ? '維持' : `${v}%`} tick={{ fontSize: 9, fill: 'hsl(var(--muted-foreground))' }} axisLine={false} angle={90} />
+                          <Radar name="維持量" dataKey="baseline" stroke="#d4a900" strokeDasharray="4 3" strokeWidth={1.5} fill="transparent" dot={false} />
+                          <Radar name="複合分" dataKey="pct" stroke="hsl(var(--primary))" strokeWidth={2} fill="hsl(var(--primary))" fillOpacity={0.22} dot={false} />
+                        </RadarChart>
+                      </ResponsiveContainer>
+                      <div className="flex flex-wrap gap-1.5 pt-1">
+                        {muscleNames.map(name => {
+                          const val = scores[name] ?? 0;
+                          const color = val >= 100 ? 'text-green-600 dark:text-green-400' : val >= 80 ? 'text-yellow-600 dark:text-yellow-400' : 'text-red-500';
+                          return (
+                            <span key={name} className="text-[11px] flex items-center gap-0.5">
+                              <span className="text-muted-foreground">{name}</span>
+                              <span className={`font-semibold ${color}`}>{val}%</span>
+                            </span>
+                          );
+                        })}
+                      </div>
+                      {recs.length > 0 && (
+                        <p className="text-xs text-muted-foreground">
+                          當週最需加強：{recs.join('、')}
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </CardContent>
+        )}
+      </Card>
 
       {/* 本周肌群训练详情 - 点击雷达图展开 */}
       {showMuscleDetail && !muscleGroupLoading && (
