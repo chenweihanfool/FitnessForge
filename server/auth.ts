@@ -15,6 +15,8 @@
 
 import type { Express, Request, Response, NextFunction } from "express";
 import session from "express-session";
+import connectPgSimple from "connect-pg-simple";
+import pg from "pg";
 import {
   discovery,
   randomState,
@@ -74,11 +76,20 @@ function getCallbackUrl(): string {
 const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
 
 export function createSession() {
+  const PgSession = connectPgSimple(session);
+  const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
+
   return session({
     secret: process.env.SESSION_SECRET ?? "fitness-forge-dev-secret",
     resave: false,
     saveUninitialized: false,
-    // MemoryStore — no DB table needed, works across single-instance Replit deploy
+    store: new PgSession({
+      pool,
+      tableName: "session",
+      // createTableIfMissing: false — 表由 Drizzle schema 管理，避免和 migration 衝突
+      ttl: THIRTY_DAYS_MS / 1000,
+      pruneSessionInterval: 60 * 60,
+    }),
     cookie: {
       secure: process.env.NODE_ENV === "production",
       httpOnly: true,
