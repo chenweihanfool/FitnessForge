@@ -1285,15 +1285,52 @@ Match exercise names exactly to the available exercises list. Return ONLY valid 
         });
       });
 
-      // Greedy match: i-th occurrence (sorted by day) gets i-th actual entry (sorted by date)
-      // key: `${exerciseId}__${dayIndex}` -> matched WeekEntry | null
+      // Match plan occurrences to actual entries.
+      // Rule: greedily assign 1 entry per occurrence (sorted by day / date).
+      //       Any leftover entries (more actual runs than plan slots) are merged
+      //       into the FIRST still-unmet occurrence so cumulative progress counts.
+      // Example: plan has 1 run @ 5 km; user ran 3 km + 3 km → combined 6 km ≥ 5 km → met.
       const occurrenceMatch = new Map<string, WeekEntry | null>();
       for (const [exId, occs] of Array.from(exerciseOccurrences.entries())) {
         const sortedOccs = [...occs].sort((a, b) => a.day - b.day);
         const entries = weekExerciseEntries.get(exId) ?? [];
+
+        // Base 1:1 greedy assignment
         sortedOccs.forEach((occ, i) => {
           occurrenceMatch.set(`${exId}__${occ.dayIndex}`, entries[i] ?? null);
         });
+
+        // Distribute leftover entries (index >= sortedOccs.length) into the first unmet occurrence
+        const leftovers = entries.slice(sortedOccs.length);
+        if (leftovers.length > 0) {
+          const extraVolume = leftovers.reduce((s, e) => s + e.volume, 0);
+          const extraSets   = leftovers.reduce((s, e) => s + e.sets, 0);
+          const extraBaseline = leftovers.reduce((s, e) => s + e.baselineValue, 0);
+
+          // Find the first occurrence that is still under its target
+          const firstUnmet = sortedOccs.find(occ => {
+            const m = occurrenceMatch.get(`${exId}__${occ.dayIndex}`);
+            return !m || m.volume < occ.targetVolume;
+          }) ?? sortedOccs[sortedOccs.length - 1]; // fallback: last occurrence
+
+          const key = `${exId}__${firstUnmet.dayIndex}`;
+          const existing = occurrenceMatch.get(key);
+          if (existing) {
+            occurrenceMatch.set(key, {
+              ...existing,
+              volume: existing.volume + extraVolume,
+              sets: existing.sets + extraSets,
+              baselineValue: existing.baselineValue + extraBaseline,
+            });
+          } else {
+            occurrenceMatch.set(key, {
+              volume: extraVolume,
+              sets: extraSets,
+              baselineValue: extraBaseline,
+              date: leftovers[0].date,
+            });
+          }
+        }
       }
 
       let totalPlanned = 0;
