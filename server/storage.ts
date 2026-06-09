@@ -262,6 +262,11 @@ export interface IStorage {
   upsertRadarSnapshot(weekStart: string, scoresJson: string, recommendationsJson: string): Promise<RadarSnapshot>;
   getRadarSnapshot(weekStart: string): Promise<RadarSnapshot | null>;
   getAllRadarSnapshots(): Promise<RadarSnapshot[]>;
+  getPublicLifeScore(): Promise<{
+    thisWeekCount: number;
+    daysSinceLastWorkout: number;
+    consecutiveWeeks: number;
+  }>;
 }
 
 type WeeklyMuscleStatsRecord = {
@@ -1879,6 +1884,10 @@ export class MemStorage implements IStorage {
 
   async getAllRadarSnapshots(): Promise<RadarSnapshot[]> {
     return Array.from(this.radarSnapshotStore.values()).sort((a, b) => b.weekStart.localeCompare(a.weekStart));
+  }
+
+  async getPublicLifeScore() {
+    return { thisWeekCount: 0, daysSinceLastWorkout: 0, consecutiveWeeks: 0 };
   }
 }
 
@@ -3826,6 +3835,52 @@ export class DbStorage implements IStorage {
 
   async getAllRadarSnapshots(): Promise<RadarSnapshot[]> {
     return await this.db.select().from(radarSnapshots).orderBy(radarSnapshots.weekStart);
+  }
+
+  async getPublicLifeScore() {
+    const now = new Date();
+    const taipeiNow = new Date(now.getTime() + 8 * 60 * 60 * 1000);
+    const dow = taipeiNow.getUTCDay();
+    const diffToMon = dow === 0 ? -6 : 1 - dow;
+    const weekStartTaipei = new Date(taipeiNow);
+    weekStartTaipei.setUTCDate(weekStartTaipei.getUTCDate() + diffToMon);
+    weekStartTaipei.setUTCHours(0, 0, 0, 0);
+    const weekStartStr = weekStartTaipei.toISOString().slice(0, 10);
+
+    const thisWeekRows = await this.db
+      .select({ cnt: count() })
+      .from(workoutEntries)
+      .where(gte(workoutEntries.date, weekStartStr));
+    const thisWeekCount = Number(thisWeekRows[0]?.cnt ?? 0);
+
+    const lastRow = await this.db
+      .select({ date: workoutEntries.date })
+      .from(workoutEntries)
+      .orderBy(desc(workoutEntries.date))
+      .limit(1);
+    const daysSinceLastWorkout = lastRow[0]
+      ? Math.floor((now.getTime() - new Date(lastRow[0].date + "T00:00:00+08:00").getTime()) / 86400000)
+      : 999;
+
+    let consecutiveWeeks = 0;
+    for (let i = 0; i < 12; i++) {
+      const wStart = new Date(weekStartTaipei);
+      wStart.setUTCDate(wStart.getUTCDate() - i * 7);
+      const wEnd = new Date(wStart);
+      wEnd.setUTCDate(wEnd.getUTCDate() + 7);
+      const wStartStr = wStart.toISOString().slice(0, 10);
+      const wEndStr = wEnd.toISOString().slice(0, 10);
+      const wRows = await this.db
+        .select({ cnt: count() })
+        .from(workoutEntries)
+        .where(and(gte(workoutEntries.date, wStartStr), lt(workoutEntries.date, wEndStr)));
+      if (Number(wRows[0]?.cnt ?? 0) > 0) {
+        consecutiveWeeks++;
+      } else if (i > 0) {
+        break;
+      }
+    }
+    return { thisWeekCount, daysSinceLastWorkout, consecutiveWeeks };
   }
 }
 

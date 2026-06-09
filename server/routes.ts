@@ -1508,6 +1508,20 @@ Match exercise names exactly to the available exercises list. Return ONLY valid 
     }
   });
 
+
+  // ── Public life-score endpoint (no auth) ──────────────────────────────────
+  // Returns aggregate workout metrics for the Life Integration System.
+  // Called nightly by local Claude to compute the unified life score.
+  app.get('/api/public/life-score', async (_req, res) => {
+    try {
+      const summary = await storage.getPublicLifeScore();
+      res.json({ ...summary, timestamp: new Date().toISOString() });
+    } catch (error) {
+      console.error('Error in /api/public/life-score:', error);
+      res.status(500).json({ message: String(error) });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }
