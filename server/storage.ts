@@ -3848,24 +3848,28 @@ export class DbStorage implements IStorage {
     weekStartTaipei.setUTCHours(0, 0, 0, 0);
     const weekStartUTC = new Date(weekStartTaipei.getTime() - 8 * 60 * 60 * 1000);
 
-    // This week count — use Date objects for timestamp column comparisons
+    // Count DISTINCT workout DAYS (not individual entries) since Monday Taipei time.
+    // date_trunc groups all entries on the same Taipei calendar day.
     const thisWeekRows = await this.db
-      .select({ cnt: count() })
+      .selectDistinct({ day: sql`date_trunc('day', date + interval '8 hours')` })
       .from(workoutEntries)
       .where(gte(workoutEntries.date, weekStartUTC));
-    const thisWeekCount = Number(thisWeekRows[0]?.cnt ?? 0);
+    const thisWeekCount = thisWeekRows.length;
 
-    // Last workout date (date field is already a Date object from Drizzle)
+    // Last workout date (latest entry timestamp)
     const lastRow = await this.db
       .select({ date: workoutEntries.date })
       .from(workoutEntries)
       .orderBy(desc(workoutEntries.date))
       .limit(1);
     const daysSinceLastWorkout = lastRow[0]?.date
-      ? Math.floor((now.getTime() - new Date(lastRow[0].date).getTime()) / 86400000)
+      ? Math.floor(
+          (now.getTime() - new Date(lastRow[0].date).getTime()) /
+          (24 * 60 * 60 * 1000)
+        )
       : 999;
 
-    // Consecutive weeks — use Date objects throughout
+    // Consecutive weeks with at least 1 entry
     let consecutiveWeeks = 0;
     for (let i = 0; i < 12; i++) {
       const wStart = new Date(weekStartUTC.getTime() - i * 7 * 24 * 60 * 60 * 1000);
@@ -3883,5 +3887,4 @@ export class DbStorage implements IStorage {
     return { thisWeekCount, daysSinceLastWorkout, consecutiveWeeks };
   }
 }
-
 export const storage = process.env.DATABASE_URL ? new DbStorage() : new MemStorage();
