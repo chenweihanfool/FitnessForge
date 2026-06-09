@@ -3839,41 +3839,41 @@ export class DbStorage implements IStorage {
 
   async getPublicLifeScore() {
     const now = new Date();
+    // Compute Monday 00:00 Taipei time then convert to UTC for DB comparisons
     const taipeiNow = new Date(now.getTime() + 8 * 60 * 60 * 1000);
-    const dow = taipeiNow.getUTCDay();
+    const dow = taipeiNow.getUTCDay(); // 0=Sun
     const diffToMon = dow === 0 ? -6 : 1 - dow;
     const weekStartTaipei = new Date(taipeiNow);
     weekStartTaipei.setUTCDate(weekStartTaipei.getUTCDate() + diffToMon);
     weekStartTaipei.setUTCHours(0, 0, 0, 0);
-    const weekStartStr = weekStartTaipei.toISOString().slice(0, 10);
+    const weekStartUTC = new Date(weekStartTaipei.getTime() - 8 * 60 * 60 * 1000);
 
+    // This week count — use Date objects for timestamp column comparisons
     const thisWeekRows = await this.db
       .select({ cnt: count() })
       .from(workoutEntries)
-      .where(gte(workoutEntries.date, weekStartStr));
+      .where(gte(workoutEntries.date, weekStartUTC));
     const thisWeekCount = Number(thisWeekRows[0]?.cnt ?? 0);
 
+    // Last workout date (date field is already a Date object from Drizzle)
     const lastRow = await this.db
       .select({ date: workoutEntries.date })
       .from(workoutEntries)
       .orderBy(desc(workoutEntries.date))
       .limit(1);
-    const daysSinceLastWorkout = lastRow[0]
-      ? Math.floor((now.getTime() - new Date(lastRow[0].date + "T00:00:00+08:00").getTime()) / 86400000)
+    const daysSinceLastWorkout = lastRow[0]?.date
+      ? Math.floor((now.getTime() - new Date(lastRow[0].date).getTime()) / 86400000)
       : 999;
 
+    // Consecutive weeks — use Date objects throughout
     let consecutiveWeeks = 0;
     for (let i = 0; i < 12; i++) {
-      const wStart = new Date(weekStartTaipei);
-      wStart.setUTCDate(wStart.getUTCDate() - i * 7);
-      const wEnd = new Date(wStart);
-      wEnd.setUTCDate(wEnd.getUTCDate() + 7);
-      const wStartStr = wStart.toISOString().slice(0, 10);
-      const wEndStr = wEnd.toISOString().slice(0, 10);
+      const wStart = new Date(weekStartUTC.getTime() - i * 7 * 24 * 60 * 60 * 1000);
+      const wEnd   = new Date(wStart.getTime()     + 7 * 24 * 60 * 60 * 1000);
       const wRows = await this.db
         .select({ cnt: count() })
         .from(workoutEntries)
-        .where(and(gte(workoutEntries.date, wStartStr), lt(workoutEntries.date, wEndStr)));
+        .where(and(gte(workoutEntries.date, wStart), lt(workoutEntries.date, wEnd)));
       if (Number(wRows[0]?.cnt ?? 0) > 0) {
         consecutiveWeeks++;
       } else if (i > 0) {
