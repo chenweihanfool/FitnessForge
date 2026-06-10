@@ -266,6 +266,10 @@ export interface IStorage {
     thisWeekCount: number;
     daysSinceLastWorkout: number;
     consecutiveWeeks: number;
+    thisWeekBaselineValue: number;
+    avgWeeklyBaselineValue: number;
+    categoryCount: number;
+    muscleGroupCount: number;
   }>;
 }
 
@@ -1887,7 +1891,8 @@ export class MemStorage implements IStorage {
   }
 
   async getPublicLifeScore() {
-    return { thisWeekCount: 0, daysSinceLastWorkout: 0, consecutiveWeeks: 0 };
+    return { thisWeekCount: 0, daysSinceLastWorkout: 0, consecutiveWeeks: 0,
+      thisWeekBaselineValue: 0, avgWeeklyBaselineValue: 0, categoryCount: 0, muscleGroupCount: 0 };
   }
 }
 
@@ -3839,52 +3844,89 @@ export class DbStorage implements IStorage {
 
   async getPublicLifeScore() {
     const now = new Date();
-    // Compute Monday 00:00 Taipei time then convert to UTC for DB comparisons
     const taipeiNow = new Date(now.getTime() + 8 * 60 * 60 * 1000);
-    const dow = taipeiNow.getUTCDay(); // 0=Sun
+    const dow = taipeiNow.getUTCDay();
     const diffToMon = dow === 0 ? -6 : 1 - dow;
     const weekStartTaipei = new Date(taipeiNow);
     weekStartTaipei.setUTCDate(weekStartTaipei.getUTCDate() + diffToMon);
     weekStartTaipei.setUTCHours(0, 0, 0, 0);
     const weekStartUTC = new Date(weekStartTaipei.getTime() - 8 * 60 * 60 * 1000);
+    const weekStartTW = `${weekStartTaipei.getUTCFullYear()}-${String(weekStartTaipei.getUTCMonth()+1).padStart(2,'0')}-${String(weekStartTaipei.getUTCDate()).padStart(2,'0')}`;
 
-    // Count DISTINCT workout DAYS (not individual entries) since Monday Taipei time.
-    // date_trunc groups all entries on the same Taipei calendar day.
+    // Distinct workout DAYS this week (Taipei calendar day)
     const thisWeekRows = await this.db
       .selectDistinct({ day: sql`date_trunc('day', date + interval '8 hours')` })
       .from(workoutEntries)
       .where(gte(workoutEntries.date, weekStartUTC));
     const thisWeekCount = thisWeekRows.length;
 
-    // Last workout date (latest entry timestamp)
+    // Days since last workout
     const lastRow = await this.db
       .select({ date: workoutEntries.date })
       .from(workoutEntries)
       .orderBy(desc(workoutEntries.date))
       .limit(1);
     const daysSinceLastWorkout = lastRow[0]?.date
-      ? Math.floor(
-          (now.getTime() - new Date(lastRow[0].date).getTime()) /
-          (24 * 60 * 60 * 1000)
-        )
+      ? Math.floor((now.getTime() - new Date(lastRow[0].date).getTime()) / (24 * 60 * 60 * 1000))
       : 999;
 
     // Consecutive weeks with at least 1 entry
     let consecutiveWeeks = 0;
     for (let i = 0; i < 12; i++) {
       const wStart = new Date(weekStartUTC.getTime() - i * 7 * 24 * 60 * 60 * 1000);
-      const wEnd   = new Date(wStart.getTime()     + 7 * 24 * 60 * 60 * 1000);
-      const wRows = await this.db
-        .select({ cnt: count() })
-        .from(workoutEntries)
+      const wEnd   = new Date(wStart.getTime() + 7 * 24 * 60 * 60 * 1000);
+      const wRows = await this.db.select({ cnt: count() }).from(workoutEntries)
         .where(and(gte(workoutEntries.date, wStart), lt(workoutEntries.date, wEnd)));
-      if (Number(wRows[0]?.cnt ?? 0) > 0) {
-        consecutiveWeeks++;
-      } else if (i > 0) {
-        break;
-      }
+      if (Number(wRows[0]?.cnt ?? 0) > 0) { consecutiveWeeks++; } else if (i > 0) { break; }
     }
-    return { thisWeekCount, daysSinceLastWorkout, consecutiveWeeks };
+
+    // This week's total training volume (sum of baseline_value)
+    const baselineRows = await this.db
+      .select({ total: sql<string>`COALESCE(SUM(baseline_value), 0)` })
+      .from(workoutEntries)
+      .where(gte(workoutEntries.date, weekStartUTC));
+    const thisWeekBaselineValue = Math.round(Number(baselineRows[0]?.total ?? 0));
+
+    // Past 8 completed weeks' average baseline (for volume comparison)
+    const eightWeeksAgoUTC = new Date(weekStartUTC.getTime() - 8 * 7 * 24 * 60 * 60 * 1000);
+    const pastWeeksRows = await this.db
+      .select({
+        weekKey: sql<string>`date_trunc('week', date + interval '8 hours')::text`,
+        total: sql<string>`SUM(baseline_value)`,
+      })
+      .from(workoutEntries)
+      .where(and(gte(workoutEntries.date, eightWeeksAgoUTC), lt(workoutEntries.date, weekStartUTC)))
+      .groupBy(sql`date_trunc('week', date + interval '8 hours')`);
+    const avgWeeklyBaselineValue = pastWeeksRows.length > 0
+      ? Math.round(pastWeeksRows.reduce((s, r) => s + Number(r.total), 0) / pastWeeksRows.length)
+      : 0;
+
+    // Distinct exercise categories this week (力量 / 有氧 / 活動量)
+    const categoryRows = await this.db
+      .selectDistinct({ category: exercises.category })
+      .from(workoutEntries)
+      .innerJoin(exercises, eq(workoutEntries.exerciseId, exercises.id))
+      .where(and(gte(workoutEntries.date, weekStartUTC), sql`${exercises.category} IS NOT NULL`));
+    const categoryCount = categoryRows.filter(r => r.category !== null).length;
+
+    // Active muscle groups this week from weeklyMuscleStats snapshot
+    const muscleRow = await this.db
+      .select()
+      .from(weeklyMuscleStats)
+      .where(eq(weeklyMuscleStats.weekStart, weekStartTW))
+      .limit(1);
+    let muscleGroupCount = 0;
+    if (muscleRow[0]) {
+      const r = muscleRow[0];
+      muscleGroupCount = [r.chestValue, r.backValue, r.legsValue, r.shouldersValue,
+        r.armsValue, r.coreValue, r.glutesValue, r.fullBodyValue]
+        .filter(v => (v ?? 0) > 0).length;
+    }
+
+    return {
+      thisWeekCount, daysSinceLastWorkout, consecutiveWeeks,
+      thisWeekBaselineValue, avgWeeklyBaselineValue, categoryCount, muscleGroupCount,
+    };
   }
 }
 export const storage = process.env.DATABASE_URL ? new DbStorage() : new MemStorage();
