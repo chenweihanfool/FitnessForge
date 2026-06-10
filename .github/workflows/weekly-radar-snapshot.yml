@@ -20,7 +20,7 @@ jobs:
 
           HTTP_STATUS=$(curl -s -o /tmp/response.json -w "%{http_code}" \
             --max-time 60 \
-            -X POST https://fitnessforge.replit.app/api/stats/radar-snapshot/auto \
+            -X POST https://fitness-forge-chenweihanfool.replit.app/api/stats/radar-snapshot/auto \
             -H "Content-Type: application/json" \
             -H "x-snapshot-secret: ${{ secrets.SNAPSHOT_SECRET }}")
 

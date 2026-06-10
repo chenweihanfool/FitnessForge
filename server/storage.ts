@@ -3416,8 +3416,8 @@ export class DbStorage implements IStorage {
       .sort((a, b) => b.totalVolume - a.totalVolume);
 
     return {
-      weekStart: weekStart.toISOString(),
-      weekEnd: weekEnd.toISOString(),
+      weekStart: this.formatTaipeiDate(weekStart),
+      weekEnd: this.formatTaipeiDate(weekEnd),
       muscleGroups,
     };
   }
