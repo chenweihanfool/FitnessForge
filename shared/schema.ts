@@ -1,4 +1,4 @@
-import { pgTable, text, varchar, real, timestamp, boolean, json, index } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, real, timestamp } from "drizzle-orm/pg-core";
 import { z } from "zod";
 import { sql } from "drizzle-orm";
 
@@ -271,12 +271,6 @@ export type RankingDetailResponse = {
   careerAverage: number; // 生涯平均值（基于所有历史周数据）
 };
 
-// Session 表 — 由 connect-pg-simple 讀寫，由 Drizzle 管理建立
-// 欄位型別必須與 connect-pg-simple 預期完全一致
-export const sessionTable = pgTable("session", {
-  sid: varchar("sid").primaryKey(),
-  sess: json("sess").notNull(),
-  expire: timestamp("expire", { precision: 6 }).notNull(),
-}, (t) => [
-  index("IDX_session_expire").on(t.expire),
-]);
+// Session 表（sid/sess/expire）完全由 connect-pg-simple 自行建立與讀寫，
+// 故意不在這裡定義 pgTable —— 否則 drizzle-kit push 會誤判該表不存在而嘗試
+// CREATE TABLE，與 tablesFilter（見 drizzle.config.ts）的排除設定互相矛盾並報錯。
