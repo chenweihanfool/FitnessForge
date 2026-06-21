@@ -450,6 +450,8 @@ export class MemStorage implements IStorage {
       baselineValue,
       date,
       notes: insertEntry.notes || null,
+      source: insertEntry.source ?? "manual",
+      sourceDays: insertEntry.sourceDays ?? null,
     };
 
     this.workoutEntries.set(id, entry);
@@ -482,6 +484,8 @@ export class MemStorage implements IStorage {
       baselineValue,
       date,
       notes: insertEntry.notes || null,
+      source: insertEntry.source ?? existing.source ?? "manual",
+      sourceDays: insertEntry.sourceDays ?? null,
     };
 
     this.workoutEntries.set(id, updated);
@@ -2016,6 +2020,8 @@ export class DbStorage implements IStorage {
         baselineValue: workoutEntries.baselineValue,
         date: workoutEntries.date,
         notes: workoutEntries.notes,
+        source: workoutEntries.source,
+        sourceDays: workoutEntries.sourceDays,
         exercise: exercises,
       })
       .from(workoutEntries)
@@ -2036,6 +2042,8 @@ export class DbStorage implements IStorage {
         baselineValue: workoutEntries.baselineValue,
         date: workoutEntries.date,
         notes: workoutEntries.notes,
+        source: workoutEntries.source,
+        sourceDays: workoutEntries.sourceDays,
         exercise: exercises,
       })
       .from(workoutEntries)
@@ -2080,6 +2088,8 @@ export class DbStorage implements IStorage {
         baselineValue,
         date,
         notes: insertEntry.notes ?? null,
+        source: insertEntry.source ?? "manual",
+        sourceDays: insertEntry.sourceDays ?? null,
       })
       .returning();
 
@@ -2093,11 +2103,11 @@ export class DbStorage implements IStorage {
   async updateWorkoutEntry(id: string, insertEntry: InsertWorkoutEntry): Promise<WorkoutEntry | undefined> {
     // 先获取原记录以确定原来的日期（用于更新旧周的统计）
     const oldEntry = await this.db
-      .select({ date: workoutEntries.date })
+      .select({ date: workoutEntries.date, source: workoutEntries.source })
       .from(workoutEntries)
       .where(eq(workoutEntries.id, id));
     const oldDate = oldEntry[0]?.date;
-    
+
     const date = insertEntry.date ? new Date(insertEntry.date) : undefined;
     
     const exerciseResult = await this.db
@@ -2131,6 +2141,8 @@ export class DbStorage implements IStorage {
         baselineValue,
         ...(date && { date }),
         notes: insertEntry.notes ?? null,
+        source: insertEntry.source ?? oldEntry[0]?.source ?? "manual",
+        sourceDays: insertEntry.sourceDays ?? null,
       })
       .where(eq(workoutEntries.id, id))
       .returning();

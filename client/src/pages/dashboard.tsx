@@ -264,6 +264,8 @@ export default function Dashboard() {
     value: number;
     dailyAverage: number;
     date: string;
+    source: "manual" | "auto";
+    sourceDays: number | null;
   } | null;
 
   const { data: stepsData, isSuccess: stepsLoaded } = useQuery<StepsData>({
@@ -278,17 +280,21 @@ export default function Dashboard() {
   const stepsMutation = useMutation({
     mutationFn: async (dailyAvg: number) => {
       const weeklyTotal = dailyAvg * 7;
-      if (stepsData && stepsData.id) {
+      // 編輯一律存成 manual：若目前顯示的是系統自動估算值，改成新增一筆手動記錄
+      // （而不是覆寫自動記錄），這樣自動同步仍可在背景持續更新，但本週畫面永遠優先顯示手動值。
+      if (stepsData && stepsData.id && stepsData.source === "manual") {
         return apiRequest("PUT", `/api/entries/${stepsData.id}`, {
           exerciseId: stepsData.exerciseId,
           value: weeklyTotal,
           weightFactor: 1,
+          source: "manual",
         });
       } else if (stepsExerciseId) {
         return apiRequest("POST", "/api/entries", {
           exerciseId: stepsExerciseId,
           value: weeklyTotal,
           weightFactor: 1,
+          source: "manual",
         });
       }
     },
@@ -1130,9 +1136,16 @@ export default function Dashboard() {
             <div className="flex items-center gap-2">
               {stepsData ? (
                 <>
-                  <span className="text-sm font-medium" data-testid="text-steps-daily-avg">
-                    {stepsData.dailyAverage.toLocaleString()} 步/天
-                  </span>
+                  <div className="flex flex-col items-end">
+                    <span className="text-sm font-medium" data-testid="text-steps-daily-avg">
+                      {stepsData.dailyAverage.toLocaleString()} 步/天
+                    </span>
+                    {stepsData.source === "auto" && (
+                      <span className="text-[10px] text-muted-foreground" data-testid="text-steps-auto-badge">
+                        🤖 自動估算{stepsData.sourceDays ? `（基於${stepsData.sourceDays}天資料）` : ""}
+                      </span>
+                    )}
+                  </div>
                   <Button
                     size="icon"
                     variant="ghost"
@@ -1997,7 +2010,7 @@ export default function Dashboard() {
             <DialogTitle>{stepsData ? '更新每日平均步数' : '記錄步數'}</DialogTitle>
             <DialogDescription>
               {stepsData
-                ? `目前记录：每日 ${stepsData.dailyAverage.toLocaleString()} 步（周总计 ${stepsData.value.toLocaleString()} 步）`
+                ? `目前记录：每日 ${stepsData.dailyAverage.toLocaleString()} 步（周总计 ${stepsData.value.toLocaleString()} 步）${stepsData.source === 'auto' ? '，系統自動估算值，輸入後將改為手動記錄' : ''}`
                 : '输入本周每日平均步数'}
             </DialogDescription>
           </DialogHeader>

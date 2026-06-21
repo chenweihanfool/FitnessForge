@@ -53,6 +53,8 @@ export const workoutEntries = pgTable("workout_entries", {
   baselineValue: real("baseline_value"), // 基准值（创建时计算并固定：value × sets × weightFactor）
   date: timestamp("date").notNull().defaultNow(), // 记录日期时间
   notes: text("notes"), // 可选备注
+  source: text("source").notNull().default("manual"), // 数据来源：'manual'（手動輸入）| 'auto'（系統自動同步，如 Health Sync 步數）
+  sourceDays: real("source_days"), // 'auto' 來源時，記錄這次計算實際用了幾天資料（資料不足一週時用於標示）
 });
 
 export const insertWorkoutEntrySchema = z.object({
@@ -62,6 +64,8 @@ export const insertWorkoutEntrySchema = z.object({
   weightFactor: z.number().optional(), // 动态权重（可选，覆盖运动类型的默认权重）
   date: z.string().optional(), // 允许从前端传递ISO日期字符串
   notes: z.string().optional(),
+  source: z.enum(["manual", "auto"]).optional(), // 預設 'manual'
+  sourceDays: z.number().optional(),
 });
 
 // 类型定义

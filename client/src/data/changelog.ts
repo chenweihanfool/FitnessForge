@@ -7,6 +7,17 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: "v2.4",
+    date: "2026-06-21",
+    title: "步數自動估算預設值",
+    items: [
+      "新增「每周平均步数」資料來源標記（manual / auto）",
+      "本周步數卡片支援系統自動估算為預設值，並標示基於幾天資料計算",
+      "新增 /api/public/steps-auto-sync 端點，供外部自動化（Health Sync → Google Drive）回寫每日平均步數",
+      "使用者手動輸入永遠優先於自動估算值，編輯後自動轉為手動記錄",
+    ],
+  },
+  {
     version: "v2.3",
     date: "2026-05-17",
     title: "帳號登入、趨勢分析、雷達圖升級",
