@@ -1,5 +1,5 @@
 import { Home, Dumbbell, BarChart3, FileUp, FileDown, Settings, Trophy, Star, Shield, User } from "lucide-react";
-import { useLocation } from "wouter";
+import { useLocation, Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { RankingData } from "@shared/schema";
 import { useAuth } from "@/hooks/use-auth";
@@ -79,10 +79,10 @@ export function AppSidebar() {
                 return (
                   <SidebarMenuItem key={item.title}>
                     <SidebarMenuButton asChild isActive={isActive} data-testid={`nav-${item.url === "/" ? "dashboard" : item.url.slice(1)}`}>
-                      <a href={item.url}>
+                      <Link href={item.url}>
                         <item.icon className="h-4 w-4" />
                         <span>{item.title}</span>
-                      </a>
+                      </Link>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                 );
@@ -90,10 +90,10 @@ export function AppSidebar() {
               {isAdmin && (
                 <SidebarMenuItem>
                   <SidebarMenuButton asChild isActive={location === "/admin"} data-testid="nav-admin">
-                    <a href="/admin">
+                    <Link href="/admin">
                       <Shield className="h-4 w-4" />
                       <span>管理員後台</span>
-                    </a>
+                    </Link>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               )}
