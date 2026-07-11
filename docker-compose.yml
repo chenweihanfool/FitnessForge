@@ -18,6 +18,10 @@ services:
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
       ADMIN_GOOGLE_EMAIL: ${ADMIN_GOOGLE_EMAIL}
+      # Shared secret checked against the x-snapshot-secret header on the
+      # weekly-radar-snapshot.yml GitHub Actions cron call -- must match that
+      # workflow's SNAPSHOT_SECRET repo secret, or the endpoint always 401s.
+      SNAPSHOT_SECRET: ${SNAPSHOT_SECRET}
       # Full external URL (with the /fitness path), used to build the Google
       # OAuth callback URL -- must exactly match an Authorized redirect URI
       # registered on the Google Cloud OAuth client.

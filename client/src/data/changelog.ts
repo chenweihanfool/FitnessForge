@@ -7,6 +7,16 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: "v3.2",
+    date: "2026-07-11",
+    title: "修正每週肌群雷達圖快照失效的問題",
+    items: [
+      "根因一：v3.0 遷移出 Replit 後，.github/workflows/weekly-radar-snapshot.yml 排程仍打去已經停用的舊 Replit 網址，改成自架 Docker 的 https://cwh2023.asuscomm.com/fitness",
+      "根因二：SNAPSHOT_SECRET 這個環境變數在遷移時被漏掉，docker-compose.yml 和 .env.example 都沒有帶到，容器內讀不到值，即使網址修好也會永遠回 401——已補上",
+      "需要在正式環境的 .env 補上 SNAPSHOT_SECRET（跟 GitHub repo secret 同一組值）並重建容器，排程才會真的恢復運作",
+    ],
+  },
+  {
     version: "v3.1",
     date: "2026-07-11",
     title: "逐組自訂記錄模式",
