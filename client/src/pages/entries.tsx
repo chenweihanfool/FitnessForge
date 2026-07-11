@@ -93,6 +93,13 @@ export default function Entries() {
   const [progStartWeight, setProgStartWeight] = useState<number | "">("");
   const [progIncrement, setProgIncrement] = useState<number | "">(2.5);
   const [progNumSets, setProgNumSets] = useState<number | "">(4);
+
+  // Custom per-set mode state (for strength exercises where each set's weight
+  // and reps differ arbitrarily, e.g. 18kg×8, 20kg×9, 20kg×6)
+  const [customSetsMode, setCustomSetsMode] = useState(false);
+  const [customSets, setCustomSets] = useState<{ weight: number | ""; reps: number | "" }[]>([
+    { weight: "", reps: "" },
+  ]);
   const { toast } = useToast();
 
   const { data: exercises } = useQuery<Exercise[]>({
@@ -234,13 +241,15 @@ export default function Entries() {
     return { weights, avg };
   };
 
-  // Reset progressive mode when exercise changes
+  // Reset progressive/custom mode when exercise changes
   useEffect(() => {
     setProgressiveMode(false);
     setProgRepsPerSet(5);
     setProgStartWeight("");
     setProgIncrement(2.5);
     setProgNumSets(4);
+    setCustomSetsMode(false);
+    setCustomSets([{ weight: "", reps: "" }]);
   }, [selectedExerciseId]);
 
   useEffect(() => {
@@ -257,6 +266,34 @@ export default function Entries() {
       form.setValue('weightFactor', parseFloat(avg.toFixed(2)));
     }
   }, [progressiveMode, progRepsPerSet, progStartWeight, progIncrement, progNumSets]);
+
+  // Custom per-set totals: preserves total training volume (Σ weight×reps)
+  // via a reps-weighted average weight, so calculateBaselineValue's
+  // weightFactor × value × sets formula produces the same baseline as
+  // summing each set's actual weight × reps individually -- lets sets with
+  // arbitrarily different weight/reps be entered without changing the
+  // underlying single-row (value/sets/weightFactor) schema.
+  const computeCustomSets = (sets: { weight: number | ""; reps: number | "" }[]) => {
+    const valid = sets.filter(
+      (s): s is { weight: number; reps: number } =>
+        typeof s.weight === 'number' && typeof s.reps === 'number' && s.weight > 0 && s.reps > 0
+    );
+    if (valid.length === 0) return null;
+    const totalVolume = valid.reduce((sum, s) => sum + s.weight * s.reps, 0);
+    const avgReps = valid.reduce((sum, s) => sum + s.reps, 0) / valid.length;
+    const avgWeight = totalVolume / (avgReps * valid.length);
+    return { count: valid.length, totalVolume, avgReps, avgWeight };
+  };
+
+  useEffect(() => {
+    if (!customSetsMode) return;
+    const result = computeCustomSets(customSets);
+    if (result) {
+      form.setValue('value', parseFloat(result.avgReps.toFixed(2)));
+      form.setValue('sets', result.count);
+      form.setValue('weightFactor', parseFloat(result.avgWeight.toFixed(2)));
+    }
+  }, [customSetsMode, customSets]);
 
   const onSubmit = (data: InsertWorkoutEntry) => {
     // 用户输入的时间是台北时间（UTC+8）
@@ -369,6 +406,8 @@ export default function Entries() {
             setProgStartWeight("");
             setProgIncrement(2.5);
             setProgNumSets(4);
+            setCustomSetsMode(false);
+            setCustomSets([{ weight: "", reps: "" }]);
           }
         }}>
           <DialogTrigger asChild>
@@ -457,7 +496,7 @@ export default function Entries() {
                       name="weightFactor"
                       render={({ field }) => {
                         const isStrengthEx = selectedExercise?.category === '力量';
-                        const isProgReadOnly = isStrengthEx && progressiveMode;
+                        const isProgReadOnly = isStrengthEx && (progressiveMode || customSetsMode);
                         return (
                           <FormItem>
                             <FormLabel>{isStrengthEx ? '強度系數 / 使用重量' : '权重系数'}</FormLabel>
@@ -479,7 +518,7 @@ export default function Entries() {
                             </FormControl>
                             <FormDescription className="text-xs text-muted-foreground">
                               {isProgReadOnly
-                                ? "已由逐組遞增自動填入平均重量"
+                                ? (progressiveMode ? "已由逐組遞增自動填入平均重量" : "已由逐組自訂換算自動填入平均重量")
                                 : isStrengthEx
                                   ? `預設 ${selectedExercise?.weightFactor ?? 1}（空手訓練強度當量）。如有額外負重，請填入 預設值 + 附加公斤數`
                                   : `默认值: ${selectedExercise?.weightFactor ?? 1}（可临时修改本次记录的权重）`}
@@ -510,7 +549,7 @@ export default function Entries() {
                         : isCardio
                           ? '运动时间（分钟）'
                           : isStrength
-                            ? (progressiveMode ? '次数（已自動填入）' : '次数（下）')
+                            ? (progressiveMode || customSetsMode ? '次数（已自動填入平均值）' : '次数（下）')
                             : '数据值';
                     const valuePlaceholder = isAverageSteps
                       ? "输入每日平均步数"
@@ -524,26 +563,42 @@ export default function Entries() {
 
                     return (
                       <FormItem>
-                        <div className="flex items-center justify-between">
+                        <div className="flex items-center justify-between gap-2">
                           <FormLabel>{valueLabel}</FormLabel>
                           {isStrength && (
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              onClick={() => {
-                                const next = !progressiveMode;
-                                setProgressiveMode(next);
-                                if (!next) {
-                                  setProgStartWeight("");
-                                }
-                              }}
-                              data-testid="button-progressive-mode"
-                            >
-                              {progressiveMode
-                                ? <><ChevronUp className="h-3 w-3 mr-1" />關閉遞增</>
-                                : <><ChevronDown className="h-3 w-3 mr-1" />逐組遞增</>}
-                            </Button>
+                            <div className="flex gap-1.5">
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  const next = !progressiveMode;
+                                  setProgressiveMode(next);
+                                  if (next) setCustomSetsMode(false);
+                                  if (!next) setProgStartWeight("");
+                                }}
+                                data-testid="button-progressive-mode"
+                              >
+                                {progressiveMode
+                                  ? <><ChevronUp className="h-3 w-3 mr-1" />關閉遞增</>
+                                  : <><ChevronDown className="h-3 w-3 mr-1" />逐組遞增</>}
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  const next = !customSetsMode;
+                                  setCustomSetsMode(next);
+                                  if (next) setProgressiveMode(false);
+                                }}
+                                data-testid="button-custom-sets-mode"
+                              >
+                                {customSetsMode
+                                  ? <><ChevronUp className="h-3 w-3 mr-1" />關閉自訂</>
+                                  : <><ChevronDown className="h-3 w-3 mr-1" />逐組自訂</>}
+                              </Button>
+                            </div>
                           )}
                         </div>
                         {isStrength && progressiveMode && (
@@ -626,16 +681,94 @@ export default function Entries() {
                             )}
                           </div>
                         )}
+                        {isStrength && customSetsMode && (
+                          <div className="rounded-lg border bg-muted/30 p-3 space-y-3">
+                            <p className="text-xs font-medium text-muted-foreground">逐組自訂（每組重量、次數可各自不同）</p>
+                            <div className="space-y-2">
+                              {customSets.map((s, idx) => (
+                                <div key={idx} className="flex items-center gap-2">
+                                  <span className="text-xs text-muted-foreground w-10 shrink-0">第{idx + 1}組</span>
+                                  <Input
+                                    type="number"
+                                    step="0.5"
+                                    min="0"
+                                    placeholder="重量(kg)"
+                                    value={s.weight}
+                                    onChange={(e) => {
+                                      const v = e.target.value ? parseFloat(e.target.value) : "";
+                                      setCustomSets((prev) => prev.map((row, i) => (i === idx ? { ...row, weight: v } : row)));
+                                    }}
+                                    data-testid={`input-custom-set-weight-${idx}`}
+                                  />
+                                  <Input
+                                    type="number"
+                                    step="1"
+                                    min="0"
+                                    placeholder="次數(下)"
+                                    value={s.reps}
+                                    onChange={(e) => {
+                                      const v = e.target.value ? parseInt(e.target.value) : "";
+                                      setCustomSets((prev) => prev.map((row, i) => (i === idx ? { ...row, reps: v } : row)));
+                                    }}
+                                    data-testid={`input-custom-set-reps-${idx}`}
+                                  />
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
+                                    className="shrink-0"
+                                    disabled={customSets.length <= 1}
+                                    onClick={() => setCustomSets((prev) => prev.filter((_, i) => i !== idx))}
+                                    data-testid={`button-remove-custom-set-${idx}`}
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </Button>
+                                </div>
+                              ))}
+                            </div>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setCustomSets((prev) => [...prev, { weight: prev[prev.length - 1]?.weight ?? "", reps: "" }])}
+                              data-testid="button-add-custom-set"
+                            >
+                              <Plus className="h-3 w-3 mr-1" />新增一組
+                            </Button>
+                            {(() => {
+                              const result = computeCustomSets(customSets);
+                              if (!result) return null;
+                              const baseline = calculateBaselineValue(result.avgReps, form.watch("exerciseId"), result.avgWeight, result.count);
+                              return (
+                                <div className="text-xs space-y-0.5">
+                                  <p className="text-muted-foreground">
+                                    <span className="font-medium">各組: </span>
+                                    {customSets
+                                      .filter((s): s is { weight: number; reps: number } => typeof s.weight === 'number' && typeof s.reps === 'number' && s.weight > 0 && s.reps > 0)
+                                      .map((s) => `${s.weight}kg×${s.reps}`)
+                                      .join('、')}
+                                  </p>
+                                  <p className="text-foreground font-medium">
+                                    換算：{result.avgReps.toFixed(1)}下 × {result.count}組 @ {result.avgWeight.toFixed(1)}kg（總訓練量相同）
+                                  </p>
+                                  <p className="text-foreground font-medium">
+                                    預估基準值: {baseline.toFixed(1)}
+                                  </p>
+                                </div>
+                              );
+                            })()}
+                          </div>
+                        )}
                         <FormControl>
                           <Input
                             type="number"
                             step="0.01"
                             placeholder={valuePlaceholder}
                             {...field}
-                            readOnly={isStrength && progressiveMode}
-                            className={isStrength && progressiveMode ? "bg-muted" : ""}
+                            readOnly={isStrength && (progressiveMode || customSetsMode)}
+                            className={isStrength && (progressiveMode || customSetsMode) ? "bg-muted" : ""}
                             onChange={(e) => {
-                              if (!(isStrength && progressiveMode)) {
+                              if (!(isStrength && (progressiveMode || customSetsMode))) {
                                 field.onChange(parseFloat(e.target.value) || 0);
                               }
                             }}
@@ -723,10 +856,10 @@ export default function Entries() {
                               placeholder={isRunning ? "输入跑步距離（公里）" : "输入组数"}
                               {...field}
                               value={field.value ?? ""}
-                              readOnly={isStrengthExercise && progressiveMode}
-                              className={isStrengthExercise && progressiveMode ? "bg-muted" : ""}
+                              readOnly={isStrengthExercise && (progressiveMode || customSetsMode)}
+                              className={isStrengthExercise && (progressiveMode || customSetsMode) ? "bg-muted" : ""}
                               onChange={(e) => {
-                                if (!(isStrengthExercise && progressiveMode)) {
+                                if (!(isStrengthExercise && (progressiveMode || customSetsMode))) {
                                   field.onChange(e.target.value ? parseFloat(e.target.value) : undefined);
                                 }
                               }}
@@ -736,8 +869,8 @@ export default function Entries() {
                           <FormDescription>
                             {isRunning
                               ? "留空将根据预设配速估算距離"
-                              : isStrengthExercise && progressiveMode
-                                ? "已由逐組遞增自動填入"
+                              : isStrengthExercise && (progressiveMode || customSetsMode)
+                                ? "已由逐組自動填入"
                                 : "记录本次训练的组数，用于追踪各肌群训练量"}
                           </FormDescription>
                           <FormMessage />
