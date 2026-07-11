@@ -7,6 +7,26 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: "v3.1",
+    date: "2026-07-11",
+    title: "逐組自訂記錄模式",
+    items: [
+      "新增「逐組自訂」記錄模式：每組重量、次數可各自不同（例如第1組18kg×8下、第2組20kg×9下、第3組20kg×6下），不再侷限於「逐組遞增」的線性公式",
+      "自動用次數加權平均重量換算，確保換算後的基準值與各組實際訓練量總和一致，不影響歷史資料與統計的可比性",
+    ],
+  },
+  {
+    version: "v3.0",
+    date: "2026-07-11",
+    title: "遷移出 Replit：Google 登入取代 Replit Auth，自架 Docker 部署",
+    items: [
+      "登入機制改用 Google OAuth（PKCE），取代 Replit 專屬的 OIDC，白名單改用 Google email 比對",
+      "移除從未真正被驗證過必要性、且使用者決定不再需要的 AI 排程解析功能（原本呼叫 Replit 代管的 AI 閘道）",
+      "從 Replit 平台遷出，改為自架 Docker 部署於 https://cwh2023.asuscomm.com/fitness，資料庫搬到自架共用 Postgres 主機",
+      "修正側邊欄導航連結繞過子路徑部署設定，點擊後誤導向其他系統的問題",
+    ],
+  },
+  {
     version: "v2.4",
     date: "2026-06-21",
     title: "步數自動估算預設值",
