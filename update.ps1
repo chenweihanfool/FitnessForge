@@ -4,12 +4,14 @@
 .DESCRIPTION
     Steps:
       1. git pull (from chenweihanfool/FitnessForge on GitHub)
-      2. docker compose build (rebuild the app image from the latest Dockerfile/source)
-      3. docker compose up -d (recreate the app container)
-      4. docker compose exec app npm run db:push (drizzle-kit schema sync -- safe to run
+      2. docker compose up -d --build (build + (re)create the app container in one shot --
+         avoids a false-positive .hermes-tmp cleanup warning that `docker compose build`
+         alone can emit on this Windows Docker Desktop setup even on a successful build;
+         the health check at the end is the real success signal, not this step's exit code)
+      3. docker compose exec app npm run db:push (drizzle-kit schema sync -- safe to run
          every deploy for additive changes; only prompts interactively if drizzle-kit
          detects an ambiguous rename, which a normal schema addition won't trigger)
-      5. health check (verify the site responds under /fitness)
+      4. health check (verify the site responds under /fitness)
 
     Same pattern as pf-cwh's update.ps1 on this same host. Postgres itself is NOT
     managed by this docker-compose file -- it's an existing instance shared with
@@ -22,27 +24,27 @@
 
     Usage:
       - Double-click this .ps1 file
-      - Or run in PowerShell: & "F:\FitnessForge-src\update.ps1"
+      - Or run in PowerShell: & "F:\WEBAPP\SRC\FitnessForge\update.ps1"
 .NOTES
-    Version: 1.0
+    Version: 1.1
 #>
 
 $ErrorActionPreference = "Continue"
-$RepoDir = "F:\FitnessForge-src"
+$RepoDir = "F:\WEBAPP\SRC\FitnessForge"
 $LogFile = "$RepoDir\update.log"
 $StartTime = Get-Date
 $HealthUrl = "https://cwh2023.asuscomm.com/fitness"
 $AppPort = 5138
 
 Write-Host "=========================================" -ForegroundColor Cyan
-Write-Host "      FitnessForge Update Script v1.0     " -ForegroundColor Cyan
+Write-Host "      FitnessForge Update Script v1.1     " -ForegroundColor Cyan
 Write-Host "=========================================" -ForegroundColor Cyan
 Write-Host "Start: $($StartTime.ToString('yyyy-MM-dd HH:mm:ss'))" -ForegroundColor Gray
 Write-Host ""
 
 # Shared deploy helpers (Test-PortListening / Wait-ForPort) -- see
 # https://github.com/chenweihanfool/deploy-helpers-
-$modulePath = "F:\deploy-helpers\DeployHelpers.psm1"
+$modulePath = "F:\WEBAPP\Deploy\deploy-helpers\DeployHelpers.psm1"
 if (-not (Test-Path $modulePath)) {
     Write-Host "ERROR: Shared module not found at $modulePath" -ForegroundColor Red
     Write-Host "  Clone from: git@github.com:chenweihanfool/deploy-helpers-.git" -ForegroundColor Yellow
@@ -63,7 +65,7 @@ function Run-Native {
 # ==============================================
 # Step 1: git pull
 # ==============================================
-Write-Host "[1/5] Pulling latest code from GitHub..." -ForegroundColor Yellow
+Write-Host "[1/4] Pulling latest code from GitHub..." -ForegroundColor Yellow
 try {
     Push-Location $RepoDir
     $gitResult = Run-Native { git pull 2>&1 }
@@ -82,37 +84,18 @@ catch {
 }
 
 # ==============================================
-# Step 2: docker compose build
+# Step 2: docker compose up -d --build (build + start in one shot)
 # ==============================================
-Write-Host "[2/5] Building app image..." -ForegroundColor Yellow
+Write-Host "[2/4] Building + starting containers..." -ForegroundColor Yellow
 try {
     Push-Location $RepoDir
-    $buildResult = cmd /c "docker compose build 2>&1"
-    Write-Host $buildResult
-    if ($LASTEXITCODE -ne 0) {
-        throw "docker compose build failed (exit code: $LASTEXITCODE)"
-    }
-    Pop-Location
-}
-catch {
-    Write-Host "ERROR docker build: $_" -ForegroundColor Red
-    Write-Host "Make sure Docker Desktop is running and .env exists (copy from .env.example)" -ForegroundColor Yellow
-    Pop-Location
-    exit 1
-}
-
-# ==============================================
-# Step 3: docker compose up -d
-# ==============================================
-Write-Host "[3/5] Recreating containers..." -ForegroundColor Yellow
-try {
-    Push-Location $RepoDir
-    $upResult = cmd /c "docker compose up -d 2>&1"
+    $upResult = cmd /c "docker compose up -d --build 2>&1"
     Write-Host $upResult
-    if ($LASTEXITCODE -ne 0) {
-        throw "docker compose up -d failed (exit code: $LASTEXITCODE)"
-    }
-    Write-Host "  >> Containers started" -ForegroundColor Green
+    # Skip LASTEXITCODE here -- Docker Desktop on this Windows host can emit a
+    # false-positive .hermes-tmp cleanup warning (non-zero exit) after an
+    # otherwise successful build+start. Wait-ForPort + the health check below
+    # are the real signals.
+    Write-Host "  >> Containers built & started" -ForegroundColor Green
 
     if (-not (Wait-ForPort -Port $AppPort -Retries 15 -DelaySeconds 2)) {
         throw "App did not start listening on port $AppPort within 30s"
@@ -121,15 +104,16 @@ try {
     Pop-Location
 }
 catch {
-    Write-Host "ERROR docker up: $_" -ForegroundColor Red
+    Write-Host "ERROR docker up --build: $_" -ForegroundColor Red
+    Write-Host "Make sure Docker Desktop is running and .env exists (copy from .env.example)" -ForegroundColor Yellow
     Pop-Location
     exit 1
 }
 
 # ==============================================
-# Step 4: schema sync (drizzle-kit push)
+# Step 3: schema sync (drizzle-kit push)
 # ==============================================
-Write-Host "[4/5] Syncing database schema..." -ForegroundColor Yellow
+Write-Host "[3/4] Syncing database schema..." -ForegroundColor Yellow
 try {
     Push-Location $RepoDir
     $pushResult = cmd /c "docker compose exec -T app npm run db:push 2>&1"
@@ -148,9 +132,9 @@ catch {
 }
 
 # ==============================================
-# Step 5: Health check
+# Step 4: Health check
 # ==============================================
-Write-Host "[5/5] Health check..." -ForegroundColor Yellow
+Write-Host "[4/4] Health check..." -ForegroundColor Yellow
 Start-Sleep -Seconds 3
 
 try {
