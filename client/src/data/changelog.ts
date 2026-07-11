@@ -7,6 +7,16 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: "v3.3",
+    date: "2026-07-11",
+    title: "每週雷達圖快照改由自架主機的 HERMES 排程觸發",
+    items: [
+      "不再依賴 GitHub Actions 排程（雲端 runner 打自架主機的公開網址，多一層不必要的外部依賴）",
+      "改由自架主機上的 HERMES 直接排程呼叫 /api/stats/radar-snapshot/auto",
+      "GitHub Actions workflow 保留 workflow_dispatch 手動觸發，做為除錯備用，移除自動排程",
+    ],
+  },
+  {
     version: "v3.2",
     date: "2026-07-11",
     title: "修正每週肌群雷達圖快照失效的問題",

@@ -1,10 +1,9 @@
 name: Weekly Radar Snapshot
 
 on:
-  schedule:
-    # 每週日 UTC 14:00 = 台灣時間 22:00
-    - cron: '0 14 * * 0'
-  # 允許手動觸發（測試用）
+  # 排程已改由自架主機上的 HERMES 負責觸發，這裡只保留手動觸發做為除錯用途，
+  # 避免兩邊同時排程造成重複呼叫（雖然 /auto 端點是 upsert，不會產生重複資料，
+  # 但沒必要平白多打一次）。
   workflow_dispatch:
 
 jobs:
