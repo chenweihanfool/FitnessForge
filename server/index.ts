@@ -1,12 +1,32 @@
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
-import { createSession, setupReplitAuth } from "./auth";
+import { createSession, setupGoogleAuth } from "./auth";
 
 const app = express();
 
-// Trust Replit's reverse proxy so secure cookies work in production
+// Trust the reverse proxy in front of this app (Apache) so session cookies
+// work correctly in production
 app.set("trust proxy", 1);
+
+// This app is deployed under a URL subpath (BASE_PATH, e.g. "/fitness")
+// rather than domain root, since it shares its self-hosted domain with
+// other apps. Apache forwards the full incoming path unstripped (no
+// ProxyPass path rewriting), so every route below would otherwise need to
+// be defined under that prefix. Instead, strip it here, once, so every
+// route/middleware below can stay written exactly as if the app were
+// served from root -- client/src/lib/basePath.ts is what makes the
+// *browser* aware of the real prefix for asset URLs, routing, and its own
+// fetch() calls.
+const BASE_PATH = process.env.BASE_PATH || "";
+if (BASE_PATH) {
+  app.use((req, _res, next) => {
+    if (req.url === BASE_PATH || req.url.startsWith(BASE_PATH + "/")) {
+      req.url = req.url.slice(BASE_PATH.length) || "/";
+    }
+    next();
+  });
+}
 
 declare module 'http' {
   interface IncomingMessage {
@@ -50,8 +70,8 @@ app.use((req, res, next) => {
 });
 
 (async () => {
-  // Mount Replit OIDC auth routes before other routes
-  await setupReplitAuth(app);
+  // Mount Google Auth routes before other routes
+  await setupGoogleAuth(app);
 
   const server = await registerRoutes(app);
 

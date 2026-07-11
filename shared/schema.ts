@@ -216,8 +216,19 @@ export type PlanProgress = {
 
 // ==================== 用戶認證表 ====================
 
+// replitUserId stays the primary key (nothing else references it via FK, so
+// there's no data-linkage risk in leaving it as-is) -- it's what identified a
+// row under the old Replit OIDC login. Google OIDC identity lives in the new
+// googleUserId/googleEmail columns instead of renaming/reusing this column,
+// so `drizzle-kit push` can't mistake this for a drop+add and lose rows (see
+// the pf-cwh migration for the same pattern). New rows created after the
+// 2026-07 Google migration just get their googleUserId value copied into
+// replitUserId too, since it's required NOT NULL as the primary key but is
+// otherwise just an opaque unique row id at this point.
 export const users = pgTable("users", {
   replitUserId: varchar("replit_user_id").primaryKey(),
+  googleUserId: varchar("google_user_id").unique(),
+  googleEmail: varchar("google_email"),
   username: text("username").notNull(),
   role: text("role").notNull().default("user"), // 'admin' | 'user'
   profileImage: text("profile_image"),

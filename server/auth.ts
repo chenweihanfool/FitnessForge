@@ -1,16 +1,26 @@
 /**
- * Replit Auth — OpenID Connect (openid-client v6, PKCE)
+ * Google OAuth (OIDC) login, replacing the previous Replit Auth integration
+ * (migrated 2026-07 when moving off Replit hosting -- see pf-cwh's migration
+ * for the same architecture, this file mirrors it).
  *
  * Flow:
- *  1. GET /api/auth/login    → redirect to Replit OIDC authorize
- *  2. GET /api/auth/callback → exchange code, upsert user, set session
- *  3. GET /api/auth/me       → return session user (or 401)
- *  4. POST /api/auth/logout  → destroy session
+ *  1. GET /api/auth/login   → redirect to Google's OIDC authorize endpoint (PKCE)
+ *  2. GET /api/auth/callback → exchange code, upsert/claim user, set session
+ *  3. GET /api/auth/me      → return current session user
+ *  4. POST /api/auth/logout → destroy session
  *
- * Access control:
- *  - REPLIT_ADMIN_USERNAME env → that user gets admin on first login
- *  - First-ever login → admin (bootstrap)
- *  - All others must be on the whitelist (added by admin)
+ * Access control (unchanged from the Replit version):
+ *  - ADMIN_GOOGLE_EMAIL env → that account gets admin on first login
+ *  - First-ever login (no rows in `users` yet) → admin (bootstrap)
+ *  - All others must be on the `whitelist` table (added by admin)
+ *
+ * Migration note: rows created under the old Replit Auth still have
+ * replitUserId populated and googleUserId/googleEmail null. On first Google
+ * login for a *known* legacy account (matched by pre-set googleEmail, or by
+ * username already being that Gmail address -- Replit itself authenticated
+ * via Google, so several usernames already are the person's email) we claim
+ * that row instead of creating a new one, preserving role/createdAt. See
+ * storage.ts's claimLegacyUserByEmail().
  */
 
 import type { Express, Request, Response, NextFunction } from "express";
@@ -24,7 +34,6 @@ import {
   calculatePKCECodeChallenge,
   buildAuthorizationUrl,
   authorizationCodeGrant,
-  fetchUserInfo,
   type Configuration,
 } from "openid-client";
 import { storage } from "./storage";
@@ -35,7 +44,7 @@ declare module "express-session" {
   interface SessionData {
     oauthState: string;
     codeVerifier: string;
-    replitUserId: string;
+    googleUserId: string;
   }
 }
 
@@ -43,7 +52,7 @@ declare global {
   namespace Express {
     interface Request {
       user?: {
-        replitUserId: string;
+        googleUserId: string;
         username: string;
         role: "admin" | "user";
         profileImage: string | null;
@@ -58,17 +67,38 @@ let _oidcConfig: Configuration | null = null;
 
 async function getOIDCConfig(): Promise<Configuration> {
   if (_oidcConfig) return _oidcConfig;
-  const clientId = process.env.REPL_ID;
-  if (!clientId) throw new Error("REPL_ID is not set — are you running on Replit?");
-  _oidcConfig = await discovery(new URL("https://replit.com/oidc"), clientId);
+  const clientId = process.env.GOOGLE_CLIENT_ID;
+  const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+  if (!clientId || !clientSecret) {
+    throw new Error("GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET environment variables are not set.");
+  }
+  _oidcConfig = await discovery(new URL("https://accounts.google.com"), clientId, {
+    client_secret: clientSecret,
+  });
   return _oidcConfig;
 }
 
-function getCallbackUrl(): string {
-  const domain = (process.env.REPLIT_DOMAINS ?? "").split(",")[0]?.trim();
-  if (domain) return `https://${domain}/api/auth/callback`;
+function getPublicBaseUrl(): string {
+  const url = process.env.PUBLIC_BASE_URL;
+  if (url) return url.replace(/\/$/, "");
   const port = process.env.PORT ?? "5000";
-  return `http://localhost:${port}/api/auth/callback`;
+  return `http://localhost:${port}`;
+}
+
+function getCallbackUrl(): string {
+  return `${getPublicBaseUrl()}/api/auth/callback`;
+}
+
+// Prefixes an app-relative path with BASE_PATH for browser-facing redirects.
+// The stripping middleware in server/index.ts removes this prefix from
+// *incoming* request paths before any route (including this file's) ever
+// sees them, so a bare res.redirect("/") here would send the browser to the
+// literal domain root -- which belongs to a *different* app when this one is
+// deployed under a subpath (this domain hosts tasktracker at "/" and pf-cwh
+// at "/pf"; this app owns its own subpath too).
+function appPath(path: string): string {
+  const basePath = process.env.BASE_PATH || "";
+  return `${basePath}${path}`;
 }
 
 // ── Session middleware ────────────────────────────────────────────────────────
@@ -86,15 +116,27 @@ export function createSession() {
     store: new PgSession({
       pool,
       tableName: "session",
-      // createTableIfMissing: false — 表由 Drizzle schema 管理，避免和 migration 衝突
+      createTableIfMissing: true,
       ttl: THIRTY_DAYS_MS / 1000,
       pruneSessionInterval: 60 * 60,
     }),
     cookie: {
-      secure: process.env.NODE_ENV === "production",
+      // Deliberately NOT `NODE_ENV === "production"` -- see pf-cwh's
+      // project_pf_cwh_migration memory for the full writeup. In short:
+      // express-session only sets Set-Cookie when it believes the request is
+      // HTTPS (via req.secure, which depends on Apache forwarding
+      // X-Forwarded-Proto). This domain's Apache vhost doesn't forward that
+      // header, so `secure: true` causes Set-Cookie to be silently dropped.
+      // Flip back once Apache adds `RequestHeader set X-Forwarded-Proto
+      // "https"` (mod_headers). Low real-world risk meanwhile: the app is
+      // only bound to 127.0.0.1 and only reachable via Apache's HTTPS proxy.
+      secure: false,
       httpOnly: true,
       maxAge: THIRTY_DAYS_MS,
       sameSite: "lax",
+      // Scoped to BASE_PATH so this app's session cookie doesn't get sent on
+      // every request to the other apps sharing this domain.
+      path: process.env.BASE_PATH || "/",
     },
   });
 }
@@ -102,22 +144,22 @@ export function createSession() {
 // ── Auth guard middleware ─────────────────────────────────────────────────────
 
 export async function requireAuth(req: Request, res: Response, next: NextFunction) {
-  const replitUserId = req.session.replitUserId;
-  if (!replitUserId) return res.status(401).json({ error: "未登入" });
+  const googleUserId = req.session.googleUserId;
+  if (!googleUserId) return res.status(401).json({ error: "未登入" });
 
   try {
-    const user = await storage.getUserByReplitId(replitUserId);
+    const user = await storage.getUserByGoogleId(googleUserId);
     if (!user) return res.status(401).json({ error: "帳號不存在" });
 
     if (user.role !== "admin") {
-      const allowed = await storage.isWhitelisted(user.username);
+      const allowed = await storage.isWhitelisted(user.googleEmail ?? user.username);
       if (!allowed) {
         return res.status(403).json({ error: "此帳號尚未獲得授權", username: user.username });
       }
     }
 
     req.user = {
-      replitUserId: user.replitUserId,
+      googleUserId: user.googleUserId!,
       username: user.username,
       role: user.role as "admin" | "user",
       profileImage: user.profileImage,
@@ -136,8 +178,8 @@ export function requireAdmin(req: Request, res: Response, next: NextFunction) {
 
 // ── Auth routes ───────────────────────────────────────────────────────────────
 
-export async function setupReplitAuth(app: Express) {
-  // Step 1 — redirect to Replit OIDC
+export async function setupGoogleAuth(app: Express) {
+  // Step 1 — redirect to Google OIDC
   app.get("/api/auth/login", async (req, res) => {
     try {
       const config = await getOIDCConfig();
@@ -159,7 +201,7 @@ export async function setupReplitAuth(app: Express) {
       res.redirect(authUrl.href);
     } catch (err) {
       console.error("[auth] login error:", err);
-      res.redirect("/?error=replit_auth_unavailable");
+      res.redirect(appPath("/?error=google_auth_unavailable"));
     }
   });
 
@@ -169,11 +211,20 @@ export async function setupReplitAuth(app: Express) {
       const config = await getOIDCConfig();
       const { oauthState, codeVerifier } = req.session;
 
-      if (!oauthState || !codeVerifier) return res.redirect("/?error=invalid_state");
+      if (!oauthState || !codeVerifier) return res.redirect(appPath("/?error=invalid_state"));
 
-      const proto = req.headers["x-forwarded-proto"] ?? req.protocol;
-      const host = req.headers["x-forwarded-host"] ?? req.headers.host;
-      const currentUrl = new URL(`${proto}://${host}${req.originalUrl}`);
+      // Build the callback URL openid-client needs (it derives the
+      // redirect_uri it sends to the token endpoint by stripping the query
+      // string off this URL). That derived value MUST byte-for-byte match
+      // what Google has registered for this OAuth client and what /login
+      // sent when building the authorization URL. Reconstructing
+      // origin+path from request headers is fragile behind this Apache
+      // config (doesn't forward X-Forwarded-Host), so reuse the same
+      // static PUBLIC_BASE_URL-derived URL here instead -- see pf-cwh's
+      // project_pf_cwh_migration memory for the redirect_uri_mismatch this
+      // caused there.
+      const currentUrl = new URL(getCallbackUrl());
+      currentUrl.search = req.originalUrl.split("?")[1] ?? "";
 
       const tokens = await authorizationCodeGrant(config, currentUrl, {
         pkceCodeVerifier: codeVerifier,
@@ -182,69 +233,85 @@ export async function setupReplitAuth(app: Express) {
 
       const claims = tokens.claims();
       if (!claims) throw new Error("No claims in token response");
-      const replitUserId = String(claims.sub);
+      const googleUserId = String(claims.sub);
+      const email = String(claims.email ?? "");
+      const displayName = String(claims.name ?? email ?? googleUserId);
+      const profileImage = (claims.picture as string | undefined) ?? null;
 
-      let username = replitUserId;
-      let profileImage: string | null = null;
-      try {
-        const info = await fetchUserInfo(config, tokens.access_token!, claims.sub!) as any;
-        username = String(info.username ?? info.preferred_username ?? info.name ?? replitUserId);
-        profileImage = info.profile_image ?? info.picture ?? null;
-      } catch { /* non-fatal */ }
+      const adminEmail = (process.env.ADMIN_GOOGLE_EMAIL ?? "").toLowerCase();
 
-      // Upsert user (first-ever login → admin; REPLIT_ADMIN_USERNAME → admin)
-      const adminUsername = process.env.REPLIT_ADMIN_USERNAME ?? "";
-      let user = await storage.getUserByReplitId(replitUserId);
+      // 1. Already linked to this Google identity?
+      let user = await storage.getUserByGoogleId(googleUserId);
+
+      // 2. Claim a pre-existing (pre-registered, or legacy Replit-era) row
+      if (!user && email) {
+        user = (await storage.claimLegacyUserByEmail(email, googleUserId)) ?? undefined as any;
+      }
 
       if (!user) {
-        user = await storage.upsertUser({ replitUserId, username, profileImage });
-        // Promote to admin if designated or first user
-        if (user.role === "admin" || (adminUsername && username === adminUsername)) {
-          await storage.setUserAdmin(replitUserId);
-          user = (await storage.getUserByReplitId(replitUserId))!;
+        const isDesignatedAdmin = adminEmail && email.toLowerCase() === adminEmail;
+        const anyUsersExist = await storage.hasAnyUsers();
+
+        if (isDesignatedAdmin || !anyUsersExist) {
+          user = await storage.upsertGoogleUser({
+            googleUserId,
+            googleEmail: email,
+            username: displayName || email || googleUserId,
+            profileImage,
+            role: "admin",
+          });
+          console.log(`[auth] 建立管理員帳號: ${email}`);
+        } else {
+          console.log(`[auth] 拒絕未知使用者 — googleUserId: ${googleUserId}, email: ${email}, displayName: ${displayName}`);
+          return res.redirect(appPath("/?error=access_denied"));
         }
       } else {
-        // Update profile info on each login
-        await storage.upsertUser({ replitUserId, username, profileImage });
-        user = (await storage.getUserByReplitId(replitUserId))!;
+        // Existing user logging back in — refresh profile info, keep role.
+        user = await storage.upsertGoogleUser({
+          googleUserId,
+          googleEmail: email,
+          username: user.username,
+          profileImage,
+          role: user.role as "admin" | "user",
+        });
       }
 
       // Access control: admin always in; others need whitelist
       if (user.role !== "admin") {
-        const allowed = await storage.isWhitelisted(username);
+        const allowed = await storage.isWhitelisted(user.googleEmail ?? user.username);
         if (!allowed) {
-          console.log(`[auth] 拒絕未授權用戶: ${username} (${replitUserId})`);
+          console.log(`[auth] 拒絕未授權用戶: ${user.username} (${googleUserId})`);
           req.session.destroy(() => {});
-          return res.redirect("/?error=access_denied");
+          return res.redirect(appPath("/?error=access_denied"));
         }
       }
 
-      req.session.replitUserId = replitUserId;
+      req.session.googleUserId = googleUserId;
       delete req.session.oauthState;
       delete req.session.codeVerifier;
 
-      res.redirect("/");
+      res.redirect(appPath("/"));
     } catch (err) {
       console.error("[auth] callback error:", err);
-      res.redirect("/?error=auth_failed");
+      res.redirect(appPath("/?error=auth_failed"));
     }
   });
 
   // Step 3 — current user
   app.get("/api/auth/me", async (req, res) => {
-    const replitUserId = req.session.replitUserId;
-    if (!replitUserId) return res.status(401).json({ user: null });
+    const googleUserId = req.session.googleUserId;
+    if (!googleUserId) return res.status(401).json({ user: null });
 
     try {
-      const user = await storage.getUserByReplitId(replitUserId);
+      const user = await storage.getUserByGoogleId(googleUserId);
       if (!user) {
         req.session.destroy(() => {});
         return res.status(401).json({ user: null });
       }
-      const isWhitelisted = user.role === "admin" || await storage.isWhitelisted(user.username);
+      const isWhitelisted = user.role === "admin" || (await storage.isWhitelisted(user.googleEmail ?? user.username));
       res.json({
         user: {
-          replitUserId: user.replitUserId,
+          googleUserId: user.googleUserId,
           username: user.username,
           role: user.role,
           profileImage: user.profileImage,
@@ -261,5 +328,5 @@ export async function setupReplitAuth(app: Express) {
     req.session.destroy(() => res.json({ success: true }));
   });
 
-  console.log("[auth] Replit OIDC 路由已掛載");
+  console.log("[auth] Google OAuth 路由已掛載");
 }

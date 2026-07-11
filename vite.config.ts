@@ -27,6 +27,10 @@ export default defineConfig({
     },
   },
   root: path.resolve(import.meta.dirname, "client"),
+  // This app is deployed under a URL subpath (see server/index.ts) when
+  // sharing a domain with other self-hosted apps. VITE_BASE_PATH is a
+  // build-time arg (see Dockerfile); local dev leaves it unset (root "/").
+  base: (process.env.VITE_BASE_PATH || "") + "/",
   build: {
     outDir: path.resolve(import.meta.dirname, "dist/public"),
     emptyOutDir: true,

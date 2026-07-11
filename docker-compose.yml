@@ -1,0 +1,37 @@
+services:
+  app:
+    build:
+      context: .
+      args:
+        # Must match BASE_PATH below and the path Apache mounts this app at.
+        VITE_BASE_PATH: /fitness
+    restart: unless-stopped
+    environment:
+      # Points at an existing Postgres instance (shared with tasktracker and
+      # pf-cwh on this same host), not a container managed by this compose
+      # file. If that Postgres runs directly on the Docker host (not itself
+      # in a container), the host in this URL needs to be
+      # host.docker.internal, not localhost/127.0.0.1 -- from inside the app
+      # container, localhost means the container itself.
+      DATABASE_URL: ${DATABASE_URL}
+      SESSION_SECRET: ${SESSION_SECRET}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
+      ADMIN_GOOGLE_EMAIL: ${ADMIN_GOOGLE_EMAIL}
+      # Full external URL (with the /fitness path), used to build the Google
+      # OAuth callback URL -- must exactly match an Authorized redirect URI
+      # registered on the Google Cloud OAuth client.
+      PUBLIC_BASE_URL: https://cwh2023.asuscomm.com/fitness
+      # Server-side counterpart of the build-time VITE_BASE_PATH above --
+      # strips this prefix from incoming request paths (see server/index.ts)
+      # since Apache forwards the full /fitness/... path unstripped.
+      BASE_PATH: /fitness
+      NODE_ENV: production
+      PORT: "5000"
+    ports:
+      # Bound to localhost only -- Apache reverse-proxies /fitness to this
+      # port, the app is never directly internet-reachable on its own port.
+      # 5138 is a guess to avoid colliding with pf-cwh's 5137 -- HERMES
+      # should double check nothing else on the host is already using it
+      # before first deploy.
+      - "127.0.0.1:5138:5000"

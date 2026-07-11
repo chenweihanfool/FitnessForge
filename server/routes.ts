@@ -10,7 +10,7 @@ const upload = multer({ storage: multer.memoryStorage() });
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // ==================== 受保護 API 中間件 ====================
-  // /api/auth/* 由 auth.ts 的 setupReplitAuth 處理（公開路由）
+  // /api/auth/* 由 auth.ts 的 setupGoogleAuth 處理（公開路由）
   // 其餘 /api/* 都需要登入
   app.use("/api/entries", requireAuth);
   app.use("/api/exercises", requireAuth);
@@ -576,8 +576,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // ==================== 用户设置 API ====================
 
-  const DEFAULT_PLAN_CUSTOM_RULES = `週一到週四是上班日，強度保持中低：安排較短或較輕的訓練（有氧、核心），週一到週四中可有 1-2 天休息，但不要全部跳過。週五到週日是假日，可安排較高容量與較重的力量訓練，但不要把所有項目都集中在這三天。整體強度應自然地朝週末逐漸提升。`;
-
   app.get("/api/settings", async (req, res) => {
     try {
       const settings = await storage.getAllUserSettings();
@@ -585,7 +583,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         strengthWeight: parseFloat(settings['strengthWeight'] ?? '50'),
         cardioWeight: parseFloat(settings['cardioWeight'] ?? '30'),
         activityWeight: parseFloat(settings['activityWeight'] ?? '20'),
-        planCustomRules: settings['planCustomRules'] ?? DEFAULT_PLAN_CUSTOM_RULES,
       });
     } catch (error) {
       console.error("获取设置失败:", error);
@@ -613,20 +610,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("保存设置失败:", error);
       res.status(500).json({ error: "保存设置失败" });
-    }
-  });
-
-  app.post("/api/settings/plan-rules", async (req, res) => {
-    try {
-      const { planCustomRules } = req.body;
-      if (typeof planCustomRules !== 'string') {
-        return res.status(400).json({ error: "planCustomRules 必须是字串" });
-      }
-      await storage.setUserSetting('planCustomRules', planCustomRules.trim() || DEFAULT_PLAN_CUSTOM_RULES);
-      res.json({ success: true, planCustomRules: planCustomRules.trim() || DEFAULT_PLAN_CUSTOM_RULES });
-    } catch (error) {
-      console.error("保存計畫規則失敗:", error);
-      res.status(500).json({ error: "保存計畫規則失敗" });
     }
   });
 
@@ -976,100 +959,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       calibrateVolume(exercisesInPlan);
 
-      // --- Parse scheduling constraints from settings (planCustomRules) via OpenAI ---
-      let aiDayPreference: number[] | null = null;
-      let aiExcludedExerciseNames: string[] = [];
-      let aiRequiredExercises: { name: string; minSessions: number }[] = [];
-      let aiNotes = '';
-      const planCustomRules = genSettings['planCustomRules'] ?? DEFAULT_PLAN_CUSTOM_RULES;
-      try {
-        const OpenAI = (await import('openai')).default;
-        const openai = new OpenAI({
-          apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
-          baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
-        });
-        const exerciseNames = allExercises.filter(e => e.name !== '每周平均步数').map(e => e.name);
-        const resp = await openai.chat.completions.create({
-          model: 'gpt-4o-mini',
-          max_completion_tokens: 800,
-          messages: [
-            {
-              role: 'system',
-              content: `You parse fitness scheduling preferences into JSON. Days: 1=Mon,2=Tue,...,7=Sun.
-Available exercises: ${exerciseNames.join(', ')}
-Return JSON with these fields:
-- "preferredDays": [numbers] — days the user wants to train
-- "excludedDays": [numbers] — days the user wants to rest
-- "excludedExercises": ["name"] — exercises to exclude entirely
-- "requiredExercises": [{"name":"exercise name","minSessions":N}] — exercises that MUST appear at least N times per week (e.g. "每周至少深蹲一次" → [{"name":"深蹲","minSessions":1}])
-- "notes": "brief note"
-Match exercise names exactly to the available exercises list. Return ONLY valid JSON, no markdown.`
-            },
-            { role: 'user', content: planCustomRules.trim() }
-          ],
-          response_format: { type: 'json_object' },
-        });
-        const parsed = JSON.parse(resp.choices[0]?.message?.content || '{}');
-        if (Array.isArray(parsed.preferredDays) && parsed.preferredDays.length > 0) {
-          aiDayPreference = parsed.preferredDays.filter((d: unknown) => typeof d === 'number' && d >= 1 && d <= 7);
-        }
-        if (Array.isArray(parsed.excludedDays)) {
-          const excDays = new Set(parsed.excludedDays.filter((d: unknown) => typeof d === 'number' && d >= 1 && d <= 7));
-          if (excDays.size > 0 && !aiDayPreference) {
-            aiDayPreference = [1, 2, 3, 4, 5, 6, 7].filter(d => !excDays.has(d));
-          } else if (excDays.size > 0 && aiDayPreference) {
-            aiDayPreference = aiDayPreference.filter(d => !excDays.has(d));
-          }
-        }
-        if (Array.isArray(parsed.excludedExercises)) {
-          aiExcludedExerciseNames = parsed.excludedExercises.filter((n: unknown) => typeof n === 'string');
-        }
-        if (Array.isArray(parsed.requiredExercises)) {
-          aiRequiredExercises = parsed.requiredExercises
-            .filter((r: unknown) => r && typeof (r as Record<string, unknown>).name === 'string')
-            .map((r: Record<string, unknown>) => ({
-              name: String(r.name),
-              minSessions: typeof r.minSessions === 'number' ? Math.max(1, Math.round(r.minSessions)) : 1,
-            }));
-        }
-        if (parsed.notes) aiNotes = String(parsed.notes);
-      } catch (aiErr) {
-        console.error("AI排課偏好解析失敗，使用預設邏輯:", aiErr);
-      }
-
-      if (aiExcludedExerciseNames.length > 0) {
-        const excSet = new Set(aiExcludedExerciseNames.map(n => n.toLowerCase()));
-        for (let i = exercisesInPlan.length - 1; i >= 0; i--) {
-          if (excSet.has(exercisesInPlan[i].name.toLowerCase())) {
-            exercisesInPlan.splice(i, 1);
-          }
-        }
-        calibrateVolume(exercisesInPlan);
-      }
-
-      // --- Enforce required exercises from settings ---
-      if (aiRequiredExercises.length > 0) {
-        const inPlanNames = new Set(exercisesInPlan.map(e => e.name.toLowerCase()));
-        for (const req of aiRequiredExercises) {
-          const nameLc = req.name.toLowerCase();
-          const existing = exercisesInPlan.find(e => e.name.toLowerCase() === nameLc);
-          if (existing) {
-            // Ensure minimum sessions
-            if (existing.sessionsPerWeek < req.minSessions) {
-              existing.sessionsPerWeek = req.minSessions;
-            }
-          } else {
-            // Add from cappedData if available, else from exerciseDataRaw
-            const source = cappedData.find(e => e.name.toLowerCase() === nameLc)
-              ?? exerciseDataRaw.find(e => e.name.toLowerCase() === nameLc);
-            if (source) {
-              exercisesInPlan.push({ ...source, sessionsPerWeek: req.minSessions });
-            }
-          }
-        }
-        calibrateVolume(exercisesInPlan);
-      }
-
       // --- Select training days ---
       const neededDays = Math.min(MAX_TRAINING_DAYS, Math.max(1, Math.ceil(
         exercisesInPlan.reduce((s, e) => s + e.sessionsPerWeek, 0) / 3
@@ -1085,17 +974,10 @@ Match exercise names exactly to the available exercises list. Return ONLY valid 
         return a;
       };
 
-      let dayPreferenceOrder: number[];
-      if (aiDayPreference && aiDayPreference.length > 0) {
-        const aiSet = new Set(aiDayPreference);
-        const nonAi = shuffle([1, 2, 3, 4, 5, 6, 7].filter(d => !aiSet.has(d)));
-        dayPreferenceOrder = [...shuffle([...aiDayPreference]), ...nonAi];
-      } else {
-        // Randomly shuffle within weekends and weekdays, but keep weekends preferred
-        const weekends = shuffle([6, 7]);
-        const weekdays = shuffle([1, 2, 3, 4, 5]);
-        dayPreferenceOrder = [...weekends, ...weekdays];
-      }
+      // Randomly shuffle within weekends and weekdays, but keep weekends preferred
+      const weekends = shuffle([6, 7]);
+      const weekdays = shuffle([1, 2, 3, 4, 5]);
+      const dayPreferenceOrder = [...weekends, ...weekdays];
       const trainingDays = dayPreferenceOrder.slice(0, neededDays).sort((a, b) => a - b);
 
       // --- Randomised scheduler ---
@@ -1213,7 +1095,6 @@ Match exercise names exactly to the available exercises list. Return ONLY valid 
       const weekStart = getCurrentWeekStart();
       const planPayload = {
         targetBaseline,
-        aiNotes: aiNotes || undefined,
         days: parsedPlan,
       };
       const saved = await storage.saveWeeklyPlan({

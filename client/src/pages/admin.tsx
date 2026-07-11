@@ -83,12 +83,12 @@ export default function AdminPage() {
             <UserPlus className="h-4 w-4" />
             新增白名單
           </CardTitle>
-          <CardDescription>輸入 Replit 用戶名即可授予存取權限</CardDescription>
+          <CardDescription>輸入 Google 帳號 Email 即可授予存取權限</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="flex flex-col sm:flex-row gap-2">
             <Input
-              placeholder="Replit 用戶名"
+              placeholder="Google 帳號 Email"
               value={newUsername}
               onChange={e => setNewUsername(e.target.value)}
               className="flex-1"

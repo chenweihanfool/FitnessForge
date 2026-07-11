@@ -1,8 +1,9 @@
 import { useState, useEffect, createContext, useContext, type ReactNode, createElement } from "react";
 import { queryClient } from "@/lib/queryClient";
+import { withBasePath } from "@/lib/basePath";
 
 export interface AuthUser {
-  replitUserId: string;
+  googleUserId: string;
   username: string;
   role: "admin" | "user";
   profileImage: string | null;
@@ -14,7 +15,7 @@ interface AuthContextType {
   isAdmin: boolean;
   isLoggedIn: boolean;
   isLoading: boolean;
-  loginWithReplit: () => void;
+  loginWithGoogle: () => void;
   logout: () => Promise<void>;
   refetch: () => Promise<void>;
 }
@@ -54,8 +55,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     fetchMe();
   }, []);
 
-  const loginWithReplit = () => {
-    window.location.href = "/api/auth/login";
+  const loginWithGoogle = () => {
+    window.location.href = withBasePath("/api/auth/login");
   };
 
   const logout = async () => {
@@ -74,7 +75,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         isAdmin: user?.role === "admin",
         isLoggedIn: !!user,
         isLoading,
-        loginWithReplit,
+        loginWithGoogle,
         logout,
         refetch: fetchMe,
       },

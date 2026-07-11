@@ -24,7 +24,7 @@ import {
 } from "@shared/schema";
 import { randomUUID } from "crypto";
 import { drizzle } from "drizzle-orm/node-postgres";
-import { eq, and, gte, lte, lt, desc, sql, sum, count } from "drizzle-orm";
+import { eq, and, gte, lte, lt, desc, sql, sum, count, isNull } from "drizzle-orm";
 import { Pool } from "pg";
 
 function calculateBaseline(
@@ -250,9 +250,14 @@ export interface IStorage {
   saveWeeklyPlan(plan: InsertWeeklyPlan): Promise<WeeklyPlan>;
 
   // 用戶認證 & 白名單
-  upsertUser(data: { replitUserId: string; username: string; profileImage: string | null }): Promise<User>;
-  getUserByReplitId(replitUserId: string): Promise<User | null>;
-  setUserAdmin(replitUserId: string): Promise<void>;
+  hasAnyUsers(): Promise<boolean>;
+  getUserByGoogleId(googleUserId: string): Promise<User | null>;
+  // Links a pre-existing (legacy Replit-era) user row to a Google identity by
+  // matching googleEmail (if pre-set) or username === email as a fallback.
+  // Returns null if no matching row exists.
+  claimLegacyUserByEmail(email: string, googleUserId: string): Promise<User | null>;
+  upsertGoogleUser(data: { googleUserId: string; googleEmail: string; username: string; profileImage: string | null; role?: "admin" | "user" }): Promise<User>;
+  setUserAdmin(googleUserId: string): Promise<void>;
   isWhitelisted(username: string): Promise<boolean>;
   getWhitelist(): Promise<WhitelistEntry[]>;
   addToWhitelist(username: string, addedBy: string, note?: string): Promise<WhitelistEntry>;
@@ -1838,28 +1843,43 @@ export class MemStorage implements IStorage {
   private whitelistStore: Map<string, WhitelistEntry> = new Map();
   private radarSnapshotStore: Map<string, RadarSnapshot> = new Map();
 
-  async upsertUser(data: { replitUserId: string; username: string; profileImage: string | null }): Promise<User> {
-    const existing = this.usersStore.get(data.replitUserId);
-    const isFirstUser = this.usersStore.size === 0;
+  async hasAnyUsers(): Promise<boolean> {
+    return this.usersStore.size > 0;
+  }
+
+  async getUserByGoogleId(googleUserId: string): Promise<User | null> {
+    return Array.from(this.usersStore.values()).find(u => u.googleUserId === googleUserId) ?? null;
+  }
+
+  async claimLegacyUserByEmail(email: string, googleUserId: string): Promise<User | null> {
+    const match = Array.from(this.usersStore.values()).find(
+      u => !u.googleUserId && (u.googleEmail === email || u.username === email)
+    );
+    if (!match) return null;
+    const updated: User = { ...match, googleUserId, googleEmail: email, lastSeenAt: new Date() };
+    this.usersStore.set(match.replitUserId, updated);
+    return updated;
+  }
+
+  async upsertGoogleUser(data: { googleUserId: string; googleEmail: string; username: string; profileImage: string | null; role?: "admin" | "user" }): Promise<User> {
+    const existing = this.usersStore.get(data.googleUserId);
     const user: User = {
-      replitUserId: data.replitUserId,
+      replitUserId: data.googleUserId,
+      googleUserId: data.googleUserId,
+      googleEmail: data.googleEmail,
       username: data.username,
-      role: existing?.role ?? (isFirstUser ? "admin" : "user"),
+      role: existing?.role ?? data.role ?? "user",
       profileImage: data.profileImage,
       createdAt: existing?.createdAt ?? new Date(),
       lastSeenAt: new Date(),
     };
-    this.usersStore.set(data.replitUserId, user);
+    this.usersStore.set(data.googleUserId, user);
     return user;
   }
 
-  async getUserByReplitId(replitUserId: string): Promise<User | null> {
-    return this.usersStore.get(replitUserId) ?? null;
-  }
-
-  async setUserAdmin(replitUserId: string): Promise<void> {
-    const u = this.usersStore.get(replitUserId);
-    if (u) this.usersStore.set(replitUserId, { ...u, role: "admin" });
+  async setUserAdmin(googleUserId: string): Promise<void> {
+    const u = this.usersStore.get(googleUserId);
+    if (u) this.usersStore.set(googleUserId, { ...u, role: "admin" });
   }
 
   async isWhitelisted(username: string): Promise<boolean> {
@@ -3775,22 +3795,54 @@ export class DbStorage implements IStorage {
 
   // ---- Auth / whitelist / radar (DbStorage) ----
 
-  async upsertUser(data: { replitUserId: string; username: string; profileImage: string | null }): Promise<User> {
-    // Check if any admin exists; first-ever user becomes admin
-    const existingUsers = await this.db.select().from(users).limit(1);
-    const isFirstUser = existingUsers.length === 0;
+  async hasAnyUsers(): Promise<boolean> {
+    const rows = await this.db.select().from(users).limit(1);
+    return rows.length > 0;
+  }
 
+  async getUserByGoogleId(googleUserId: string): Promise<User | null> {
+    const rows = await this.db.select().from(users).where(eq(users.googleUserId, googleUserId));
+    return rows[0] ?? null;
+  }
+
+  async claimLegacyUserByEmail(email: string, googleUserId: string): Promise<User | null> {
+    const [byGoogleEmail] = await this.db
+      .select()
+      .from(users)
+      .where(and(eq(users.googleEmail, email), isNull(users.googleUserId)));
+
+    const [byUsername] = byGoogleEmail
+      ? []
+      : await this.db
+          .select()
+          .from(users)
+          .where(and(eq(users.username, email), isNull(users.googleUserId)));
+
+    const match = byGoogleEmail ?? byUsername;
+    if (!match) return null;
+
+    const rows = await this.db
+      .update(users)
+      .set({ googleUserId, googleEmail: email, lastSeenAt: new Date() })
+      .where(eq(users.replitUserId, match.replitUserId))
+      .returning();
+    return rows[0];
+  }
+
+  async upsertGoogleUser(data: { googleUserId: string; googleEmail: string; username: string; profileImage: string | null; role?: "admin" | "user" }): Promise<User> {
     const rows = await this.db
       .insert(users)
       .values({
-        replitUserId: data.replitUserId,
+        replitUserId: data.googleUserId, // opaque row id going forward, see schema.ts comment
+        googleUserId: data.googleUserId,
+        googleEmail: data.googleEmail,
         username: data.username,
-        role: isFirstUser ? "admin" : "user",
+        role: data.role ?? "user",
         profileImage: data.profileImage,
         lastSeenAt: new Date(),
       })
       .onConflictDoUpdate({
-        target: users.replitUserId,
+        target: users.googleUserId,
         set: {
           username: data.username,
           profileImage: data.profileImage,
@@ -3801,13 +3853,8 @@ export class DbStorage implements IStorage {
     return rows[0];
   }
 
-  async getUserByReplitId(replitUserId: string): Promise<User | null> {
-    const rows = await this.db.select().from(users).where(eq(users.replitUserId, replitUserId));
-    return rows[0] ?? null;
-  }
-
-  async setUserAdmin(replitUserId: string): Promise<void> {
-    await this.db.update(users).set({ role: "admin" }).where(eq(users.replitUserId, replitUserId));
+  async setUserAdmin(googleUserId: string): Promise<void> {
+    await this.db.update(users).set({ role: "admin" }).where(eq(users.googleUserId, googleUserId));
   }
 
   async isWhitelisted(username: string): Promise<boolean> {

@@ -1,4 +1,5 @@
-import { Switch, Route, Link } from "wouter";
+import { Switch, Route, Link, Router as WouterRouter } from "wouter";
+import { BASE_PATH } from "@/lib/basePath";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -145,13 +146,15 @@ function AppShell() {
 
 export default function App() {
   return (
-    <QueryClientProvider client={queryClient}>
-      <TooltipProvider>
-        <AuthProvider>
-          <AppShell />
-          <Toaster />
-        </AuthProvider>
-      </TooltipProvider>
-    </QueryClientProvider>
+    <WouterRouter base={BASE_PATH}>
+      <QueryClientProvider client={queryClient}>
+        <TooltipProvider>
+          <AuthProvider>
+            <AppShell />
+            <Toaster />
+          </AuthProvider>
+        </TooltipProvider>
+      </QueryClientProvider>
+    </WouterRouter>
   );
 }
