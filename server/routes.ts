@@ -2,6 +2,7 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { insertExerciseSchema, insertWorkoutEntrySchema, type PlanDayItem } from "@shared/schema";
+import { computeMuscleCompositeScore } from "@shared/muscleGroupStats";
 import multer from "multer";
 import Papa from "papaparse";
 import { requireAuth, requireAdmin } from "./auth";
@@ -21,7 +22,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return res.status(401).json({ error: "Unauthorized" });
     }
     try {
-      const SETS_MAINTENANCE = 4;
       const MUSCLE_NAMES = ['胸', '背', '腿', '肩', '二头肌', '核心', '臀', '三头肌'] as const;
       const AVG_FIELD: Record<string, string> = {
         '胸': 'chestAvg', '背': 'backAvg', '腿': 'legsAvg', '肩': 'shouldersAvg',
@@ -47,11 +47,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const avgKey = AVG_FIELD[name];
         const avgVolume = avgKey ? ((averages as any)?.[avgKey] ?? 0) : 0;
 
-        const setsPct = Math.min(Math.round((sets / SETS_MAINTENANCE) * 100), 150);
-        const volumePct = avgVolume > 0 ? Math.min(Math.round((volume / avgVolume) * 100), 150) : null;
-        const composite = volumePct !== null
-          ? Math.round(0.4 * setsPct + 0.6 * volumePct)
-          : setsPct;
+        const { composite } = computeMuscleCompositeScore(name, sets, volume, avgVolume);
 
         scores[name] = composite;
         if (avgVolume > 0 && composite < 80) weakMuscles.push(name);

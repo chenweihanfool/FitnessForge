@@ -8,6 +8,7 @@ import { ScaleProgressBar } from "@/components/scale-progress-bar";
 import { Activity, TrendingUp, Award, X, TrendingDown, Dumbbell, Heart, Footprints, Plus, Check, Minus, Star, Pencil, ClipboardList, RefreshCw, Loader2, ChevronDown, ChevronRight, Trophy, Radar as RadarIcon, Lightbulb, Save, History } from "lucide-react";
 import { RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer, Legend, Tooltip as RechartsTooltip } from "recharts";
 import { RankingData, WeeklyStats, RankingDetailResponse, Exercise, PlanProgress, PlanItemStatus } from "@shared/schema";
+import { getMuscleSetsMaintenance, computeMuscleCompositeScore } from "@shared/muscleGroupStats";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
@@ -711,8 +712,6 @@ export default function Dashboard() {
         const hasAnyAvg = muscleNames.some(name => (muscleVolumeMap[name]?.avg ?? 0) > 0);
         if (!hasAnyAvg) return null;
 
-        const SETS_MAINTENANCE = 4; // 週維持組數基準
-
         const radarData = muscleNames.map(name => {
           const volData = muscleVolumeMap[name];
           const g = muscleGroupStats?.muscleGroups.find(g => g.muscleGroup === name);
@@ -720,14 +719,8 @@ export default function Dashboard() {
           const volume = g?.totalVolume ?? 0;
           const avgVolume = volData?.avg ?? 0;
 
-          // Sets score: sets / SETS_MAINTENANCE * 100, capped at 150
-          const setsPct = Math.min(Math.round((sets / SETS_MAINTENANCE) * 100), 150);
-          // Volume score: volume / avgVolume * 100, capped at 150 (only if history exists)
-          const volumePct = avgVolume > 0 ? Math.min(Math.round((volume / avgVolume) * 100), 150) : null;
-          // Composite: 40% sets + 60% volume (or 100% sets if no history)
-          const composite = volumePct !== null
-            ? Math.round(0.4 * setsPct + 0.6 * volumePct)
-            : setsPct;
+          // 各肌群各自的維持組數基準（大肌群基準較高、小肌群較低），見 @shared/muscleGroupStats
+          const { setsPct, volumePct, composite } = computeMuscleCompositeScore(name, sets, volume, avgVolume);
 
           return { name, pct: composite, setsPct, volumePct, baseline: 100, sets, volume, avgVolume };
         });
@@ -806,7 +799,7 @@ export default function Dashboard() {
                           <div className="rounded-md border bg-popover p-2.5 shadow-md text-xs space-y-0.5">
                             <p className="font-semibold">{d.name}</p>
                             <p className="text-muted-foreground">複合分: <span className="font-bold text-foreground">{d.pct}%</span></p>
-                            <p className="text-muted-foreground">組數分: <span className="font-medium">{d.setsPct}%</span> ({d.sets} 組)</p>
+                            <p className="text-muted-foreground">組數分: <span className="font-medium">{d.setsPct}%</span> ({d.sets} / {getMuscleSetsMaintenance(d.name)} 組)</p>
                             {d.volumePct !== null && (
                               <p className="text-muted-foreground">容量分: <span className="font-medium">{d.volumePct}%</span></p>
                             )}
@@ -865,7 +858,7 @@ export default function Dashboard() {
                           const deficit = 100 - r.pct;
                           const reason = r.volumePct !== null
                             ? `複合分 ${r.pct}%（組數 ${r.setsPct}% / 容量 ${r.volumePct}%），不足 ${deficit}%`
-                            : `組數分 ${r.setsPct}%（本週 ${r.sets} 組 / 維持需 ${SETS_MAINTENANCE} 組）`;
+                            : `組數分 ${r.setsPct}%（本週 ${r.sets} 組 / 維持需 ${getMuscleSetsMaintenance(r.name)} 組）`;
                           const field = muscleFieldMap[r.name];
                           const suggestedExercises = field
                             ? (exercises ?? [])
