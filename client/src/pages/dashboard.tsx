@@ -8,7 +8,7 @@ import { ScaleProgressBar } from "@/components/scale-progress-bar";
 import { Activity, TrendingUp, Award, X, TrendingDown, Dumbbell, Heart, Footprints, Plus, Check, Minus, Star, Pencil, ClipboardList, RefreshCw, Loader2, ChevronDown, ChevronRight, Trophy, Radar as RadarIcon, Lightbulb, Save, History } from "lucide-react";
 import { RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer, Legend, Tooltip as RechartsTooltip } from "recharts";
 import { RankingData, WeeklyStats, RankingDetailResponse, Exercise, PlanProgress, PlanItemStatus } from "@shared/schema";
-import { getMuscleSetsMaintenance, computeMuscleCompositeScore } from "@shared/muscleGroupStats";
+import { getMuscleSetsMaintenance, computeMuscleCompositeScore, computeBalanceScore } from "@shared/muscleGroupStats";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
@@ -731,6 +731,11 @@ export default function Dashboard() {
           .sort((a, b) => a.pct - b.pct)
           .slice(0, 3);
 
+        // 均衡度分數：最弱/最強肌群複合分的比值，見 @shared/muscleGroupStats
+        const balanceScore = computeBalanceScore(
+          radarData.map(d => ({ name: d.name, composite: d.pct, hasVolumeHistory: d.avgVolume > 0 }))
+        );
+
         const weekStart = muscleGroupStats?.weekStart;
         const scores = Object.fromEntries(radarData.map(d => [d.name, d.pct]));
 
@@ -745,6 +750,21 @@ export default function Dashboard() {
                   >
                     <RadarIcon className="h-5 w-5" />
                     本周肌群均衡度
+                    {balanceScore !== null && (
+                      <Badge
+                        variant="outline"
+                        className={
+                          balanceScore >= 80
+                            ? "text-green-600 border-green-600/40 bg-green-500/10"
+                            : balanceScore >= 50
+                            ? "text-amber-600 border-amber-600/40 bg-amber-500/10"
+                            : "text-red-600 border-red-600/40 bg-red-500/10"
+                        }
+                        data-testid="badge-balance-score"
+                      >
+                        均衡度 {balanceScore}%
+                      </Badge>
+                    )}
                     {showMuscleDetail
                       ? <ChevronDown className="h-4 w-4 text-muted-foreground" />
                       : <ChevronRight className="h-4 w-4 text-muted-foreground" />
@@ -774,6 +794,9 @@ export default function Dashboard() {
                   )}
                 </CardTitle>
                 <p className="text-xs text-muted-foreground mt-1">複合評分 = 組數 40% + 容量 60%，對比歷史均值</p>
+                {balanceScore !== null && (
+                  <p className="text-xs text-muted-foreground mt-0.5">均衡度 = 最弱肌群 ÷ 最強肌群複合分，數字越低代表落差越大</p>
+                )}
               </CardHeader>
               <CardContent>
                 <ResponsiveContainer width="100%" height={380}>

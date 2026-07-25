@@ -40,3 +40,24 @@ export function computeMuscleCompositeScore(
 
   return { setsPct, volumePct, composite };
 }
+
+// 均衡度分數 = 最弱肌群複合分 ÷ 最強肌群複合分。
+// 用「最弱/最強比值」而非平均或標準差，是因為均衡度的痛點通常是那條最短的
+// 木板（哪個肌群被嚴重忽略），不是整體離散程度——只有一兩個肌群落後很多，
+// 其餘都接近滿分時，標準差可能還好看，但體感上是「明顯不均衡」，比值能
+// 直接反映這件事。只計入有歷史容量資料（avgVolume > 0）可比對的肌群，跟
+// 「系統建議：最需加強的肌群」使用相同的篩選條件，避免把「還沒有基準可比」
+// 的肌群當成拉低分數的異常值。
+export function computeBalanceScore(
+  composites: { name: string; composite: number; hasVolumeHistory: boolean }[],
+): number | null {
+  const comparable = composites.filter(c => c.hasVolumeHistory);
+  if (comparable.length < 2) return null;
+
+  const values = comparable.map(c => c.composite);
+  const max = Math.max(...values);
+  if (max <= 0) return null;
+  const min = Math.min(...values);
+
+  return Math.round((min / max) * 100);
+}
