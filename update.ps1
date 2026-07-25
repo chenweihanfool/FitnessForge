@@ -8,10 +8,13 @@
          avoids a false-positive .hermes-tmp cleanup warning that `docker compose build`
          alone can emit on this Windows Docker Desktop setup even on a successful build;
          the health check at the end is the real success signal, not this step's exit code)
-      3. docker compose exec app npm run db:push (drizzle-kit schema sync -- safe to run
+      3. pg_dump backup to .\backups (keeps last 14) -- BEFORE schema sync, since
+         db:push has no undo. Aborts the deploy if the backup itself fails, on
+         purpose: proceeding to db:push with no safety net defeats the point.
+      4. docker compose exec app npm run db:push (drizzle-kit schema sync -- safe to run
          every deploy for additive changes; only prompts interactively if drizzle-kit
          detects an ambiguous rename, which a normal schema addition won't trigger)
-      4. health check (verify the site responds under /fitness)
+      5. health check (verify the site responds under /fitness)
 
     Same pattern as pf-cwh's update.ps1 on this same host. Postgres itself is NOT
     managed by this docker-compose file -- it's an existing instance shared with
@@ -26,7 +29,7 @@
       - Double-click this .ps1 file
       - Or run in PowerShell: & "F:\WEBAPP\SRC\FitnessForge\update.ps1"
 .NOTES
-    Version: 1.1
+    Version: 1.2
 #>
 
 $ErrorActionPreference = "Continue"
@@ -37,7 +40,7 @@ $HealthUrl = "https://cwh2023.asuscomm.com/fitness"
 $AppPort = 5138
 
 Write-Host "=========================================" -ForegroundColor Cyan
-Write-Host "      FitnessForge Update Script v1.1     " -ForegroundColor Cyan
+Write-Host "      FitnessForge Update Script v1.2     " -ForegroundColor Cyan
 Write-Host "=========================================" -ForegroundColor Cyan
 Write-Host "Start: $($StartTime.ToString('yyyy-MM-dd HH:mm:ss'))" -ForegroundColor Gray
 Write-Host ""
@@ -65,7 +68,7 @@ function Run-Native {
 # ==============================================
 # Step 1: git pull
 # ==============================================
-Write-Host "[1/4] Pulling latest code from GitHub..." -ForegroundColor Yellow
+Write-Host "[1/5] Pulling latest code from GitHub..." -ForegroundColor Yellow
 try {
     Push-Location $RepoDir
     $gitResult = Run-Native { git pull 2>&1 }
@@ -86,7 +89,7 @@ catch {
 # ==============================================
 # Step 2: docker compose up -d --build (build + start in one shot)
 # ==============================================
-Write-Host "[2/4] Building + starting containers..." -ForegroundColor Yellow
+Write-Host "[2/5] Building + starting containers..." -ForegroundColor Yellow
 try {
     Push-Location $RepoDir
     $upResult = cmd /c "docker compose up -d --build 2>&1"
@@ -111,9 +114,55 @@ catch {
 }
 
 # ==============================================
-# Step 3: schema sync (drizzle-kit push)
+# Step 3: Pre-migration backup (pg_dump)
 # ==============================================
-Write-Host "[3/4] Syncing database schema..." -ForegroundColor Yellow
+Write-Host "[3/5] Backing up database before schema sync..." -ForegroundColor Yellow
+try {
+    Push-Location $RepoDir
+    $envLine = Get-Content ".env" | Where-Object { $_ -match "^DATABASE_URL=" } | Select-Object -First 1
+    if (-not $envLine) {
+        throw ".env has no DATABASE_URL line"
+    }
+    $databaseUrl = ($envLine -replace "^DATABASE_URL=", "").Trim('"').Trim("'")
+
+    $backupDir = "$RepoDir\backups"
+    if (-not (Test-Path $backupDir)) {
+        New-Item -ItemType Directory -Path $backupDir | Out-Null
+    }
+    $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
+    $backupFileName = "fitnessforge-$timestamp.dump"
+
+    # Throwaway postgres:16 container for pg_dump -- no need for Postgres client
+    # tools on the Windows host. Connects out via host.docker.internal, same as
+    # the app container already does (see DATABASE_URL in .env).
+    $dumpResult = cmd /c "docker run --rm -v `"$backupDir`":/backup postgres:16 pg_dump `"$databaseUrl`" -Fc -f /backup/$backupFileName 2>&1"
+    Write-Host $dumpResult
+    if ($LASTEXITCODE -ne 0) {
+        throw "pg_dump failed (exit code: $LASTEXITCODE)"
+    }
+    $backupSize = (Get-Item "$backupDir\$backupFileName").Length / 1KB
+    Write-Host "  >> Backup saved: backups\$backupFileName ($([math]::Round($backupSize, 1)) KB)" -ForegroundColor Green
+
+    # Keep only the most recent 14 backups
+    Get-ChildItem $backupDir -Filter "fitnessforge-*.dump" |
+        Sort-Object LastWriteTime -Descending |
+        Select-Object -Skip 14 |
+        Remove-Item -Force
+
+    Pop-Location
+}
+catch {
+    Write-Host "ERROR backup: $_" -ForegroundColor Red
+    Write-Host "  Aborting deploy -- db:push (next step) would have no safety net without" -ForegroundColor Yellow
+    Write-Host "  a successful backup. Fix the backup issue and re-run." -ForegroundColor Yellow
+    Pop-Location
+    exit 1
+}
+
+# ==============================================
+# Step 4: schema sync (drizzle-kit push)
+# ==============================================
+Write-Host "[4/5] Syncing database schema..." -ForegroundColor Yellow
 try {
     Push-Location $RepoDir
     $pushResult = cmd /c "docker compose exec -T app npm run db:push 2>&1"
@@ -132,9 +181,9 @@ catch {
 }
 
 # ==============================================
-# Step 4: Health check
+# Step 5: Health check
 # ==============================================
-Write-Host "[4/4] Health check..." -ForegroundColor Yellow
+Write-Host "[5/5] Health check..." -ForegroundColor Yellow
 Start-Sleep -Seconds 3
 
 try {
