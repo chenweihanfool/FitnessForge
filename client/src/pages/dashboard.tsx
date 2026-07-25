@@ -987,6 +987,14 @@ export default function Dashboard() {
                     pct: scores[name] ?? 0,
                     baseline: 100,
                   }));
+                  // 快照只存了最終複合分，沒存當時哪些肌群有歷史容量資料可比對，
+                  // 所以均衡度這裡把全部 8 個肌群都當作可比對——多數情況下跟即時
+                  // 版一致，只有極少數「當週某肌群剛好還沒有比對基準」的情況會有
+                  // 微小落差，可接受的近似值。覆蓋分數則本來就用全部肌群，沒有這個問題。
+                  const histBalanceScore = computeBalanceScore(
+                    radarData.map(d => ({ name: d.name, composite: d.pct, hasVolumeHistory: true }))
+                  );
+                  const histCoverageScore = computeCoverageScore(radarData.map(d => d.pct));
                   return (
                     <div key={snap.weekStart} className="rounded-lg border p-3 space-y-2">
                       <div className="flex items-center justify-between">
@@ -995,6 +1003,38 @@ export default function Dashboard() {
                           儲存於 {new Date(snap.createdAt).toLocaleDateString('zh-TW')}
                         </span>
                       </div>
+                      {(histBalanceScore !== null || histCoverageScore !== null) && (
+                        <div className="flex flex-wrap gap-1.5">
+                          {histBalanceScore !== null && (
+                            <Badge
+                              variant="outline"
+                              className={
+                                histBalanceScore >= 80
+                                  ? "text-green-600 border-green-600/40 bg-green-500/10 text-[11px]"
+                                  : histBalanceScore >= 50
+                                  ? "text-amber-600 border-amber-600/40 bg-amber-500/10 text-[11px]"
+                                  : "text-red-600 border-red-600/40 bg-red-500/10 text-[11px]"
+                              }
+                            >
+                              均衡度 {histBalanceScore}%
+                            </Badge>
+                          )}
+                          {histCoverageScore !== null && (
+                            <Badge
+                              variant="outline"
+                              className={
+                                histCoverageScore >= 100
+                                  ? "text-green-600 border-green-600/40 bg-green-500/10 text-[11px]"
+                                  : histCoverageScore >= 60
+                                  ? "text-amber-600 border-amber-600/40 bg-amber-500/10 text-[11px]"
+                                  : "text-red-600 border-red-600/40 bg-red-500/10 text-[11px]"
+                              }
+                            >
+                              覆蓋 {histCoverageScore}%
+                            </Badge>
+                          )}
+                        </div>
+                      )}
                       <ResponsiveContainer width="100%" height={220}>
                         <RadarChart data={radarData} outerRadius="72%">
                           <PolarGrid stroke="hsl(var(--muted-foreground) / 0.2)" />
