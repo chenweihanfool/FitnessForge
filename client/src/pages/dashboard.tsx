@@ -8,7 +8,7 @@ import { ScaleProgressBar } from "@/components/scale-progress-bar";
 import { Activity, TrendingUp, Award, X, TrendingDown, Dumbbell, Heart, Footprints, Plus, Check, Minus, Star, Pencil, ClipboardList, RefreshCw, Loader2, ChevronDown, ChevronRight, Trophy, Radar as RadarIcon, Lightbulb, Save, History } from "lucide-react";
 import { RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer, Legend, Tooltip as RechartsTooltip } from "recharts";
 import { RankingData, WeeklyStats, RankingDetailResponse, Exercise, PlanProgress, PlanItemStatus } from "@shared/schema";
-import { getMuscleSetsMaintenance, computeMuscleCompositeScore, computeBalanceScore } from "@shared/muscleGroupStats";
+import { getMuscleSetsMaintenance, computeMuscleCompositeScore, computeBalanceScore, computeCoverageScore } from "@shared/muscleGroupStats";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
@@ -736,6 +736,9 @@ export default function Dashboard() {
           radarData.map(d => ({ name: d.name, composite: d.pct, hasVolumeHistory: d.avgVolume > 0 }))
         );
 
+        // 覆蓋分數：雷達圖多邊形面積 ÷ 每軸都 100% 時的面積，見 @shared/muscleGroupStats
+        const coverageScore = computeCoverageScore(radarData.map(d => d.pct));
+
         const weekStart = muscleGroupStats?.weekStart;
         const scores = Object.fromEntries(radarData.map(d => [d.name, d.pct]));
 
@@ -763,6 +766,21 @@ export default function Dashboard() {
                         data-testid="badge-balance-score"
                       >
                         均衡度 {balanceScore}%
+                      </Badge>
+                    )}
+                    {coverageScore !== null && (
+                      <Badge
+                        variant="outline"
+                        className={
+                          coverageScore >= 100
+                            ? "text-green-600 border-green-600/40 bg-green-500/10"
+                            : coverageScore >= 60
+                            ? "text-amber-600 border-amber-600/40 bg-amber-500/10"
+                            : "text-red-600 border-red-600/40 bg-red-500/10"
+                        }
+                        data-testid="badge-coverage-score"
+                      >
+                        覆蓋 {coverageScore}%
                       </Badge>
                     )}
                     {showMuscleDetail
@@ -796,6 +814,9 @@ export default function Dashboard() {
                 <p className="text-xs text-muted-foreground mt-1">複合評分 = 組數 40% + 容量 60%，對比歷史均值</p>
                 {balanceScore !== null && (
                   <p className="text-xs text-muted-foreground mt-0.5">均衡度 = 最弱肌群 ÷ 最強肌群複合分，數字越低代表落差越大</p>
+                )}
+                {coverageScore !== null && (
+                  <p className="text-xs text-muted-foreground mt-0.5">覆蓋 = 雷達圖多邊形面積 ÷ 每軸都達 100% 時的面積，數字越高代表整體訓練量越飽滿</p>
                 )}
               </CardHeader>
               <CardContent>

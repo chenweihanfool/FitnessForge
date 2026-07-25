@@ -61,3 +61,31 @@ export function computeBalanceScore(
 
   return Math.round((min / max) * 100);
 }
+
+// 覆蓋分數 = 雷達圖多邊形面積 ÷ 「每軸都剛好 100%」時的面積，越接近/超過 100%
+// 代表整體訓練量越飽滿。用真正的多邊形面積公式（½ × sin(2π/N) × Σ相鄰軸相乘），
+// 不是簡單平均——這樣才會跟你視覺上看到的雷達圖形狀大小直接對應：兩個肌群
+// 都是 75% 的面積，會小於一個 100% 一個 50% 的面積（因為面積跟相鄰軸的乘積
+// 有關，不是線性的），這跟均衡度分數（只看最弱/最強比值，不管整體大小）是
+// 互補的兩個指標，不是同一件事的兩種算法。
+//
+// 用全部肌群（包含還沒有歷史容量資料、composite 退回只看組數分的），因為
+// 雷達圖本身畫的就是全部軸，覆蓋分數要跟畫面上看到的形狀一致。陣列順序必須
+// 跟雷達圖畫的順序一致，因為面積公式看的是「相鄰軸」的乘積。
+export function computeCoverageScore(compositesInChartOrder: number[]): number | null {
+  const n = compositesInChartOrder.length;
+  if (n < 3) return null; // 面積公式至少需要三個軸才有意義
+
+  const angleStep = (2 * Math.PI) / n;
+  const sinStep = Math.sin(angleStep);
+
+  const actualArea = compositesInChartOrder.reduce((sum, r, i) => {
+    const rNext = compositesInChartOrder[(i + 1) % n];
+    return sum + r * rNext;
+  }, 0) * 0.5 * sinStep;
+
+  const baselineArea = 0.5 * sinStep * n * (100 * 100); // 每軸都剛好 100%（維持基準）時的面積
+  if (baselineArea <= 0) return null;
+
+  return Math.round((actualArea / baselineArea) * 100);
+}
