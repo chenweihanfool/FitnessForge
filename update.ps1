@@ -28,6 +28,15 @@
     Usage:
       - Double-click this .ps1 file
       - Or run in PowerShell: & "F:\WEBAPP\SRC\FitnessForge\update.ps1"
+
+    DEPLOYMENT RULE (2026-07-25 architecture review, applies to every app on this
+    host): this script is the ONLY sanctioned way to change what's running in the
+    container. Do not `docker exec` into the running container to hand-edit files
+    as a "hotfix" -- a real incident already happened on a sibling project on this
+    same host where that was done, the fix was never committed to git, and the
+    next `git pull` there silently reverted it with no record it ever existed. If
+    something is truly urgent enough to bypass this, commit + push the change to
+    git immediately afterward so the repo stays the source of truth.
 .NOTES
     Version: 1.2
 #>
