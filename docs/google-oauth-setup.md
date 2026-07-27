@@ -1,7 +1,7 @@
 # Google OAuth 設定（取代 Replit Auth）
 
 這個系統從 Replit 遷移出來後，登入改用你自己的 Google OAuth 用戶端，不再
-依賴 Replit 平台代管的憑證。跟 pf-cwh/tasktracker 一樣共用 `cwh2023.asuscomm.com`
+依賴 Replit 平台代管的憑證。跟 pf-cwh/tasktracker 一樣共用 `cwh2023.synology.me`
 這個網域，但這次要**建立一個新的 OAuth 用戶端**，不要跟 pf-cwh 或 tasktracker
 共用同一個（各自獨立，降低互相牽連的風險），可以沿用同一個 Google Cloud
 專案（例如既有的 "Hermes" 專案）。
@@ -36,7 +36,7 @@
 2. 應用程式類型選 **網頁應用程式**。
 3. **已授權的重新導向 URI** 加入：
    ```
-   https://cwh2023.asuscomm.com/fitness/api/auth/callback
+   https://cwh2023.synology.me/fitness/api/auth/callback
    ```
 4. 建立後會拿到 **Client ID** 和 **Client Secret**，填進 `.env`：
    ```
@@ -53,6 +53,6 @@ refresh token 一律 7 天後失效，大概每 7 天要重新登入一次，不
 ## 5. 驗證設定是否正確
 
 1. `.env` 填好 `GOOGLE_CLIENT_ID`、`GOOGLE_CLIENT_SECRET`、`ADMIN_GOOGLE_EMAIL` 後部署。
-2. 用 `ADMIN_GOOGLE_EMAIL` 那組帳號打開 `https://cwh2023.asuscomm.com/fitness`，
+2. 用 `ADMIN_GOOGLE_EMAIL` 那組帳號打開 `https://cwh2023.synology.me/fitness`，
    點「以 Google 帳號登入」，應該會跳轉到 Google 同意畫面，同意後應該會導回
    系統並顯示為管理員，能看到原本 Replit 時代累積的健身紀錄。

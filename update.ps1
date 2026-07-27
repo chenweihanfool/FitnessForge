@@ -45,7 +45,7 @@ $ErrorActionPreference = "Continue"
 $RepoDir = "F:\WEBAPP\SRC\FitnessForge"
 $LogFile = "$RepoDir\update.log"
 $StartTime = Get-Date
-$HealthUrl = "https://cwh2023.asuscomm.com/fitness"
+$HealthUrl = "https://cwh2023.synology.me/fitness"
 $AppPort = 5138
 
 Write-Host "=========================================" -ForegroundColor Cyan

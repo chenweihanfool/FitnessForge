@@ -7,6 +7,16 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: "v3.8",
+    date: "2026-07-27",
+    title: "網域改成 cwh2023.synology.me，修正 redirect_uri_mismatch",
+    items: [
+      "使用者把對外網域從 cwh2023.asuscomm.com 改成 cwh2023.synology.me，並更新了 Google Cloud Console 的授權重新導向 URI",
+      "根因：PUBLIC_BASE_URL 寫死在 docker-compose.yml，不是從 request header 動態組出來的，只改 Google 那邊沒用，容器裡組出來的 redirect_uri 還是舊網域",
+      "同步更新 docker-compose.yml、update.ps1 健康檢查網址、docs/google-oauth-setup.md、weekly-radar-snapshot.yml 手動觸發網址",
+    ],
+  },
+  {
     version: "v3.7",
     date: "2026-07-25",
     title: "歷史週雷達圖快照也補上均衡度／覆蓋分數",

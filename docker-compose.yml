@@ -25,7 +25,7 @@ services:
       # Full external URL (with the /fitness path), used to build the Google
       # OAuth callback URL -- must exactly match an Authorized redirect URI
       # registered on the Google Cloud OAuth client.
-      PUBLIC_BASE_URL: https://cwh2023.asuscomm.com/fitness
+      PUBLIC_BASE_URL: https://cwh2023.synology.me/fitness
       # Server-side counterpart of the build-time VITE_BASE_PATH above --
       # strips this prefix from incoming request paths (see server/index.ts)
       # since Apache forwards the full /fitness/... path unstripped.
