@@ -7,6 +7,16 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: "v3.9",
+    date: "2026-08-03",
+    title: "新增 /api/public/summary，供 Aiportal 入口網摘要卡片抓取",
+    items: [
+      "入口網要把「本週積分／趨勢／肌群分布」做成一站式看板的摘要卡片，這裡新增對外唯讀端點供它定期拉取",
+      "回傳 weeklyScore（本週加權訓練分數，跟畫面上本週分數同一套計算邏輯）、trendPct（跟上週同一套邏輯比較的漲跌幅）、muscleGroups（本週各肌群訓練量分布，跟現有 /api/stats/muscle-group-weekly 同一份資料）",
+      "沿用 /api/public/life-score 的公開、無驗證慣例，沒有新增資料表也沒有動到既有邏輯",
+    ],
+  },
+  {
     version: "v3.8",
     date: "2026-07-27",
     title: "網域改成 cwh2023.synology.me，修正 redirect_uri_mismatch",

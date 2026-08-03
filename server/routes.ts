@@ -1501,6 +1501,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ── Public summary endpoint (no auth) ─────────────────────────────────────
+  // Compact weekly score / trend / muscle-group breakdown for external
+  // dashboards (Aiportal's system-overview cards).
+  app.get('/api/public/summary', async (_req, res) => {
+    try {
+      const summary = await storage.getPublicSummary();
+      res.json({ ...summary, updatedAt: new Date().toISOString() });
+    } catch (error) {
+      console.error('Error in /api/public/summary:', error);
+      res.status(500).json({ message: String(error) });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }

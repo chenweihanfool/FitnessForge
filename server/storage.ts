@@ -276,6 +276,12 @@ export interface IStorage {
     categoryCount: number;
     muscleGroupCount: number;
   }>;
+  // 給外部入口網儀表板用的摘要（本週積分／趨勢／肌群分布）
+  getPublicSummary(): Promise<{
+    weeklyScore: number;
+    trendPct: number | null;
+    muscleGroups: Array<{ muscleGroup: string; totalSets: number; totalVolume: number }>;
+  }>;
 }
 
 type WeeklyMuscleStatsRecord = {
@@ -1917,6 +1923,10 @@ export class MemStorage implements IStorage {
   async getPublicLifeScore() {
     return { thisWeekCount: 0, daysSinceLastWorkout: 0, consecutiveWeeks: 0,
       thisWeekBaselineValue: 0, avgWeeklyBaselineValue: 0, categoryCount: 0, muscleGroupCount: 0 };
+  }
+
+  async getPublicSummary() {
+    return { weeklyScore: 0, trendPct: null, muscleGroups: [] };
   }
 }
 
@@ -3986,6 +3996,29 @@ export class DbStorage implements IStorage {
       thisWeekCount, daysSinceLastWorkout, consecutiveWeeks,
       thisWeekBaselineValue, avgWeeklyBaselineValue, categoryCount, muscleGroupCount,
     };
+  }
+
+  async getPublicSummary() {
+    const now = new Date();
+    const weekStart = this.getWeekStart(now);
+    const weekEnd = this.getWeekEnd(now);
+    // Taiwan has no DST, so a flat 7-day offset from this week's boundaries
+    // is always exactly last week's boundaries.
+    const prevWeekStart = new Date(weekStart.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const prevWeekEnd = new Date(weekEnd.getTime() - 7 * 24 * 60 * 60 * 1000);
+
+    const [thisWeek, prevWeek, muscleWeekly] = await Promise.all([
+      this.getWeeklyStats(weekStart, weekEnd),
+      this.getWeeklyStats(prevWeekStart, prevWeekEnd),
+      this.getMuscleGroupWeeklyStats(),
+    ]);
+
+    const weeklyScore = Math.round(thisWeek.totalBaselineValue);
+    const trendPct = prevWeek.totalBaselineValue > 0
+      ? Math.round(((thisWeek.totalBaselineValue - prevWeek.totalBaselineValue) / prevWeek.totalBaselineValue) * 1000) / 10
+      : null;
+
+    return { weeklyScore, trendPct, muscleGroups: muscleWeekly.muscleGroups };
   }
 }
 export const storage = process.env.DATABASE_URL ? new DbStorage() : new MemStorage();
