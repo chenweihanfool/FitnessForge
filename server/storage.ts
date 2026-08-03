@@ -26,6 +26,7 @@ import { randomUUID } from "crypto";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { eq, and, gte, lte, lt, desc, sql, sum, count, isNull } from "drizzle-orm";
 import { Pool } from "pg";
+import { computeMuscleCompositeScore, computeBalanceScore, computeCoverageScore } from "@shared/muscleGroupStats";
 
 function calculateBaseline(
   value: number,
@@ -276,11 +277,15 @@ export interface IStorage {
     categoryCount: number;
     muscleGroupCount: number;
   }>;
-  // 給外部入口網儀表板用的摘要（本週積分／趨勢／肌群分布）
+  // 給外部入口網儀表板用的摘要（本週積分／趨勢／肌群分布／運動習慣綜合指數）
   getPublicSummary(): Promise<{
     weeklyScore: number;
     trendPct: number | null;
     muscleGroups: Array<{ muscleGroup: string; totalSets: number; totalVolume: number }>;
+    habitIndex: number | null;
+    volumeScore: number;
+    balanceScore: number | null;
+    coverageScore: number | null;
   }>;
 }
 
@@ -1926,7 +1931,7 @@ export class MemStorage implements IStorage {
   }
 
   async getPublicSummary() {
-    return { weeklyScore: 0, trendPct: null, muscleGroups: [] };
+    return { weeklyScore: 0, trendPct: null, muscleGroups: [], habitIndex: null, volumeScore: 0, balanceScore: null, coverageScore: null };
   }
 }
 
@@ -4007,10 +4012,12 @@ export class DbStorage implements IStorage {
     const prevWeekStart = new Date(weekStart.getTime() - 7 * 24 * 60 * 60 * 1000);
     const prevWeekEnd = new Date(weekEnd.getTime() - 7 * 24 * 60 * 60 * 1000);
 
-    const [thisWeek, prevWeek, muscleWeekly] = await Promise.all([
+    const [thisWeek, prevWeek, muscleWeekly, averages, ranking] = await Promise.all([
       this.getWeeklyStats(weekStart, weekEnd),
       this.getWeeklyStats(prevWeekStart, prevWeekEnd),
       this.getMuscleGroupWeeklyStats(),
+      this.getMuscleGroupAverages(),
+      this.getRankingData(),
     ]);
 
     const weeklyScore = Math.round(thisWeek.totalBaselineValue);
@@ -4018,7 +4025,54 @@ export class DbStorage implements IStorage {
       ? Math.round(((thisWeek.totalBaselineValue - prevWeek.totalBaselineValue) / prevWeek.totalBaselineValue) * 1000) / 10
       : null;
 
-    return { weeklyScore, trendPct, muscleGroups: muscleWeekly.muscleGroups };
+    // 運動習慣指數 = 訓練量分 + 覆蓋分 + 均衡分 + 趨勢分 的平均，每項都先正規化到
+    // 0-100（或視情況缺席不計入），跟畫面上既有的均衡度／覆蓋分數同一套算法
+    // （見 @shared/muscleGroupStats），不是另外發明一套。
+    const MUSCLE_NAMES = ['胸', '背', '腿', '肩', '二头肌', '核心', '臀', '三头肌'] as const;
+    const AVG_FIELD: Record<string, keyof typeof averages> = {
+      '胸': 'chestAvg', '背': 'backAvg', '腿': 'legsAvg', '肩': 'shouldersAvg',
+      '二头肌': 'armsAvg', '核心': 'coreAvg', '臀': 'glutesAvg', '三头肌': 'fullBodyAvg',
+    };
+    const composites = MUSCLE_NAMES.map(name => {
+      const g = muscleWeekly.muscleGroups.find(m => m.muscleGroup === name);
+      const sets = g?.totalSets ?? 0;
+      const volume = g?.totalVolume ?? 0;
+      const avgVolume = Number(averages[AVG_FIELD[name]]) || 0;
+      const { composite } = computeMuscleCompositeScore(name, sets, volume, avgVolume);
+      return { name, composite, hasVolumeHistory: avgVolume > 0 };
+    });
+    const balanceScore = computeBalanceScore(composites);
+    const coverageScore = computeCoverageScore(composites.map(c => c.composite));
+
+    // 訓練量分：本週分數相對於個人歷史平均週分數，100 = 剛好符合平常水準。
+    const volumeScore = ranking.averageWeeklyValue > 0
+      ? Math.min(150, Math.round((weeklyScore / ranking.averageWeeklyValue) * 100))
+      : (weeklyScore > 0 ? 100 : 0);
+
+    // 趨勢分：0% 持平 = 50 分，±100% 週變化打滿 0-100 分兩端。
+    const trendScore = trendPct !== null
+      ? Math.max(0, Math.min(100, Math.round(50 + trendPct * 0.5)))
+      : null;
+
+    const habitComponents = [
+      Math.min(100, volumeScore),
+      coverageScore !== null ? Math.min(100, coverageScore) : null,
+      balanceScore,
+      trendScore,
+    ].filter((v): v is number => v !== null);
+    const habitIndex = habitComponents.length > 0
+      ? Math.round(habitComponents.reduce((a, b) => a + b, 0) / habitComponents.length)
+      : null;
+
+    return {
+      weeklyScore,
+      trendPct,
+      muscleGroups: muscleWeekly.muscleGroups,
+      habitIndex,
+      volumeScore: Math.min(150, volumeScore),
+      balanceScore,
+      coverageScore,
+    };
   }
 }
 export const storage = process.env.DATABASE_URL ? new DbStorage() : new MemStorage();

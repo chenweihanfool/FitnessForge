@@ -7,6 +7,16 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: "v3.10",
+    date: "2026-08-03",
+    title: "/api/public/summary 新增運動習慣綜合指數",
+    items: [
+      "入口網的儀表板卡片想顯示單一綜合指標而不是一堆原始數字，這裡新增 habitIndex：訓練量分/覆蓋分/均衡分/趨勢分四項正規化到 0-100 後取平均",
+      "均衡分、覆蓋分直接複用畫面上既有的 computeBalanceScore／computeCoverageScore（@shared/muscleGroupStats），不是另外發明算法，數字會跟你自己在儀表板上看到的均衡度／覆蓋徽章一致",
+      "訓練量分 = 本週分數 ÷ 個人歷史平均週分數 × 100（100 分 = 剛好符合平常水準）；趨勢分 = 50 + 週變化% × 0.5，四項有缺（例如剛開始用、還沒有歷史容量資料可比對均衡度）就用剩下的取平均，不會整個是 null",
+    ],
+  },
+  {
     version: "v3.9",
     date: "2026-08-03",
     title: "新增 /api/public/summary，供 Aiportal 入口網摘要卡片抓取",
