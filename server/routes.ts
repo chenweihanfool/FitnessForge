@@ -25,7 +25,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const MUSCLE_NAMES = ['胸', '背', '腿', '肩', '二头肌', '核心', '臀', '三头肌'] as const;
       const AVG_FIELD: Record<string, string> = {
         '胸': 'chestAvg', '背': 'backAvg', '腿': 'legsAvg', '肩': 'shouldersAvg',
-        '二头肌': 'armsAvg', '核心': 'coreAvg', '臀': 'glutesAvg', '三头肌': 'armsAvg',
+        '二头肌': 'armsAvg', '核心': 'coreAvg', '臀': 'glutesAvg', '三头肌': 'fullBodyAvg',
       };
 
       const [weeklyStats, averages] = await Promise.all([

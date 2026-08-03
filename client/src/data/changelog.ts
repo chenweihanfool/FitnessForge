@@ -7,6 +7,16 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: "v3.11",
+    date: "2026-08-03",
+    title: "修正自動快照把三頭肌誤算成二頭肌平均值的 bug",
+    items: [
+      "server/routes.ts 的自動雷達圖快照端點裡，AVG_FIELD 把「三頭肌」跟「二頭肌」都對應到 armsAvg，是複製貼上漏改的錯誤——正確對應應該跟畫面上 dashboard.tsx 的 nameToAvgKey 一樣是 fullBodyAvg",
+      "影響：每週自動存檔的雷達圖快照裡，三頭肌的 volumePct/composite 分數是拿二頭肌的歷史平均當基準算出來的，數字跟趨勢圖對不上",
+      "只修正往後的計算邏輯，沒有回填已存在的舊快照——回填需要「那一週當下」的平均值，但 getMuscleGroupAverages() 只回傳現在的全時間平均，就算重算也套用了錯誤的基準週期，不算真正還原，暫時讓它自然隨新快照覆蓋掉",
+    ],
+  },
+  {
     version: "v3.10",
     date: "2026-08-03",
     title: "/api/public/summary 新增運動習慣綜合指數",
