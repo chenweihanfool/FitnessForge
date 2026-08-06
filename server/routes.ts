@@ -1462,6 +1462,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const weekEnd = new Date(sundayTaipei.getTime() - TAIPEI_OFFSET);
 
       const entries = await storage.getWorkoutEntries();
+
+      // Delete any manual entries for this week — auto-sync should always take precedence
+      const manualEntries = entries.filter(e => {
+        if (e.exerciseId !== stepsExercise.id || e.source === "auto") return false;
+        const d = new Date(e.date);
+        return d >= weekStart && d <= weekEnd;
+      });
+      for (const manual of manualEntries) {
+        await storage.deleteWorkoutEntry(manual.id);
+      }
+
       const existingAuto = entries.find(e => {
         if (e.exerciseId !== stepsExercise.id || e.source !== "auto") return false;
         const d = new Date(e.date);

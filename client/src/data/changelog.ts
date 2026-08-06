@@ -7,6 +7,15 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: "v3.11a",
+    date: "2026-08-06",
+    title: "步數自動同步端點：自動覆蓋同週手動步數記錄、STEPS_SYNC_SECRET 驗證",
+    items: [
+      "docker-compose.yml 新增 STEPS_SYNC_SECRET 環境變數，供步數同步腳本呼叫 /api/steps-sync 端點時驗證身份",
+      "server/routes.ts steps-sync 處理邏輯：在同週已有手動步數記錄時，先刪除手動條目再寫入自動同步條目，避免同週出現重複/衝突記錄，確保 auto-sync 永遠優先",
+    ],
+  },
+  {
     version: "v3.11",
     date: "2026-08-03",
     title: "修正自動快照把三頭肌誤算成二頭肌平均值的 bug",

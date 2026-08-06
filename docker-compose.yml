@@ -30,6 +30,8 @@ services:
       # strips this prefix from incoming request paths (see server/index.ts)
       # since Apache forwards the full /fitness/... path unstripped.
       BASE_PATH: /fitness
+      # Shared secret for the steps-auto-sync endpoint (steps-sync script)
+      STEPS_SYNC_SECRET: ${STEPS_SYNC_SECRET}
       NODE_ENV: production
       PORT: "5000"
     ports:
