@@ -3200,17 +3200,17 @@ export class DbStorage implements IStorage {
     // 获取台北时区的日期组件
     const taipei = this.getTaipeiComponents(date);
     const diff = taipei.dayOfWeek === 0 ? -6 : 1 - taipei.dayOfWeek; // 周日是0，需要-6天；其他日子到周一
-    
+
     // 直接从台北时区的date计算周一的毫秒时间戳
     // 方法：在当前日期基础上加/减天数得到周一，然后设为00:00:00
     const taipeiMondayTimestamp = date.getTime() + this.TAIPEI_OFFSET + diff * 24 * 60 * 60 * 1000;
     const taipeiMonday = new Date(taipeiMondayTimestamp);
-    
+
     // 获取周一在台北时区的年月日
     const mondayYear = taipeiMonday.getUTCFullYear();
     const mondayMonth = taipeiMonday.getUTCMonth();
     const mondayDay = taipeiMonday.getUTCDate();
-    
+
     // 返回周一00:00:00（台北时间）对应的UTC时间
     return this.createUTCFromTaipei(mondayYear, mondayMonth, mondayDay, 0, 0, 0, 0);
   }
@@ -3218,18 +3218,31 @@ export class DbStorage implements IStorage {
   // 辅助方法：获取周日（基于UTC+8时区）
   private getWeekEnd(date: Date): Date {
     const weekStart = this.getWeekStart(date);
-    
+
     // 周日是周一+6天
     const taipeiSundayTimestamp = weekStart.getTime() + this.TAIPEI_OFFSET + 6 * 24 * 60 * 60 * 1000;
     const taipeiSunday = new Date(taipeiSundayTimestamp);
-    
+
     // 获取周日在台北时区的年月日
     const sundayYear = taipeiSunday.getUTCFullYear();
     const sundayMonth = taipeiSunday.getUTCMonth();
     const sundayDay = taipeiSunday.getUTCDate();
-    
+
     // 返回周日23:59:59.999（台北时间）对应的UTC时间
     return this.createUTCFromTaipei(sundayYear, sundayMonth, sundayDay, 23, 59, 59, 999);
+  }
+
+  // 本週已經過了幾分之幾——只給 getPublicSummary()／habitIndex 用，把「週至今
+  // 累積量」換算成跟整週基準可比的配速，不然週一（幾乎沒累積時間）跟週日
+  // （累積滿一週）拿同一把整週尺去比，指數自然是週一必近 0、週日必近滿分，
+  // 這不是真的訓練量差，只是週內進度不同。用「今天算滿一天」（週一 = 1/7，
+  // 不是 0/7）而非精確到小時：這裡的資料是「當天有沒有練」的離散事件，不是
+  // 連續累積的資產曲線，用小時級精細度只會讓剛練完當下的分數劇烈跳動，用
+  // 「日」為最小顆粒度更穩定、也更符合使用者對「還有一整天可以練」的直覺。
+  private getWeekProgress(now: Date): number {
+    const taipei = this.getTaipeiComponents(now);
+    const isoDayOfWeek = taipei.dayOfWeek === 0 ? 7 : taipei.dayOfWeek; // 週一=1 ... 週日=7
+    return isoDayOfWeek / 7;
   }
 
   // 辅助方法：计算ISO周数（基于UTC+8时区）
@@ -4011,6 +4024,7 @@ export class DbStorage implements IStorage {
     // is always exactly last week's boundaries.
     const prevWeekStart = new Date(weekStart.getTime() - 7 * 24 * 60 * 60 * 1000);
     const prevWeekEnd = new Date(weekEnd.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const weekProgress = this.getWeekProgress(now);
 
     const [thisWeek, prevWeek, muscleWeekly, averages, ranking] = await Promise.all([
       this.getWeeklyStats(weekStart, weekEnd),
@@ -4021,8 +4035,16 @@ export class DbStorage implements IStorage {
     ]);
 
     const weeklyScore = Math.round(thisWeek.totalBaselineValue);
+
+    // 趨勢%／趨勢分：直接拿「本週至今」比「上週一整週」在週初必然嚴重失真——
+    // 分子只有一兩天的量、分母是完整七天，週一幾乎必然算出誇張的負成長（或
+    // 週日前一天突然衝高），這不是真的趨勢，只是分子分母的時間跨度不對稱。
+    // 改成先把本週至今換算成「照這個配速練到週日大概會是多少」（除以
+    // weekProgress），再拿這個推估值跟上週實際總量比。週日 weekProgress=1，
+    // 推估值就等於本週實際總量，跟原本算法完全一致，不影響週末看到的數字。
+    const projectedWeeklyValue = thisWeek.totalBaselineValue / weekProgress;
     const trendPct = prevWeek.totalBaselineValue > 0
-      ? Math.round(((thisWeek.totalBaselineValue - prevWeek.totalBaselineValue) / prevWeek.totalBaselineValue) * 1000) / 10
+      ? Math.round(((projectedWeeklyValue - prevWeek.totalBaselineValue) / prevWeek.totalBaselineValue) * 1000) / 10
       : null;
 
     // 運動習慣指數 = 訓練量分 + 覆蓋分 + 均衡分 + 趨勢分 的平均，每項都先正規化到
@@ -4038,15 +4060,17 @@ export class DbStorage implements IStorage {
       const sets = g?.totalSets ?? 0;
       const volume = g?.totalVolume ?? 0;
       const avgVolume = Number(averages[AVG_FIELD[name]]) || 0;
-      const { composite } = computeMuscleCompositeScore(name, sets, volume, avgVolume);
+      const { composite } = computeMuscleCompositeScore(name, sets, volume, avgVolume, weekProgress);
       return { name, composite, hasVolumeHistory: avgVolume > 0 };
     });
     const balanceScore = computeBalanceScore(composites);
     const coverageScore = computeCoverageScore(composites.map(c => c.composite));
 
-    // 訓練量分：本週分數相對於個人歷史平均週分數，100 = 剛好符合平常水準。
+    // 訓練量分：本週配速相對於個人歷史平均週分數，100 = 照目前配速練到週日
+    // 大概會剛好符合平常水準（不是「已經達到整週基準」——週一才練一點點就
+    // 到 100 是合理的，代表目前配速看起來會練到平常水準，不代表整週已達標）。
     const volumeScore = ranking.averageWeeklyValue > 0
-      ? Math.min(150, Math.round((weeklyScore / ranking.averageWeeklyValue) * 100))
+      ? Math.min(150, Math.round((weeklyScore / (ranking.averageWeeklyValue * weekProgress)) * 100))
       : (weeklyScore > 0 ? 100 : 0);
 
     // 趨勢分：0% 持平 = 50 分，±100% 週變化打滿 0-100 分兩端。

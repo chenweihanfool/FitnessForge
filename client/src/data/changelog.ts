@@ -4,8 +4,18 @@ export interface ChangelogEntry {
   title: string;
   items: string[];
 }
-
 export const changelog: ChangelogEntry[] = [
+  {
+    version: "v3.12",
+    date: "2026-08-07",
+    title: "運動習慣指數（habitIndex）改成看配速，不再是週一必近 0、週日必近滿分",
+    items: [
+      "根因：habitIndex 的四項子分數（訓練量分／覆蓋分／均衡分／趨勢分）全都是拿「本週至今累積量」直接比「整週基準」（週維持組數、個人歷史平均週分數、上週一整週總量），週一才剛開始累積、分母卻是整週份量，分數自然被壓低；週日累積滿一週，分數自然衝高——這不是真的訓練狀況差異，只是週內進度不同",
+      "改成引入 weekProgress（本週已過幾分之幾，週一算 1/7、週日算 7/7，用『天』當最小顆粒度而非精確到小時，避免剛練完當下分數劇烈跳動）：訓練量分、覆蓋分/均衡分背後的組數分和容量分，改成跟『整週基準 × weekProgress』（配速基準）比，不是跟整週終點比",
+      "趨勢分／趨勢%也一併修正：原本是本週至今（可能只有一兩天）直接比上週一整週，週初必然算出誇張的漲跌幅（例如曾經看到 +1892%）；改成先把本週至今除以 weekProgress 換算成『照這個配速練到週日大概會是多少』，再跟上週實際總量比，週日 weekProgress=1 時跟原本算法完全一致，不影響週末看到的數字",
+      "只改 /api/public/summary（供 Aiportal 幸福指數卡片用的 habitIndex）背後的計算，沒有動到主站自己的即時雷達圖（dashboard.tsx）和每週自動快照（routes.ts 的雷達快照端點）——這兩處呼叫 computeMuscleCompositeScore 時沒有傳 weekProgress，維持原本『本週至今相對整週基準』的語意不變，避免非預期影響主站既有畫面",
+    ],
+  },
   {
     version: "v3.11a",
     date: "2026-08-06",
