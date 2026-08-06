@@ -4042,9 +4042,19 @@ export class DbStorage implements IStorage {
 
     const weeklyScore = Math.round(thisWeek.totalBaselineValue);
 
+    // 「上週同一段時間至今」常常剛好是 0（例如上週前幾天剛好沒練，但上週整週
+    // 其實有練，只是集中在後半週），這樣直接顯示「—」沒有趨勢，比顯示錯誤數
+    // 字好，但每週前幾天都看不到趨勢也不是很有用。有基準可比對時優先比「跟上
+    // 週同一段時間」（週對週的真實趨勢）；上週那段時間剛好是空的、但使用者本
+    // 來就有歷史資料時，退回比「目前配速 vs 個人平均配速」（跟訓練量分同一個
+    // 基準，只是分數是本週配速比 100 高/低多少），至少還有個有意義的參考值；
+    // 兩邊都沒資料（全新使用者）才真的顯示「—」。
+    const expectedPaceByNow = ranking.averageWeeklyValue * weekProgress;
     const trendPct = prevWeekSameStretch.totalBaselineValue > 0
       ? Math.round(((thisWeek.totalBaselineValue - prevWeekSameStretch.totalBaselineValue) / prevWeekSameStretch.totalBaselineValue) * 1000) / 10
-      : null;
+      : expectedPaceByNow > 0
+        ? Math.round(((thisWeek.totalBaselineValue - expectedPaceByNow) / expectedPaceByNow) * 1000) / 10
+        : null;
 
     // 運動習慣指數 = 訓練量分 + 覆蓋分 + 均衡分 + 趨勢分 的平均，每項都先正規化到
     // 0-100（或視情況缺席不計入），跟畫面上既有的均衡度／覆蓋分數同一套算法
