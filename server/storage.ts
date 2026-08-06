@@ -4020,15 +4020,21 @@ export class DbStorage implements IStorage {
     const now = new Date();
     const weekStart = this.getWeekStart(now);
     const weekEnd = this.getWeekEnd(now);
-    // Taiwan has no DST, so a flat 7-day offset from this week's boundaries
-    // is always exactly last week's boundaries.
-    const prevWeekStart = new Date(weekStart.getTime() - 7 * 24 * 60 * 60 * 1000);
-    const prevWeekEnd = new Date(weekEnd.getTime() - 7 * 24 * 60 * 60 * 1000);
     const weekProgress = this.getWeekProgress(now);
+    // Taiwan has no DST, so a flat 7-day offset always lands on the exact
+    // same wall-clock moment one week earlier.
+    const prevWeekStart = new Date(weekStart.getTime() - 7 * 24 * 60 * 60 * 1000);
+    // 跟「本週至今」比對的是「上週同一段時間至今」，不是上週一整週——用等長、
+    // 等起點的兩段區間直接比較，完全不需要除法／外推，週日這段區間自然就等於
+    // 上週整週，跟原本算法一致。（v3.12 原本改成「本週至今 ÷ weekProgress
+    // 外推成整週預估值」再跟上週整週比，除以一個很小的 weekProgress 會把任何
+    // 週初的變動放大好幾倍，結果比修之前更誇張，例如曾經算出 +2689%——外推法
+    // 本身就是這類早週資料的錯誤工具，不是調整參數能救的，所以直接換掉算法。）
+    const prevWeekSameStretchEnd = new Date(prevWeekStart.getTime() + (now.getTime() - weekStart.getTime()));
 
-    const [thisWeek, prevWeek, muscleWeekly, averages, ranking] = await Promise.all([
+    const [thisWeek, prevWeekSameStretch, muscleWeekly, averages, ranking] = await Promise.all([
       this.getWeeklyStats(weekStart, weekEnd),
-      this.getWeeklyStats(prevWeekStart, prevWeekEnd),
+      this.getWeeklyStats(prevWeekStart, prevWeekSameStretchEnd),
       this.getMuscleGroupWeeklyStats(),
       this.getMuscleGroupAverages(),
       this.getRankingData(),
@@ -4036,20 +4042,23 @@ export class DbStorage implements IStorage {
 
     const weeklyScore = Math.round(thisWeek.totalBaselineValue);
 
-    // 趨勢%／趨勢分：直接拿「本週至今」比「上週一整週」在週初必然嚴重失真——
-    // 分子只有一兩天的量、分母是完整七天，週一幾乎必然算出誇張的負成長（或
-    // 週日前一天突然衝高），這不是真的趨勢，只是分子分母的時間跨度不對稱。
-    // 改成先把本週至今換算成「照這個配速練到週日大概會是多少」（除以
-    // weekProgress），再拿這個推估值跟上週實際總量比。週日 weekProgress=1，
-    // 推估值就等於本週實際總量，跟原本算法完全一致，不影響週末看到的數字。
-    const projectedWeeklyValue = thisWeek.totalBaselineValue / weekProgress;
-    const trendPct = prevWeek.totalBaselineValue > 0
-      ? Math.round(((projectedWeeklyValue - prevWeek.totalBaselineValue) / prevWeek.totalBaselineValue) * 1000) / 10
+    const trendPct = prevWeekSameStretch.totalBaselineValue > 0
+      ? Math.round(((thisWeek.totalBaselineValue - prevWeekSameStretch.totalBaselineValue) / prevWeekSameStretch.totalBaselineValue) * 1000) / 10
       : null;
 
     // 運動習慣指數 = 訓練量分 + 覆蓋分 + 均衡分 + 趨勢分 的平均，每項都先正規化到
     // 0-100（或視情況缺席不計入），跟畫面上既有的均衡度／覆蓋分數同一套算法
     // （見 @shared/muscleGroupStats），不是另外發明一套。
+    //
+    // 覆蓋分／均衡分刻意不傳 weekProgress（維持配速前的原始語意，跟
+    // FitnessForge 主站自己畫面上的即時雷達圖數字保持一致）：覆蓋分背後的面積
+    // 公式是相鄰兩軸複合分「相乘」，把每個複合分等比放大 1/weekProgress 倍，
+    // 面積會放大到 (1/weekProgress)² 倍，比訓練量分那種單一數字的放大猛烈非常
+    // 多，週初一下子就把好幾軸頂到 150% 的個別上限；均衡分（最弱/最強比值）
+    // 理論上對等比縮放是不變的（比值會互相消掉），但一旦部分軸被 150% 上限卡
+    // 住、部分軸沒被卡住，這個乾淨的抵消就被破壞掉，比值也跟著失真。兩者都會
+    // 讓覆蓋分／均衡分變得比配速前更誇張、還跟主站自己的畫面對不上，不值得為
+    // 了「週初分數高一點」去付出這個代價，所以維持原樣。
     const MUSCLE_NAMES = ['胸', '背', '腿', '肩', '二头肌', '核心', '臀', '三头肌'] as const;
     const AVG_FIELD: Record<string, keyof typeof averages> = {
       '胸': 'chestAvg', '背': 'backAvg', '腿': 'legsAvg', '肩': 'shouldersAvg',
@@ -4060,7 +4069,7 @@ export class DbStorage implements IStorage {
       const sets = g?.totalSets ?? 0;
       const volume = g?.totalVolume ?? 0;
       const avgVolume = Number(averages[AVG_FIELD[name]]) || 0;
-      const { composite } = computeMuscleCompositeScore(name, sets, volume, avgVolume, weekProgress);
+      const { composite } = computeMuscleCompositeScore(name, sets, volume, avgVolume);
       return { name, composite, hasVolumeHistory: avgVolume > 0 };
     });
     const balanceScore = computeBalanceScore(composites);
