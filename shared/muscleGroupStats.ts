@@ -25,15 +25,24 @@ export interface MuscleCompositeScore {
 }
 
 // 組數分 40% + 容量分 60%（若有個人歷史容量資料可比對），否則單純看組數分。
+//
+// weekProgress（預設 1 = 不調整，維持既有呼叫端行為不變）：把整週基準
+// （setsMaintenance／avgVolume）依「本週已過幾分之幾」等比縮小再比較，這樣
+// 才是跟「配速」比，不是跟「整週終點」比。只有 storage.ts 的
+// getPublicSummary()（餵給 Aiportal 幸福指數卡片的 habitIndex）會傳入實際
+// 配速值；其餘呼叫端（雷達快照、前端即時雷達圖）維持看「本週至今相對整週
+// 基準」的原始語意，沒有一併改。
 export function computeMuscleCompositeScore(
   muscleName: string,
   sets: number,
   volume: number,
   avgVolume: number,
+  weekProgress: number = 1,
 ): MuscleCompositeScore {
-  const setsMaintenance = getMuscleSetsMaintenance(muscleName);
+  const setsMaintenance = getMuscleSetsMaintenance(muscleName) * weekProgress;
+  const pacedAvgVolume = avgVolume * weekProgress;
   const setsPct = Math.min(Math.round((sets / setsMaintenance) * 100), 150);
-  const volumePct = avgVolume > 0 ? Math.min(Math.round((volume / avgVolume) * 100), 150) : null;
+  const volumePct = pacedAvgVolume > 0 ? Math.min(Math.round((volume / pacedAvgVolume) * 100), 150) : null;
   const composite = volumePct !== null
     ? Math.round(0.4 * setsPct + 0.6 * volumePct)
     : setsPct;
