@@ -282,6 +282,7 @@ export interface IStorage {
     weeklyScore: number;
     trendPct: number | null;
     muscleGroups: Array<{ muscleGroup: string; totalSets: number; totalVolume: number }>;
+    muscleComposites: Array<{ name: string; composite: number }>;
     habitIndex: number | null;
     volumeScore: number;
     balanceScore: number | null;
@@ -1931,7 +1932,7 @@ export class MemStorage implements IStorage {
   }
 
   async getPublicSummary() {
-    return { weeklyScore: 0, trendPct: null, muscleGroups: [], habitIndex: null, volumeScore: 0, balanceScore: null, coverageScore: null };
+    return { weeklyScore: 0, trendPct: null, muscleGroups: [], muscleComposites: [], habitIndex: null, volumeScore: 0, balanceScore: null, coverageScore: null };
   }
 }
 
@@ -4111,6 +4112,12 @@ export class DbStorage implements IStorage {
       weeklyScore,
       trendPct,
       muscleGroups: muscleWeekly.muscleGroups,
+      // Same 0-150 "複合分" scale as the dashboard's own radar (維持基準 = 100),
+      // not raw totalVolume — Aiportal was previously reconstructing an
+      // approximation from muscleGroups with self-relative scaling (whatever's
+      // biggest this week = 100%), which never matched this page's own radar
+      // and barely changed week to week regardless of actual progress.
+      muscleComposites: composites.map(c => ({ name: c.name, composite: c.composite })),
       habitIndex,
       volumeScore: Math.min(150, volumeScore),
       balanceScore,

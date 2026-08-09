@@ -6,6 +6,15 @@ export interface ChangelogEntry {
 }
 export const changelog: ChangelogEntry[] = [
   {
+    version: "v3.15",
+    date: "2026-08-09",
+    title: "/api/public/summary 補上 muscleComposites，跟主站雷達圖同一套刻度",
+    items: [
+      "getPublicSummary() 原本就有算每個肌群的「複合分」（0-150%，維持基準=100%，跟本頁自己的雷達圖同一套 computeMuscleCompositeScore），但回應裡只有 muscleGroups（原始組數/容量數字），從沒把複合分送出去",
+      "Aiportal 入口網卡片一直是拿 muscleGroups 原始數字自己重新正規化（每次抓當週最大值當 100%），跟本頁雷達圖的絕對刻度對不上，而且這種自我正規化每週幾乎都會填滿雷達圖、看起來像沒在變化——現在補上 muscleComposites 讓入口網可以直接沿用跟這頁一致的刻度",
+    ],
+  },
+  {
     version: "v3.14",
     date: "2026-08-07",
     title: "趨勢分補上退回基準，不會一到週初就整片顯示「—」",
