@@ -4050,8 +4050,19 @@ export class DbStorage implements IStorage {
     // 來就有歷史資料時，退回比「目前配速 vs 個人平均配速」（跟訓練量分同一個
     // 基準，只是分數是本週配速比 100 高/低多少），至少還有個有意義的參考值；
     // 兩邊都沒資料（全新使用者）才真的顯示「—」。
+    //
+    // 光看「> 0」不夠：上週同期只要有一筆很小的紀錄（例如基準值 3），本週稍微
+    // 練多一點就能除出 +3000% 這種荒謬數字——分母太小造成的爆炸，跟 v3.12 除以
+    // 很小的 weekProgress 是同一類問題，只是這次分母換成「上週同期剛好很少」而
+    // 不是「weekProgress 很小」。改成分母至少要達到「配速期望值」的一定比例才
+    // 信任這個基準，太小就退回比個人平均配速（比較穩定，不會被單一週的異常值
+    // 牽著走）。
     const expectedPaceByNow = ranking.averageWeeklyValue * weekProgress;
-    const trendPct = prevWeekSameStretch.totalBaselineValue > 0
+    const MIN_BASELINE_RATIO = 0.2;
+    const prevWeekBaselineIsReliable =
+      prevWeekSameStretch.totalBaselineValue > 0 &&
+      (expectedPaceByNow <= 0 || prevWeekSameStretch.totalBaselineValue >= expectedPaceByNow * MIN_BASELINE_RATIO);
+    const trendPct = prevWeekBaselineIsReliable
       ? Math.round(((thisWeek.totalBaselineValue - prevWeekSameStretch.totalBaselineValue) / prevWeekSameStretch.totalBaselineValue) * 1000) / 10
       : expectedPaceByNow > 0
         ? Math.round(((thisWeek.totalBaselineValue - expectedPaceByNow) / expectedPaceByNow) * 1000) / 10
