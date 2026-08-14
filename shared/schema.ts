@@ -122,6 +122,7 @@ export const weeklyMuscleStats = pgTable("weekly_muscle_stats", {
   coreValue: real("core_value").notNull().default(0), // 核心肌群训练基准值
   glutesValue: real("glutes_value").notNull().default(0), // 臀部肌群训练基准值
   fullBodyValue: real("full_body_value").notNull().default(0), // 全身/三头肌训练基准值
+  aerobicValue: real("aerobic_value").notNull().default(0), // 有氧训练基准值（category='有氧' 的 baseline 加总，跟其他 8 项肌群同一套「训练量」比较基础）
   updatedAt: timestamp("updated_at").notNull().defaultNow(), // 最后更新时间
 });
 

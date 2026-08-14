@@ -22,10 +22,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return res.status(401).json({ error: "Unauthorized" });
     }
     try {
-      const MUSCLE_NAMES = ['胸', '背', '腿', '肩', '二头肌', '核心', '臀', '三头肌'] as const;
+      const MUSCLE_NAMES = ['胸', '背', '腿', '肩', '二头肌', '核心', '臀', '三头肌', '有氧'] as const;
       const AVG_FIELD: Record<string, string> = {
         '胸': 'chestAvg', '背': 'backAvg', '腿': 'legsAvg', '肩': 'shouldersAvg',
         '二头肌': 'armsAvg', '核心': 'coreAvg', '臀': 'glutesAvg', '三头肌': 'fullBodyAvg',
+        '有氧': 'aerobicAvg',
       };
 
       const [weeklyStats, averages] = await Promise.all([
@@ -575,6 +576,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("迁移肌群统计失败:", error);
       res.status(500).json({ error: "迁移肌群统计失败" });
+    }
+  });
+
+  // 一次性回填：幫既有雷達圖快照補上「有氧」這個新軸，只加這一個 key，
+  // 不動原本已存的 8 個肌群分數。跑完之後歷史雷達圖快照就會顯示有氧軸，
+  // 不會因為缺 key 被當成 0% 拉低均衡度/覆蓋分數。
+  app.post("/api/admin/backfill-aerobic-radar-snapshots", async (req, res) => {
+    try {
+      const result = await storage.backfillAerobicRadarSnapshots();
+      res.json({ success: true, ...result });
+    } catch (error) {
+      console.error("回填有氧雷達快照失敗:", error);
+      res.status(500).json({ error: "回填有氧雷達快照失敗" });
     }
   });
 

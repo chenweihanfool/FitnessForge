@@ -202,7 +202,8 @@ export interface IStorage {
     totalStars: number;
     averageStars: number;
   }>;
-  getMuscleGroupWeeklyStats(): Promise<{
+  // weekStartStr 省略時預設本週；歷史回填（migrateHistoricalMuscleStats）需要對任意過去週計算 sets/volume
+  getMuscleGroupWeeklyStats(weekStartStr?: string): Promise<{
     weekStart: string;
     weekEnd: string;
     muscleGroups: Array<{
@@ -211,7 +212,7 @@ export interface IStorage {
       totalVolume: number;
     }>;
   }>;
-  
+
   // 每周肌群统计持久化
   updateWeeklyMuscleStats(weekStart: string): Promise<void>;
   getWeeklyMuscleStatsHistory(): Promise<Array<{
@@ -224,6 +225,7 @@ export interface IStorage {
     coreValue: number;
     glutesValue: number;
     fullBodyValue: number;
+    aerobicValue: number;
     updatedAt: Date;
   }>>;
   getMuscleGroupAverages(): Promise<{
@@ -235,9 +237,14 @@ export interface IStorage {
     coreAvg: number;
     glutesAvg: number;
     fullBodyAvg: number;
+    aerobicAvg: number;
     weekCount: number;
   }>;
   migrateHistoricalMuscleStats(): Promise<{ migratedWeeks: number }>;
+  // 一次性回填：幫既有 radarSnapshots 補上「有氧」這個新軸的複合分，只新增這一個
+  // key，不動原本已存的 8 個肌群分數（那些是用當時的歷史平均算的，重算會跟著
+  // 現在的平均值飄動，沒必要也沒被要求動）。
+  backfillAerobicRadarSnapshots(): Promise<{ updatedSnapshots: number }>;
   recalculateAllBaselines(): Promise<{ updatedEntries: number; updatedWeeks: number; updatedExercises: number }>;
   convertExerciseUnit(exerciseName: string, newUnit: string, valueMultiplier: number): Promise<{ updatedExercise: boolean; updatedEntries: number }>;
 
@@ -300,6 +307,7 @@ type WeeklyMuscleStatsRecord = {
   coreValue: number;
   glutesValue: number;
   fullBodyValue: number;
+  aerobicValue: number;
   updatedAt: Date;
 };
 
@@ -1594,10 +1602,9 @@ export class MemStorage implements IStorage {
     return { weeks, totalStars, averageStars };
   }
 
-  async getMuscleGroupWeeklyStats() {
-    const now = new Date();
-    const weekStart = this.getWeekStart(now);
-    const weekEnd = this.getWeekEnd(now);
+  async getMuscleGroupWeeklyStats(weekStartStr?: string) {
+    const weekStart = weekStartStr ? new Date(weekStartStr) : this.getWeekStart(new Date());
+    const weekEnd = this.getWeekEnd(weekStart);
 
     const entries = Array.from(this.workoutEntries.values())
       .filter(entry => entry.date >= weekStart && entry.date <= weekEnd);
@@ -1631,6 +1638,27 @@ export class MemStorage implements IStorage {
         existing.totalVolume += baseVolume * (percentage / 100);
         muscleGroupMap.set(name, existing);
       }
+
+      // 有氧見 DbStorage.getMuscleGroupWeeklyStats 的同一段說明
+      const hasSplit = !!(exercise.splitCategory && exercise.splitRatio && exercise.splitRatio > 0);
+      const primaryRatio = hasSplit ? 1 - (exercise.splitRatio || 0) : 1;
+      const secondaryRatio = hasSplit ? (exercise.splitRatio || 0) : 0;
+      let aerobicVolume = 0;
+      let aerobicMinutes = 0;
+      if (exercise.category === '有氧') {
+        aerobicVolume += baseVolume * primaryRatio;
+        if (exercise.unit === '分鐘') aerobicMinutes += entry.value * primaryRatio;
+      }
+      if (hasSplit && exercise.splitCategory === '有氧') {
+        aerobicVolume += baseVolume * secondaryRatio;
+        if (exercise.unit === '分鐘') aerobicMinutes += entry.value * secondaryRatio;
+      }
+      if (aerobicVolume > 0 || aerobicMinutes > 0) {
+        const existing = muscleGroupMap.get('有氧') || { totalSets: 0, totalVolume: 0 };
+        existing.totalSets += aerobicMinutes;
+        existing.totalVolume += aerobicVolume;
+        muscleGroupMap.set('有氧', existing);
+      }
     }
 
     const muscleGroups = Array.from(muscleGroupMap.entries())
@@ -1643,8 +1671,8 @@ export class MemStorage implements IStorage {
       .sort((a, b) => b.totalVolume - a.totalVolume);
 
     return {
-      weekStart: weekStart.toISOString(),
-      weekEnd: weekEnd.toISOString(),
+      weekStart: this.formatTaipeiDate(weekStart),
+      weekEnd: this.formatTaipeiDate(weekEnd),
       muscleGroups,
     };
   }
@@ -1665,6 +1693,7 @@ export class MemStorage implements IStorage {
 
     let chestValue = 0, backValue = 0, legsValue = 0, shouldersValue = 0;
     let armsValue = 0, coreValue = 0, glutesValue = 0, fullBodyValue = 0;
+    let aerobicValue = 0;
 
     const allEntries = Array.from(this.workoutEntries.values());
     for (const entry of allEntries) {
@@ -1683,6 +1712,12 @@ export class MemStorage implements IStorage {
         coreValue += baseVolume * ((exercise.muscleCore || 0) / 100);
         glutesValue += baseVolume * ((exercise.muscleGlutes || 0) / 100);
         fullBodyValue += baseVolume * ((exercise.muscleFullBody || 0) / 100);
+
+        const hasSplit = !!(exercise.splitCategory && exercise.splitRatio && exercise.splitRatio > 0);
+        const primaryRatio = hasSplit ? 1 - (exercise.splitRatio || 0) : 1;
+        const secondaryRatio = hasSplit ? (exercise.splitRatio || 0) : 0;
+        if (exercise.category === '有氧') aerobicValue += baseVolume * primaryRatio;
+        if (hasSplit && exercise.splitCategory === '有氧') aerobicValue += baseVolume * secondaryRatio;
       }
     }
 
@@ -1697,6 +1732,7 @@ export class MemStorage implements IStorage {
       coreValue,
       glutesValue,
       fullBodyValue,
+      aerobicValue,
       updatedAt: new Date(),
     });
   }
@@ -1711,6 +1747,7 @@ export class MemStorage implements IStorage {
     coreValue: number;
     glutesValue: number;
     fullBodyValue: number;
+    aerobicValue: number;
     updatedAt: Date;
   }>> {
     const records = Array.from(this.weeklyMuscleStatsStore.values());
@@ -1726,6 +1763,7 @@ export class MemStorage implements IStorage {
     coreAvg: number;
     glutesAvg: number;
     fullBodyAvg: number;
+    aerobicAvg: number;
     weekCount: number;
   }> {
     const records = Array.from(this.weeklyMuscleStatsStore.values());
@@ -1739,6 +1777,7 @@ export class MemStorage implements IStorage {
         coreAvg: 0,
         glutesAvg: 0,
         fullBodyAvg: 0,
+        aerobicAvg: 0,
         weekCount: 0,
       };
     }
@@ -1752,8 +1791,9 @@ export class MemStorage implements IStorage {
       acc.core += r.coreValue;
       acc.glutes += r.glutesValue;
       acc.fullBody += r.fullBodyValue;
+      acc.aerobic += r.aerobicValue;
       return acc;
-    }, { chest: 0, back: 0, legs: 0, shoulders: 0, arms: 0, core: 0, glutes: 0, fullBody: 0 });
+    }, { chest: 0, back: 0, legs: 0, shoulders: 0, arms: 0, core: 0, glutes: 0, fullBody: 0, aerobic: 0 });
 
     const count = records.length;
     return {
@@ -1765,6 +1805,7 @@ export class MemStorage implements IStorage {
       coreAvg: totals.core / count,
       glutesAvg: totals.glutes / count,
       fullBodyAvg: totals.fullBody / count,
+      aerobicAvg: totals.aerobic / count,
       weekCount: count,
     };
   }
@@ -1784,6 +1825,30 @@ export class MemStorage implements IStorage {
     }
 
     return { migratedWeeks: weekStarts.length };
+  }
+
+  async backfillAerobicRadarSnapshots(): Promise<{ updatedSnapshots: number }> {
+    const { aerobicAvg } = await this.getMuscleGroupAverages();
+    const snapshots = await this.getAllRadarSnapshots();
+
+    let updatedSnapshots = 0;
+    for (const snap of snapshots) {
+      const scores: Record<string, number> = JSON.parse(snap.scoresJson);
+      if ('有氧' in scores) continue;
+
+      const weeklyStats = await this.getMuscleGroupWeeklyStats(snap.weekStart);
+      const g = weeklyStats.muscleGroups.find(m => m.muscleGroup === '有氧');
+      const minutes = g?.totalSets ?? 0;
+      const volume = g?.totalVolume ?? 0;
+
+      const { composite } = computeMuscleCompositeScore('有氧', minutes, volume, aerobicAvg);
+      scores['有氧'] = composite;
+
+      await this.upsertRadarSnapshot(snap.weekStart, JSON.stringify(scores), snap.recommendationsJson);
+      updatedSnapshots++;
+    }
+
+    return { updatedSnapshots };
   }
 
   async recalculateAllBaselines(): Promise<{ updatedEntries: number; updatedWeeks: number; updatedExercises: number }> {
@@ -3410,10 +3475,9 @@ export class DbStorage implements IStorage {
     return this.getWeekNumber(dec28);
   }
 
-  async getMuscleGroupWeeklyStats() {
-    const now = new Date();
-    const weekStart = this.getWeekStart(now);
-    const weekEnd = this.getWeekEnd(now);
+  async getMuscleGroupWeeklyStats(weekStartStr?: string) {
+    const weekStart = weekStartStr ? new Date(weekStartStr) : this.getWeekStart(new Date());
+    const weekEnd = this.getWeekEnd(weekStart);
 
     const entries = await this.db
       .select({
@@ -3421,6 +3485,10 @@ export class DbStorage implements IStorage {
         sets: workoutEntries.sets,
         baselineValue: workoutEntries.baselineValue,
         weightFactor: exercises.weightFactor,
+        unit: exercises.unit,
+        category: exercises.category,
+        splitCategory: exercises.splitCategory,
+        splitRatio: exercises.splitRatio,
         muscleChest: exercises.muscleChest,
         muscleBack: exercises.muscleBack,
         muscleLegs: exercises.muscleLegs,
@@ -3465,6 +3533,30 @@ export class DbStorage implements IStorage {
         existing.totalVolume += baseVolume * (percentage / 100);
         muscleGroupMap.set(name, existing);
       }
+
+      // 有氧沒有「肌群佔比」欄位，用 category/splitCategory 判斷，volume 沿用
+      // 跟其他 8 項一樣的 baseline 邏輯；「組數」對應項改用分鐘數（只算單位是
+      // 「分鐘」的有氧運動，例如跑步——開合跳這類用「下」計的有氧運動不計入
+      // 分鐘數，但一樣計入 volume，見 @shared/muscleGroupStats 的說明）。
+      const hasSplit = !!(entry.splitCategory && entry.splitRatio && entry.splitRatio > 0);
+      const primaryRatio = hasSplit ? 1 - (entry.splitRatio || 0) : 1;
+      const secondaryRatio = hasSplit ? (entry.splitRatio || 0) : 0;
+      let aerobicVolume = 0;
+      let aerobicMinutes = 0;
+      if (entry.category === '有氧') {
+        aerobicVolume += baseVolume * primaryRatio;
+        if (entry.unit === '分鐘') aerobicMinutes += entry.value * primaryRatio;
+      }
+      if (hasSplit && entry.splitCategory === '有氧') {
+        aerobicVolume += baseVolume * secondaryRatio;
+        if (entry.unit === '分鐘') aerobicMinutes += entry.value * secondaryRatio;
+      }
+      if (aerobicVolume > 0 || aerobicMinutes > 0) {
+        const existing = muscleGroupMap.get('有氧') || { totalSets: 0, totalVolume: 0 };
+        existing.totalSets += aerobicMinutes;
+        existing.totalVolume += aerobicVolume;
+        muscleGroupMap.set('有氧', existing);
+      }
     }
 
     const muscleGroups = Array.from(muscleGroupMap.entries())
@@ -3494,6 +3586,9 @@ export class DbStorage implements IStorage {
         sets: workoutEntries.sets,
         baselineValue: workoutEntries.baselineValue,
         weightFactor: exercises.weightFactor,
+        category: exercises.category,
+        splitCategory: exercises.splitCategory,
+        splitRatio: exercises.splitRatio,
         muscleChest: exercises.muscleChest,
         muscleBack: exercises.muscleBack,
         muscleLegs: exercises.muscleLegs,
@@ -3514,6 +3609,7 @@ export class DbStorage implements IStorage {
 
     let chestValue = 0, backValue = 0, legsValue = 0, shouldersValue = 0;
     let armsValue = 0, coreValue = 0, glutesValue = 0, fullBodyValue = 0;
+    let aerobicValue = 0;
 
     for (const entry of entries) {
       const baseVolume = entry.baselineValue ?? (entry.value * (entry.sets || 1) * entry.weightFactor);
@@ -3526,10 +3622,16 @@ export class DbStorage implements IStorage {
       coreValue += baseVolume * ((entry.muscleCore || 0) / 100);
       glutesValue += baseVolume * ((entry.muscleGlutes || 0) / 100);
       fullBodyValue += baseVolume * ((entry.muscleFullBody || 0) / 100);
+
+      const hasSplit = !!(entry.splitCategory && entry.splitRatio && entry.splitRatio > 0);
+      const primaryRatio = hasSplit ? 1 - (entry.splitRatio || 0) : 1;
+      const secondaryRatio = hasSplit ? (entry.splitRatio || 0) : 0;
+      if (entry.category === '有氧') aerobicValue += baseVolume * primaryRatio;
+      if (hasSplit && entry.splitCategory === '有氧') aerobicValue += baseVolume * secondaryRatio;
     }
 
     const weekStartFormatted = this.formatTaipeiDate(weekStart);
-    
+
     await this.db
       .insert(weeklyMuscleStats)
       .values({
@@ -3542,6 +3644,7 @@ export class DbStorage implements IStorage {
         coreValue,
         glutesValue,
         fullBodyValue,
+        aerobicValue,
         updatedAt: new Date(),
       })
       .onConflictDoUpdate({
@@ -3555,6 +3658,7 @@ export class DbStorage implements IStorage {
           coreValue,
           glutesValue,
           fullBodyValue,
+          aerobicValue,
           updatedAt: new Date(),
         },
       });
@@ -3570,13 +3674,14 @@ export class DbStorage implements IStorage {
     coreValue: number;
     glutesValue: number;
     fullBodyValue: number;
+    aerobicValue: number;
     updatedAt: Date;
   }>> {
     const result = await this.db
       .select()
       .from(weeklyMuscleStats)
       .orderBy(desc(weeklyMuscleStats.weekStart));
-    
+
     return result;
   }
 
@@ -3589,6 +3694,7 @@ export class DbStorage implements IStorage {
     coreAvg: number;
     glutesAvg: number;
     fullBodyAvg: number;
+    aerobicAvg: number;
     weekCount: number;
   }> {
     const result = await this.db
@@ -3601,6 +3707,7 @@ export class DbStorage implements IStorage {
         coreAvg: sql<number>`coalesce(avg(${weeklyMuscleStats.coreValue}), 0)`,
         glutesAvg: sql<number>`coalesce(avg(${weeklyMuscleStats.glutesValue}), 0)`,
         fullBodyAvg: sql<number>`coalesce(avg(${weeklyMuscleStats.fullBodyValue}), 0)`,
+        aerobicAvg: sql<number>`coalesce(avg(${weeklyMuscleStats.aerobicValue}), 0)`,
         weekCount: sql<number>`count(*)`,
       })
       .from(weeklyMuscleStats);
@@ -3614,6 +3721,7 @@ export class DbStorage implements IStorage {
       coreAvg: 0,
       glutesAvg: 0,
       fullBodyAvg: 0,
+      aerobicAvg: 0,
       weekCount: 0,
     };
   }
@@ -3639,6 +3747,32 @@ export class DbStorage implements IStorage {
     }
 
     return { migratedWeeks: weekStarts.length };
+  }
+
+  async backfillAerobicRadarSnapshots(): Promise<{ updatedSnapshots: number }> {
+    const { aerobicAvg } = await this.getMuscleGroupAverages();
+    const snapshots = await this.getAllRadarSnapshots();
+
+    let updatedSnapshots = 0;
+    for (const snap of snapshots) {
+      const scores: Record<string, number> = JSON.parse(snap.scoresJson);
+      if ('有氧' in scores) continue; // 已經回填過，跳過
+
+      const weeklyStats = await this.getMuscleGroupWeeklyStats(snap.weekStart);
+      const g = weeklyStats.muscleGroups.find(m => m.muscleGroup === '有氧');
+      const minutes = g?.totalSets ?? 0; // getMuscleGroupWeeklyStats 把有氧的分鐘數放在 totalSets 欄位裡，跟其他肌群共用同一個回傳形狀
+      const volume = g?.totalVolume ?? 0;
+
+      const { composite } = computeMuscleCompositeScore('有氧', minutes, volume, aerobicAvg);
+      scores['有氧'] = composite;
+
+      // 只新增有氧這個 key，原本 8 個肌群的分數（用當時的歷史平均算的）跟
+      // recommendationsJson 都維持原樣不動，見 IStorage.backfillAerobicRadarSnapshots 的說明
+      await this.upsertRadarSnapshot(snap.weekStart, JSON.stringify(scores), snap.recommendationsJson);
+      updatedSnapshots++;
+    }
+
+    return { updatedSnapshots };
   }
 
   async recalculateAllBaselines(): Promise<{ updatedEntries: number; updatedWeeks: number; updatedExercises: number }> {
@@ -4085,10 +4219,11 @@ export class DbStorage implements IStorage {
     // 「餵指數」還算合理（跟訓練量分一樣，週初就衝高是配速夠快的正常表現），
     // 但直接「顯示」在畫面/雷達圖上會跟主站自己的頁面對不上、也比原本更誇張，
     // 所以只在算運動習慣指數這一步才用配速版。
-    const MUSCLE_NAMES = ['胸', '背', '腿', '肩', '二头肌', '核心', '臀', '三头肌'] as const;
+    const MUSCLE_NAMES = ['胸', '背', '腿', '肩', '二头肌', '核心', '臀', '三头肌', '有氧'] as const;
     const AVG_FIELD: Record<string, keyof typeof averages> = {
       '胸': 'chestAvg', '背': 'backAvg', '腿': 'legsAvg', '肩': 'shouldersAvg',
       '二头肌': 'armsAvg', '核心': 'coreAvg', '臀': 'glutesAvg', '三头肌': 'fullBodyAvg',
+      '有氧': 'aerobicAvg',
     };
     const composites = MUSCLE_NAMES.map(name => {
       const g = muscleWeekly.muscleGroups.find(m => m.muscleGroup === name);

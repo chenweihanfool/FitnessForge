@@ -8,7 +8,7 @@ import { ScaleProgressBar } from "@/components/scale-progress-bar";
 import { Activity, TrendingUp, Award, X, TrendingDown, Dumbbell, Heart, Footprints, Plus, Check, Minus, Star, Pencil, ClipboardList, RefreshCw, Loader2, ChevronDown, ChevronRight, Trophy, Radar as RadarIcon, Lightbulb, Save, History } from "lucide-react";
 import { RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer, Legend, Tooltip as RechartsTooltip } from "recharts";
 import { RankingData, WeeklyStats, RankingDetailResponse, Exercise, PlanProgress, PlanItemStatus } from "@shared/schema";
-import { getMuscleSetsMaintenance, computeMuscleCompositeScore, computeBalanceScore, computeCoverageScore } from "@shared/muscleGroupStats";
+import { getMuscleSetsMaintenance, computeMuscleCompositeScore, computeBalanceScore, computeCoverageScore, applyActivityBonus } from "@shared/muscleGroupStats";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
@@ -145,6 +145,7 @@ type MuscleGroupAverages = {
   coreAvg: number;
   glutesAvg: number;
   fullBodyAvg: number;
+  aerobicAvg: number;
   weekCount: number;
 };
 
@@ -158,6 +159,7 @@ type MuscleGroupHistoryRecord = {
   coreValue: number;
   glutesValue: number;
   fullBodyValue: number;
+  aerobicValue: number;
   updatedAt: string;
 };
 
@@ -415,10 +417,12 @@ export default function Dashboard() {
     const nameToAvgKey: Record<string, keyof MuscleGroupAverages> = {
       '胸': 'chestAvg', '背': 'backAvg', '腿': 'legsAvg', '肩': 'shouldersAvg',
       '二头肌': 'armsAvg', '核心': 'coreAvg', '臀': 'glutesAvg', '三头肌': 'fullBodyAvg',
+      '有氧': 'aerobicAvg',
     };
     const nameToHistKey: Record<string, keyof MuscleGroupHistoryRecord> = {
       '胸': 'chestValue', '背': 'backValue', '腿': 'legsValue', '肩': 'shouldersValue',
       '二头肌': 'armsValue', '核心': 'coreValue', '臀': 'glutesValue', '三头肌': 'fullBodyValue',
+      '有氧': 'aerobicValue',
     };
 
     const result: Record<string, { avg: number; peak: number }> = {};
@@ -706,9 +710,9 @@ export default function Dashboard() {
         </Card>
       )}
 
-      {/* 本周肌群均衡度 雷達圖（組數+容量複合分） */}
+      {/* 本周肌群均衡度 雷達圖（組數+容量複合分，8 肌群 + 有氧） */}
       {(() => {
-        const muscleNames = ['胸', '背', '腿', '肩', '二头肌', '核心', '臀', '三头肌'];
+        const muscleNames = ['胸', '背', '腿', '肩', '二头肌', '核心', '臀', '三头肌', '有氧'];
         const hasAnyAvg = muscleNames.some(name => (muscleVolumeMap[name]?.avg ?? 0) > 0);
         if (!hasAnyAvg) return null;
 
@@ -719,7 +723,9 @@ export default function Dashboard() {
           const volume = g?.totalVolume ?? 0;
           const avgVolume = volData?.avg ?? 0;
 
-          // 各肌群各自的維持組數基準（大肌群基準較高、小肌群較低），見 @shared/muscleGroupStats
+          // 各肌群各自的維持組數基準（大肌群基準較高、小肌群較低）；「有氧」沒有
+          // 組數概念，這裡的 sets 其實是本週有氧分鐘數，基準是週 60 分鐘，見
+          // @shared/muscleGroupStats 的 MUSCLE_SETS_MAINTENANCE 說明
           const { setsPct, volumePct, composite } = computeMuscleCompositeScore(name, sets, volume, avgVolume);
 
           return { name, pct: composite, setsPct, volumePct, baseline: 100, sets, volume, avgVolume };
@@ -737,7 +743,17 @@ export default function Dashboard() {
         );
 
         // 覆蓋分數：雷達圖多邊形面積 ÷ 每軸都 100% 時的面積，見 @shared/muscleGroupStats
-        const coverageScore = computeCoverageScore(radarData.map(d => d.pct));
+        const rawCoverageScore = computeCoverageScore(radarData.map(d => d.pct));
+
+        // 活動量（例如步數）不當成獨立軸放進雷達圖——沒有「肌群」的同儕關係，
+        // 改成幫覆蓋分數加成（封頂 +10%），且必須顯示加成來源，見
+        // @shared/muscleGroupStats 的 applyActivityBonus 說明
+        const activityAvg = rankingData?.averageActivityValue ?? 0;
+        const activityComposite = activityAvg > 0
+          ? ((rankingData?.currentWeek?.activityValue ?? 0) / activityAvg) * 100
+          : 0;
+        const { adjustedCoverage: coverageScore, bonusPoints: activityBonusPoints } =
+          applyActivityBonus(rawCoverageScore, activityComposite);
 
         const weekStart = muscleGroupStats?.weekStart;
         const scores = Object.fromEntries(radarData.map(d => [d.name, d.pct]));
@@ -780,7 +796,7 @@ export default function Dashboard() {
                         }
                         data-testid="badge-coverage-score"
                       >
-                        覆蓋 {coverageScore}%
+                        覆蓋 {coverageScore}%{activityBonusPoints > 0 ? `（含活動量 +${activityBonusPoints}%）` : ''}
                       </Badge>
                     )}
                     {showMuscleDetail
@@ -816,7 +832,7 @@ export default function Dashboard() {
                   <p className="text-xs text-muted-foreground mt-0.5">均衡度 = 最弱肌群 ÷ 最強肌群複合分，數字越低代表落差越大</p>
                 )}
                 {coverageScore !== null && (
-                  <p className="text-xs text-muted-foreground mt-0.5">覆蓋 = 雷達圖多邊形面積 ÷ 每軸都達 100% 時的面積，數字越高代表整體訓練量越飽滿</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">覆蓋 = 雷達圖多邊形面積 ÷ 每軸都達 100% 時的面積，數字越高代表整體訓練量越飽滿；活動量（如步數）達成率另外加成，封頂 +10%</p>
                 )}
               </CardHeader>
               <CardContent>
@@ -981,16 +997,21 @@ export default function Dashboard() {
                 {radarSnapshotHistory.map(snap => {
                   const scores: Record<string, number> = JSON.parse(snap.scoresJson);
                   const recs: string[] = JSON.parse(snap.recommendationsJson);
-                  const muscleNames = ['胸', '背', '腿', '肩', '二头肌', '核心', '臀', '三头肌'];
+                  const muscleNames = ['胸', '背', '腿', '肩', '二头肌', '核心', '臀', '三头肌', '有氧'];
                   const radarData = muscleNames.map(name => ({
                     name,
+                    // 有氧軸是後來加的，backfill 之前存的舊快照沒有這個 key，
+                    // 缺值一律當 0%（見 /api/admin/backfill-aerobic-radar-snapshots）
                     pct: scores[name] ?? 0,
                     baseline: 100,
                   }));
                   // 快照只存了最終複合分，沒存當時哪些肌群有歷史容量資料可比對，
-                  // 所以均衡度這裡把全部 8 個肌群都當作可比對——多數情況下跟即時
+                  // 所以均衡度這裡把全部 9 軸都當作可比對——多數情況下跟即時
                   // 版一致，只有極少數「當週某肌群剛好還沒有比對基準」的情況會有
-                  // 微小落差，可接受的近似值。覆蓋分數則本來就用全部肌群，沒有這個問題。
+                  // 微小落差，可接受的近似值。覆蓋分數則本來就用全部軸，沒有這個問題。
+                  // 這裡沒有套用活動量加成——舊快照沒存當週的活動量數字，且
+                  // 「歷史每一週的活動量達成率」需要額外跨表比對日期，複雜度/風險
+                  // 不成比例，範圍先限定在即時版（見下方 histCoverageScore）。
                   const histBalanceScore = computeBalanceScore(
                     radarData.map(d => ({ name: d.name, composite: d.pct, hasVolumeHistory: true }))
                   );

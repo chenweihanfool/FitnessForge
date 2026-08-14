@@ -3,6 +3,10 @@
 // 小肌群（二頭/三頭）在推/拉類複合動作中已經有相當程度的間接刺激，直接組數
 // 基準較低；肩/核心/臀則介於中間。這組數字是常見肌力訓練文獻裡「維持」
 // （非增肌）等級週訓練量的概略區間，非精確醫學/科學結論，可依個人訓練哲學調整。
+// 「有氧」跟其他 8 項不是同一個單位——沒有「組數」概念，這裡借用同一個
+// 「本週數值 ÷ 週基準」的比例算法，但基準換成「本週有氧分鐘數 ÷ 60 分鐘」
+// （約每週 2 次 × 30 分鐘的維持量，非官方運動指引的最適量，是「維持」等級
+// 的保守基準，跟其他肌群同樣走「維持」而非「最適」的定位）。
 export const MUSCLE_SETS_MAINTENANCE: Record<string, number> = {
   '胸': 6,
   '背': 6,
@@ -12,6 +16,18 @@ export const MUSCLE_SETS_MAINTENANCE: Record<string, number> = {
   '核心': 4,
   '臀': 4,
   '三头肌': 3,
+  '有氧': 60,
+};
+
+// 雷達圖 9 軸的顯示順序（8 個肌群 + 有氧）。面積公式（computeCoverageScore）
+// 看的是「相鄰軸」，順序必須跟畫面上雷達圖畫的軸序一致。
+export const RADAR_AXIS_NAMES = ['胸', '背', '腿', '肩', '二头肌', '核心', '臀', '三头肌', '有氧'] as const;
+
+// weeklyMuscleStats 資料表裡每個軸對應的欄位名稱。
+export const RADAR_AXIS_STAT_KEYS: Record<string, string> = {
+  '胸': 'chestValue', '背': 'backValue', '腿': 'legsValue', '肩': 'shouldersValue',
+  '二头肌': 'armsValue', '核心': 'coreValue', '臀': 'glutesValue', '三头肌': 'fullBodyValue',
+  '有氧': 'aerobicValue',
 };
 
 export function getMuscleSetsMaintenance(muscleName: string): number {
@@ -97,4 +113,23 @@ export function computeCoverageScore(compositesInChartOrder: number[]): number |
   if (baselineArea <= 0) return null;
 
   return Math.round((actualArea / baselineArea) * 100);
+}
+
+// 活動量（例如「每周平均步數」）加成——不當成第 10 軸放進雷達圖本體（活動量
+// 沒有「肌群」的同儕關係，硬塞進去會混淆雷達圖原本「肌群+有氧訓練分布」的
+// 語意，均衡度也不該把它算進「最弱/最強比值」），而是讓它加成覆蓋分數，且
+// 加成必須顯示在畫面上（標示「+X% 活動量」），不能是看不出來源的暗中加分。
+//
+// activityComposite 是「本週活動量 ÷ 歷史平均活動量」的達成率（0-100+），呼叫端
+// 自行算好傳入；這裡封頂在 100（活動量再超標也不會多拿加成，因為它終究只是
+// 加成不是本體，跟其他 9 軸可以衝到 150% 不同）。
+export function applyActivityBonus(
+  coverageScore: number | null,
+  activityComposite: number,
+  capPoints: number = 10,
+): { adjustedCoverage: number | null; bonusPoints: number } {
+  const cappedComposite = Math.max(0, Math.min(activityComposite, 100));
+  const bonusPoints = Math.round((cappedComposite / 100) * capPoints);
+  const adjustedCoverage = coverageScore === null ? null : coverageScore + bonusPoints;
+  return { adjustedCoverage, bonusPoints };
 }
