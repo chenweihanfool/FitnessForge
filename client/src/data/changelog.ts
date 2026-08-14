@@ -6,6 +6,15 @@ export interface ChangelogEntry {
 }
 export const changelog: ChangelogEntry[] = [
   {
+    version: "v3.19",
+    date: "2026-08-14",
+    title: "補上 /api/admin/* 的登入驗證，修正新增運動表單的單位提示字",
+    items: [
+      "/api/admin/migrate-muscle-stats、recalculate-baselines、convert-exercise-unit、backfill-aerobic-radar-snapshots 這四支路由本來完全沒有登入驗證，任何人知道網址就能觸發——補上跟 whitelist 路由一樣的 requireAuth + requireAdmin",
+      "新增運動表單的單位欄位 placeholder 提示寫的是簡體「分钟」，但系統實際慣例（包括 v3.18 新加的有氧分鐘數判斷）是用繁體「分鐘」，照提示打字新增的運動單位會跟系統其他地方對不上，改成繁體",
+    ],
+  },
+  {
     version: "v3.18",
     date: "2026-08-14",
     title: "雷達圖新增「有氧」軸，覆蓋分數加上活動量加成",

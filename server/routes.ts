@@ -569,7 +569,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // 迁移历史肌群统计数据
-  app.post("/api/admin/migrate-muscle-stats", async (req, res) => {
+  app.post("/api/admin/migrate-muscle-stats", requireAuth, requireAdmin, async (req, res) => {
     try {
       const result = await storage.migrateHistoricalMuscleStats();
       res.json({ success: true, ...result });
@@ -582,7 +582,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // 一次性回填：幫既有雷達圖快照補上「有氧」這個新軸，只加這一個 key，
   // 不動原本已存的 8 個肌群分數。跑完之後歷史雷達圖快照就會顯示有氧軸，
   // 不會因為缺 key 被當成 0% 拉低均衡度/覆蓋分數。
-  app.post("/api/admin/backfill-aerobic-radar-snapshots", async (req, res) => {
+  app.post("/api/admin/backfill-aerobic-radar-snapshots", requireAuth, requireAdmin, async (req, res) => {
     try {
       const result = await storage.backfillAerobicRadarSnapshots();
       res.json({ success: true, ...result });
@@ -592,7 +592,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/admin/recalculate-baselines", async (req, res) => {
+  app.post("/api/admin/recalculate-baselines", requireAuth, requireAdmin, async (req, res) => {
     try {
       const result = await storage.recalculateAllBaselines();
       res.json({ success: true, ...result });
@@ -602,7 +602,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/admin/convert-exercise-unit", async (req, res) => {
+  app.post("/api/admin/convert-exercise-unit", requireAuth, requireAdmin, async (req, res) => {
     try {
       const { exerciseName, newUnit, valueMultiplier } = req.body;
       if (!exerciseName || !newUnit || !valueMultiplier) {

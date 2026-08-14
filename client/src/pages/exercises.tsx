@@ -262,7 +262,7 @@ export default function Exercises() {
                     <FormItem>
                       <FormLabel>单位</FormLabel>
                       <FormControl>
-                        <Input placeholder="例如：次、公斤、分钟" {...field} data-testid="input-exercise-unit" />
+                        <Input placeholder="例如：次、公斤、分鐘" {...field} data-testid="input-exercise-unit" />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
