@@ -38,7 +38,7 @@
     something is truly urgent enough to bypass this, commit + push the change to
     git immediately afterward so the repo stays the source of truth.
 .NOTES
-    Version: 1.2
+    Version: 1.3
 #>
 
 $ErrorActionPreference = "Continue"
@@ -96,12 +96,18 @@ catch {
 }
 
 # ==============================================
-# Step 2: docker compose up -d --build (build + start in one shot)
+# Step 2: docker compose build + rm + up (two-step forced recreate)
 # ==============================================
 Write-Host "[2/5] Building + starting containers..." -ForegroundColor Yellow
 try {
     Push-Location $RepoDir
-    $upResult = cmd /c "docker compose up -d --build --force-recreate 2>&1"
+    $buildResult = cmd /c "docker compose build --no-cache 2>&1"
+    Write-Host $buildResult
+    # Remove old container so Docker Compose is forced to create a new one
+    # using the freshly-built image, avoiding the stale-image trap (#12a).
+    $rmResult = cmd /c "docker compose rm -sf app 2>&1"
+    Write-Host $rmResult
+    $upResult = cmd /c "docker compose up -d app 2>&1"
     Write-Host $upResult
     # Skip LASTEXITCODE here -- Docker Desktop on this Windows host can emit a
     # false-positive .hermes-tmp cleanup warning (non-zero exit) after an
