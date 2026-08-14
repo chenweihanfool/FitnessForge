@@ -6,6 +6,16 @@ export interface ChangelogEntry {
 }
 export const changelog: ChangelogEntry[] = [
   {
+    version: "v3.20",
+    date: "2026-08-14",
+    title: "/api/public/summary 補上活動量加成，Aiportal 入口網覆蓋率才會跟本站一致",
+    items: [
+      "v3.18 加的活動量加成（步數幫覆蓋分數封頂 +10%）只寫在主站自己的 dashboard.tsx，getPublicSummary() 從沒套用——Aiportal 入口網卡片顯示的覆蓋率因此一直比本站自己頁面少了這 +10% 以內的加成，兩邊數字對不上",
+      "改成直接沿用 getPublicSummary() 本來就有抓的 ranking（getRankingData()）算 activityComposite，套用同一個 @shared/muscleGroupStats 的 applyActivityBonus，不是另外發明一套；配速版（餵運動習慣指數用的那份）也比照辦理，用配速期望值當活動量基準，不然這一項會是唯一沒配速、又把週一必低的問題帶回來",
+      "回傳新增 activityBonusPoints 欄位——比照本站自己「覆蓋 X%（含活動量 +Y%）」的做法，加成必須附上來源，不能是看不出來源的暗中加分",
+    ],
+  },
+  {
     version: "v3.19",
     date: "2026-08-14",
     title: "補上 /api/admin/* 的登入驗證，修正新增運動表單的單位提示字",

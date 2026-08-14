@@ -26,7 +26,7 @@ import { randomUUID } from "crypto";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { eq, and, gte, lte, lt, desc, sql, sum, count, isNull } from "drizzle-orm";
 import { Pool } from "pg";
-import { computeMuscleCompositeScore, computeBalanceScore, computeCoverageScore } from "@shared/muscleGroupStats";
+import { computeMuscleCompositeScore, computeBalanceScore, computeCoverageScore, applyActivityBonus } from "@shared/muscleGroupStats";
 
 function calculateBaseline(
   value: number,
@@ -294,6 +294,7 @@ export interface IStorage {
     volumeScore: number;
     balanceScore: number | null;
     coverageScore: number | null;
+    activityBonusPoints: number;
   }>;
 }
 
@@ -1997,7 +1998,7 @@ export class MemStorage implements IStorage {
   }
 
   async getPublicSummary() {
-    return { weeklyScore: 0, trendPct: null, muscleGroups: [], muscleComposites: [], habitIndex: null, volumeScore: 0, balanceScore: null, coverageScore: null };
+    return { weeklyScore: 0, trendPct: null, muscleGroups: [], muscleComposites: [], habitIndex: null, volumeScore: 0, balanceScore: null, coverageScore: null, activityBonusPoints: 0 };
   }
 }
 
@@ -4234,7 +4235,19 @@ export class DbStorage implements IStorage {
       return { name, composite, hasVolumeHistory: avgVolume > 0 };
     });
     const balanceScore = computeBalanceScore(composites);
-    const coverageScore = computeCoverageScore(composites.map(c => c.composite));
+    const rawCoverageScore = computeCoverageScore(composites.map(c => c.composite));
+
+    // 活動量（例如步數）不當成獨立軸放進雷達圖本體，改成幫覆蓋分數加成（封頂
+    // +10%），且必須顯示加成來源——跟主站自己 dashboard.tsx 的
+    // rawCoverageScore/activityComposite/applyActivityBonus 完全同一套算法，
+    // 不是另外發明一次；ranking 這裡本來就有 getPublicSummary() 自己
+    // Promise.all 抓的 averageActivityValue／currentWeek.activityValue，不用
+    // 再多查一次。
+    const activityComposite = ranking.averageActivityValue > 0
+      ? (ranking.currentWeek.activityValue / ranking.averageActivityValue) * 100
+      : 0;
+    const { adjustedCoverage: coverageScore, bonusPoints: activityBonusPoints } =
+      applyActivityBonus(rawCoverageScore, activityComposite);
 
     const pacedComposites = MUSCLE_NAMES.map(name => {
       const g = muscleWeekly.muscleGroups.find(m => m.muscleGroup === name);
@@ -4245,7 +4258,16 @@ export class DbStorage implements IStorage {
       return { name, composite, hasVolumeHistory: avgVolume > 0 };
     });
     const pacedBalanceScore = computeBalanceScore(pacedComposites);
-    const pacedCoverageScore = computeCoverageScore(pacedComposites.map(c => c.composite));
+    const rawPacedCoverageScore = computeCoverageScore(pacedComposites.map(c => c.composite));
+    // 配速版的活動量加成也要配速：拿目前活動量比「配速期望值」而不是比整週
+    // 平均，理由跟其他配速項一致——不然這一項會是四個子分數裡唯一沒配速的，
+    // 又把週一必低的問題帶回來。
+    const expectedActivityByNow = ranking.averageActivityValue * weekProgress;
+    const pacedActivityComposite = expectedActivityByNow > 0
+      ? (ranking.currentWeek.activityValue / expectedActivityByNow) * 100
+      : 0;
+    const { adjustedCoverage: pacedCoverageScore } =
+      applyActivityBonus(rawPacedCoverageScore, pacedActivityComposite);
 
     // 訓練量分：本週配速相對於個人歷史平均週分數，100 = 照目前配速練到週日
     // 大概會剛好符合平常水準（不是「已經達到整週基準」——週一才練一點點就
@@ -4283,6 +4305,10 @@ export class DbStorage implements IStorage {
       volumeScore: Math.min(150, volumeScore),
       balanceScore,
       coverageScore,
+      // 加成必須附上來源，不能是看不出來源的暗中加分——跟主站自己的
+      // 「覆蓋 X%（含活動量 +Y%）」badge 同一份資訊，Aiportal 顯示時也要
+      // 標出來，不是只送調整後的 coverageScore 讓人以為那是純肌群數字。
+      activityBonusPoints,
     };
   }
 }
