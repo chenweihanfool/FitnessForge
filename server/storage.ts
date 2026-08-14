@@ -4072,15 +4072,19 @@ export class DbStorage implements IStorage {
     // 0-100（或視情況缺席不計入），跟畫面上既有的均衡度／覆蓋分數同一套算法
     // （見 @shared/muscleGroupStats），不是另外發明一套。
     //
-    // 覆蓋分／均衡分刻意不傳 weekProgress（維持配速前的原始語意，跟
-    // FitnessForge 主站自己畫面上的即時雷達圖數字保持一致）：覆蓋分背後的面積
-    // 公式是相鄰兩軸複合分「相乘」，把每個複合分等比放大 1/weekProgress 倍，
-    // 面積會放大到 (1/weekProgress)² 倍，比訓練量分那種單一數字的放大猛烈非常
-    // 多，週初一下子就把好幾軸頂到 150% 的個別上限；均衡分（最弱/最強比值）
-    // 理論上對等比縮放是不變的（比值會互相消掉），但一旦部分軸被 150% 上限卡
-    // 住、部分軸沒被卡住，這個乾淨的抵消就被破壞掉，比值也跟著失真。兩者都會
-    // 讓覆蓋分／均衡分變得比配速前更誇張、還跟主站自己的畫面對不上，不值得為
-    // 了「週初分數高一點」去付出這個代價，所以維持原樣。
+    // 覆蓋分／均衡分算兩份：畫面上顯示的（跟 muscleComposites 雷達圖同一份，
+    // 不配速，維持跟 FitnessForge 主站自己畫面一致）跟餵給運動習慣指數用的
+    // （配速過，避免週一必低、週日必高）。
+    //
+    // 為什麼不能只留配速那份、把顯示的也一起換掉：覆蓋分背後的面積公式是相鄰
+    // 兩軸複合分「相乘」，把每個複合分等比放大 1/weekProgress 倍，面積會放大
+    // 到 (1/weekProgress)² 倍，比訓練量分那種單一數字的放大猛烈非常多，週初
+    // 一下子就把好幾軸頂到 150% 的個別上限；均衡分（最弱/最強比值）理論上對
+    // 等比縮放是不變的（比值會互相消掉），但一旦部分軸被上限卡住、部分軸沒被
+    // 卡住，這個乾淨的抵消就被破壞掉，比值也跟著失真。這樣配速後的數字拿來
+    // 「餵指數」還算合理（跟訓練量分一樣，週初就衝高是配速夠快的正常表現），
+    // 但直接「顯示」在畫面/雷達圖上會跟主站自己的頁面對不上、也比原本更誇張，
+    // 所以只在算運動習慣指數這一步才用配速版。
     const MUSCLE_NAMES = ['胸', '背', '腿', '肩', '二头肌', '核心', '臀', '三头肌'] as const;
     const AVG_FIELD: Record<string, keyof typeof averages> = {
       '胸': 'chestAvg', '背': 'backAvg', '腿': 'legsAvg', '肩': 'shouldersAvg',
@@ -4097,6 +4101,17 @@ export class DbStorage implements IStorage {
     const balanceScore = computeBalanceScore(composites);
     const coverageScore = computeCoverageScore(composites.map(c => c.composite));
 
+    const pacedComposites = MUSCLE_NAMES.map(name => {
+      const g = muscleWeekly.muscleGroups.find(m => m.muscleGroup === name);
+      const sets = g?.totalSets ?? 0;
+      const volume = g?.totalVolume ?? 0;
+      const avgVolume = Number(averages[AVG_FIELD[name]]) || 0;
+      const { composite } = computeMuscleCompositeScore(name, sets, volume, avgVolume, weekProgress);
+      return { name, composite, hasVolumeHistory: avgVolume > 0 };
+    });
+    const pacedBalanceScore = computeBalanceScore(pacedComposites);
+    const pacedCoverageScore = computeCoverageScore(pacedComposites.map(c => c.composite));
+
     // 訓練量分：本週配速相對於個人歷史平均週分數，100 = 照目前配速練到週日
     // 大概會剛好符合平常水準（不是「已經達到整週基準」——週一才練一點點就
     // 到 100 是合理的，代表目前配速看起來會練到平常水準，不代表整週已達標）。
@@ -4111,8 +4126,8 @@ export class DbStorage implements IStorage {
 
     const habitComponents = [
       Math.min(100, volumeScore),
-      coverageScore !== null ? Math.min(100, coverageScore) : null,
-      balanceScore,
+      pacedCoverageScore !== null ? Math.min(100, pacedCoverageScore) : null,
+      pacedBalanceScore,
       trendScore,
     ].filter((v): v is number => v !== null);
     const habitIndex = habitComponents.length > 0
