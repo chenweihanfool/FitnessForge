@@ -4158,47 +4158,59 @@ export class DbStorage implements IStorage {
     const weekEnd = this.getWeekEnd(now);
     const weekProgress = this.getWeekProgress(now);
     // Taiwan has no DST, so a flat 7-day offset always lands on the exact
-    // same wall-clock moment one week earlier.
-    const prevWeekStart = new Date(weekStart.getTime() - 7 * 24 * 60 * 60 * 1000);
-    // 跟「本週至今」比對的是「上週同一段時間至今」，不是上週一整週——用等長、
-    // 等起點的兩段區間直接比較，完全不需要除法／外推，週日這段區間自然就等於
-    // 上週整週，跟原本算法一致。（v3.12 原本改成「本週至今 ÷ weekProgress
-    // 外推成整週預估值」再跟上週整週比，除以一個很小的 weekProgress 會把任何
-    // 週初的變動放大好幾倍，結果比修之前更誇張，例如曾經算出 +2689%——外推法
-    // 本身就是這類早週資料的錯誤工具，不是調整參數能救的，所以直接換掉算法。）
-    const prevWeekSameStretchEnd = new Date(prevWeekStart.getTime() + (now.getTime() - weekStart.getTime()));
-
-    const [thisWeek, prevWeekSameStretch, muscleWeekly, averages, ranking] = await Promise.all([
+    // same wall-clock moment N weeks earlier.
+    //
+    // 跟「本週至今」比對的基準是「近 4 週同一段時間至今」的平均，不是只比上
+    // 一週——用等長、等起點的區間直接比較，完全不需要除法／外推（v3.12 除以
+    // 很小的 weekProgress 外推整週預估值，曾經算出 +2689% 這種荒謬數字，外推
+    // 法本身就是這類早週資料的錯誤工具）。
+    //
+    // 只比上一週的問題：如果最近幾週訓練量一路攀高，剛好某一週是有計畫的減量
+    // 週（訓練科學裡的正常做法，不是退步），單獨跟「上週」比會顯得像是暴跌，
+    // 因為上週剛好卡在攀升的最高點。改成跟「近 4 週平均」比之後，這個問題自然
+    // 緩解：如果近期趨勢確實一路走高，4 週平均會被墊高，減量週跟這個墊高後的
+    // 平均比，跌幅會比單獨跟最高的那一週比溫和很多——不用另外寫「趨勢是正的
+    // 就加分」這種特例，效果是平均本身自然帶出來的。如果近期趨勢本來就在走
+    // 低，4 週平均也會跟著低，不會有這種緩衝，如實反映真的退步了。
+    const recentWeekStretches = await Promise.all(
+      [1, 2, 3, 4].map((weeksAgo) => {
+        const start = new Date(weekStart.getTime() - weeksAgo * 7 * 24 * 60 * 60 * 1000);
+        const end = new Date(start.getTime() + (now.getTime() - weekStart.getTime()));
+        return this.getWeeklyStats(start, end);
+      })
+    );
+    const [thisWeek, muscleWeekly, averages, ranking] = await Promise.all([
       this.getWeeklyStats(weekStart, weekEnd),
-      this.getWeeklyStats(prevWeekStart, prevWeekSameStretchEnd),
       this.getMuscleGroupWeeklyStats(),
       this.getMuscleGroupAverages(),
       this.getRankingData(),
     ]);
+    const recentWeeksAvgSameStretch =
+      recentWeekStretches.reduce((sum, w) => sum + w.totalBaselineValue, 0) / recentWeekStretches.length;
 
     const weeklyScore = Math.round(thisWeek.totalBaselineValue);
 
-    // 「上週同一段時間至今」常常剛好是 0（例如上週前幾天剛好沒練，但上週整週
-    // 其實有練，只是集中在後半週），這樣直接顯示「—」沒有趨勢，比顯示錯誤數
-    // 字好，但每週前幾天都看不到趨勢也不是很有用。有基準可比對時優先比「跟上
-    // 週同一段時間」（週對週的真實趨勢）；上週那段時間剛好是空的、但使用者本
-    // 來就有歷史資料時，退回比「目前配速 vs 個人平均配速」（跟訓練量分同一個
-    // 基準，只是分數是本週配速比 100 高/低多少），至少還有個有意義的參考值；
-    // 兩邊都沒資料（全新使用者）才真的顯示「—」。
+    // 「近 4 週同一段時間」的平均常常剛好是 0（例如使用者剛開始用不到 4 週，
+    // 或這段時間過去幾週剛好都沒練），這樣直接顯示「—」沒有趨勢，比顯示錯誤
+    // 數字好，但沒有趨勢可看也不是很有用。有基準可比對時優先比「近 4 週同一
+    // 段時間平均」（近期真實趨勢）；那個基準剛好是空的、但使用者本來就有歷史
+    // 資料時，退回比「目前配速 vs 個人平均配速」（跟訓練量分同一個基準，只是
+    // 分數是本週配速比 100 高/低多少），至少還有個有意義的參考值；兩邊都沒
+    // 資料（全新使用者）才真的顯示「—」。
     //
-    // 光看「> 0」不夠：上週同期只要有一筆很小的紀錄（例如基準值 3），本週稍微
-    // 練多一點就能除出 +3000% 這種荒謬數字——分母太小造成的爆炸，跟 v3.12 除以
-    // 很小的 weekProgress 是同一類問題，只是這次分母換成「上週同期剛好很少」而
+    // 光看「> 0」不夠：近 4 週平均只要剛好很小（例如基準值 3），本週稍微練多
+    // 一點就能除出 +3000% 這種荒謬數字——分母太小造成的爆炸，跟 v3.12 除以很
+    // 小的 weekProgress 是同一類問題，只是這次分母換成「近期平均剛好很少」而
     // 不是「weekProgress 很小」。改成分母至少要達到「配速期望值」的一定比例才
-    // 信任這個基準，太小就退回比個人平均配速（比較穩定，不會被單一週的異常值
+    // 信任這個基準，太小就退回比個人平均配速（比較穩定，不會被近期的異常值
     // 牽著走）。
     const expectedPaceByNow = ranking.averageWeeklyValue * weekProgress;
     const MIN_BASELINE_RATIO = 0.2;
-    const prevWeekBaselineIsReliable =
-      prevWeekSameStretch.totalBaselineValue > 0 &&
-      (expectedPaceByNow <= 0 || prevWeekSameStretch.totalBaselineValue >= expectedPaceByNow * MIN_BASELINE_RATIO);
-    const trendPct = prevWeekBaselineIsReliable
-      ? Math.round(((thisWeek.totalBaselineValue - prevWeekSameStretch.totalBaselineValue) / prevWeekSameStretch.totalBaselineValue) * 1000) / 10
+    const recentWeeksBaselineIsReliable =
+      recentWeeksAvgSameStretch > 0 &&
+      (expectedPaceByNow <= 0 || recentWeeksAvgSameStretch >= expectedPaceByNow * MIN_BASELINE_RATIO);
+    const trendPct = recentWeeksBaselineIsReliable
+      ? Math.round(((thisWeek.totalBaselineValue - recentWeeksAvgSameStretch) / recentWeeksAvgSameStretch) * 1000) / 10
       : expectedPaceByNow > 0
         ? Math.round(((thisWeek.totalBaselineValue - expectedPaceByNow) / expectedPaceByNow) * 1000) / 10
         : null;
