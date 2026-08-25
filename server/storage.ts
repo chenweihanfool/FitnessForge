@@ -202,8 +202,13 @@ export interface IStorage {
     totalStars: number;
     averageStars: number;
   }>;
-  // weekStartStr 省略時預設本週；歷史回填（migrateHistoricalMuscleStats）需要對任意過去週計算 sets/volume
-  getMuscleGroupWeeklyStats(weekStartStr?: string): Promise<{
+  // weekStartStr 省略時預設本週；歷史回填（migrateHistoricalMuscleStats）需要對任意過去週計算 sets/volume。
+  // weekEndStr 省略時預設「weekStart 所在那個日曆週的週日」（既有行為，呼叫端
+  // 傳自然週的 weekStart 就好）；有給值時直接當結束日期用，不再套用日曆週snap
+  // ——getPublicSummary() 的運動習慣指數用滾動 7 天窗口（weekStart=7 天前,
+  // weekEndStr=now）取代「本週至今」時需要這個，避免週一分數必低、週日必高
+  // 的問題（見 shared/muscleGroupStats.ts 的 weekProgress 註解）。
+  getMuscleGroupWeeklyStats(weekStartStr?: string, weekEndStr?: string): Promise<{
     weekStart: string;
     weekEnd: string;
     muscleGroups: Array<{
@@ -1603,9 +1608,9 @@ export class MemStorage implements IStorage {
     return { weeks, totalStars, averageStars };
   }
 
-  async getMuscleGroupWeeklyStats(weekStartStr?: string) {
+  async getMuscleGroupWeeklyStats(weekStartStr?: string, weekEndStr?: string) {
     const weekStart = weekStartStr ? new Date(weekStartStr) : this.getWeekStart(new Date());
-    const weekEnd = this.getWeekEnd(weekStart);
+    const weekEnd = weekEndStr ? new Date(weekEndStr) : this.getWeekEnd(weekStart);
 
     const entries = Array.from(this.workoutEntries.values())
       .filter(entry => entry.date >= weekStart && entry.date <= weekEnd);
@@ -3476,9 +3481,9 @@ export class DbStorage implements IStorage {
     return this.getWeekNumber(dec28);
   }
 
-  async getMuscleGroupWeeklyStats(weekStartStr?: string) {
+  async getMuscleGroupWeeklyStats(weekStartStr?: string, weekEndStr?: string) {
     const weekStart = weekStartStr ? new Date(weekStartStr) : this.getWeekStart(new Date());
-    const weekEnd = this.getWeekEnd(weekStart);
+    const weekEnd = weekEndStr ? new Date(weekEndStr) : this.getWeekEnd(weekStart);
 
     const entries = await this.db
       .select({
@@ -4157,6 +4162,16 @@ export class DbStorage implements IStorage {
     const weekStart = this.getWeekStart(now);
     const weekEnd = this.getWeekEnd(now);
     const weekProgress = this.getWeekProgress(now);
+    // 2026-08-22：運動習慣指數（habitIndex）的訓練量分/覆蓋分/均衡分改用「過去
+    // 7 天（含現在）」的滾動窗口，取代原本「本週一至今」+ weekProgress 配速
+    // 縮放的做法——原本的配速法理論上該避免週初必低，但只要當週還沒開始練，
+    // 本週至今累積量還是 0，0 除以任何配速期望值都是 0，週一分數還是明顯偏
+    // 低、週日明顯偏高，這是「本週至今累積」這個窗口本身的結構性問題，不是
+    // 配速常數沒調好。滾動窗口任何一天打開都涵蓋完整 7 天的真實訓練紀錄，不
+    // 再有這個問題。只影響 habitIndex 這四個子分數裡的三個——weeklyScore／
+    // trendPct（趨勢）維持原本「本週至今」的日曆週語意不變，那是另外兩個獨立
+    // 顯示的欄位，使用者這次沒有反應過這兩個有問題，不擴大改動範圍。
+    const trailingWindowStart = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
     // Taiwan has no DST, so a flat 7-day offset always lands on the exact
     // same wall-clock moment N weeks earlier.
     //
@@ -4179,11 +4194,13 @@ export class DbStorage implements IStorage {
         return this.getWeeklyStats(start, end);
       })
     );
-    const [thisWeek, muscleWeekly, averages, ranking] = await Promise.all([
+    const [thisWeek, muscleWeekly, averages, ranking, trailingOverall, trailingMuscleWeekly] = await Promise.all([
       this.getWeeklyStats(weekStart, weekEnd),
       this.getMuscleGroupWeeklyStats(),
       this.getMuscleGroupAverages(),
       this.getRankingData(),
+      this.getWeeklyStats(trailingWindowStart, now),
+      this.getMuscleGroupWeeklyStats(trailingWindowStart.toISOString(), now.toISOString()),
     ]);
     const recentWeeksAvgSameStretch =
       recentWeekStretches.reduce((sum, w) => sum + w.totalBaselineValue, 0) / recentWeekStretches.length;
@@ -4220,18 +4237,16 @@ export class DbStorage implements IStorage {
     // （見 @shared/muscleGroupStats），不是另外發明一套。
     //
     // 覆蓋分／均衡分算兩份：畫面上顯示的（跟 muscleComposites 雷達圖同一份，
-    // 不配速，維持跟 FitnessForge 主站自己畫面一致）跟餵給運動習慣指數用的
-    // （配速過，避免週一必低、週日必高）。
+    // 日曆週至今，維持跟 FitnessForge 主站自己畫面一致）跟餵給運動習慣指數用
+    // 的（過去 7 天滾動窗口，見上面 trailingWindowStart 的說明，避免週一必
+    // 低、週日必高）。
     //
-    // 為什麼不能只留配速那份、把顯示的也一起換掉：覆蓋分背後的面積公式是相鄰
-    // 兩軸複合分「相乘」，把每個複合分等比放大 1/weekProgress 倍，面積會放大
-    // 到 (1/weekProgress)² 倍，比訓練量分那種單一數字的放大猛烈非常多，週初
-    // 一下子就把好幾軸頂到 150% 的個別上限；均衡分（最弱/最強比值）理論上對
-    // 等比縮放是不變的（比值會互相消掉），但一旦部分軸被上限卡住、部分軸沒被
-    // 卡住，這個乾淨的抵消就被破壞掉，比值也跟著失真。這樣配速後的數字拿來
-    // 「餵指數」還算合理（跟訓練量分一樣，週初就衝高是配速夠快的正常表現），
-    // 但直接「顯示」在畫面/雷達圖上會跟主站自己的頁面對不上、也比原本更誇張，
-    // 所以只在算運動習慣指數這一步才用配速版。
+    // 為什麼不能只留滾動窗口那份、把顯示的也一起換掉：滾動窗口每天都在變（就
+    // 算今天沒練，昨天以前的紀錄也會逐日從窗口另一端掉出去），畫面上的雷達圖
+    // /均衡度如果也跟著滾動窗口走，使用者這週明明沒練、數字卻因為「上週的紀
+    // 錄過期了」而往下掉，會很難理解「我今天什麼都沒做，為什麼分數變了」——
+    // 顯示的維持日曆週語意（本週至今，不會無緣無故自己變動），滾動窗口版只在
+    // 算運動習慣指數這一步用，兩者服務不同目的。
     const MUSCLE_NAMES = ['胸', '背', '腿', '肩', '二头肌', '核心', '臀', '三头肌', '有氧'] as const;
     const AVG_FIELD: Record<string, keyof typeof averages> = {
       '胸': 'chestAvg', '背': 'backAvg', '腿': 'legsAvg', '肩': 'shouldersAvg',
@@ -4261,32 +4276,30 @@ export class DbStorage implements IStorage {
     const { adjustedCoverage: coverageScore, bonusPoints: activityBonusPoints } =
       applyActivityBonus(rawCoverageScore, activityComposite);
 
-    const pacedComposites = MUSCLE_NAMES.map(name => {
-      const g = muscleWeekly.muscleGroups.find(m => m.muscleGroup === name);
+    // 過去 7 天滾動窗口版——不需要 weekProgress 縮放，窗口本身天天都是完整
+    // 一週的量，跟 ranking.averageWeeklyValue（歷史每週平均）直接一比一比較
+    // 就有意義，不用再猜測「整週會練到多少」。
+    const trailingComposites = MUSCLE_NAMES.map(name => {
+      const g = trailingMuscleWeekly.muscleGroups.find(m => m.muscleGroup === name);
       const sets = g?.totalSets ?? 0;
       const volume = g?.totalVolume ?? 0;
       const avgVolume = Number(averages[AVG_FIELD[name]]) || 0;
-      const { composite } = computeMuscleCompositeScore(name, sets, volume, avgVolume, weekProgress);
+      const { composite } = computeMuscleCompositeScore(name, sets, volume, avgVolume);
       return { name, composite, hasVolumeHistory: avgVolume > 0 };
     });
-    const pacedBalanceScore = computeBalanceScore(pacedComposites);
-    const rawPacedCoverageScore = computeCoverageScore(pacedComposites.map(c => c.composite));
-    // 配速版的活動量加成也要配速：拿目前活動量比「配速期望值」而不是比整週
-    // 平均，理由跟其他配速項一致——不然這一項會是四個子分數裡唯一沒配速的，
-    // 又把週一必低的問題帶回來。
-    const expectedActivityByNow = ranking.averageActivityValue * weekProgress;
-    const pacedActivityComposite = expectedActivityByNow > 0
-      ? (ranking.currentWeek.activityValue / expectedActivityByNow) * 100
+    const trailingBalanceScore = computeBalanceScore(trailingComposites);
+    const rawTrailingCoverageScore = computeCoverageScore(trailingComposites.map(c => c.composite));
+    const trailingActivityComposite = ranking.averageActivityValue > 0
+      ? (trailingOverall.activityValue / ranking.averageActivityValue) * 100
       : 0;
-    const { adjustedCoverage: pacedCoverageScore } =
-      applyActivityBonus(rawPacedCoverageScore, pacedActivityComposite);
+    const { adjustedCoverage: trailingCoverageScore } =
+      applyActivityBonus(rawTrailingCoverageScore, trailingActivityComposite);
 
-    // 訓練量分：本週配速相對於個人歷史平均週分數，100 = 照目前配速練到週日
-    // 大概會剛好符合平常水準（不是「已經達到整週基準」——週一才練一點點就
-    // 到 100 是合理的，代表目前配速看起來會練到平常水準，不代表整週已達標）。
+    // 訓練量分：過去 7 天總量相對於個人歷史平均週分數，100 = 過去 7 天的訓練
+    // 量跟平常水準打平。
     const volumeScore = ranking.averageWeeklyValue > 0
-      ? Math.min(150, Math.round((weeklyScore / (ranking.averageWeeklyValue * weekProgress)) * 100))
-      : (weeklyScore > 0 ? 100 : 0);
+      ? Math.min(150, Math.round((trailingOverall.totalBaselineValue / ranking.averageWeeklyValue) * 100))
+      : (trailingOverall.totalBaselineValue > 0 ? 100 : 0);
 
     // 趨勢分：0% 持平 = 50 分，±100% 週變化打滿 0-100 分兩端。
     const trendScore = trendPct !== null
@@ -4295,8 +4308,8 @@ export class DbStorage implements IStorage {
 
     const habitComponents = [
       Math.min(100, volumeScore),
-      pacedCoverageScore !== null ? Math.min(100, pacedCoverageScore) : null,
-      pacedBalanceScore,
+      trailingCoverageScore !== null ? Math.min(100, trailingCoverageScore) : null,
+      trailingBalanceScore,
       trendScore,
     ].filter((v): v is number => v !== null);
     const habitIndex = habitComponents.length > 0
