@@ -3312,9 +3312,19 @@ export class DbStorage implements IStorage {
   // 連續累積的資產曲線，用小時級精細度只會讓剛練完當下的分數劇烈跳動，用
   // 「日」為最小顆粒度更穩定、也更符合使用者對「還有一整天可以練」的直覺。
   private getWeekProgress(now: Date): number {
+    return this.getElapsedDaysThisWeek(now) / 7;
+  }
+
+  // 本週至今算滿了幾個完整天（週一 = 1 ... 週日 = 7）——跟上面 getWeekProgress
+  // 同一個「日」顆粒度原則，也給 getPublicSummary() 的 trendPct（近 4 週同一段
+  // 時間比較）用，取代原本直接拿 now - weekStart 的毫秒差值當作「同一段時間」
+  // 的長度。毫秒級精度會讓比較窗口的終點卡在「現在這個時鐘時間點」，只要近 4
+  // 週裡有一週的訓練紀錄剛好落在這個時間點附近，記錄就會隨時鐘一過而忽然被
+  // 納入/排除比較窗口，造成 trendPct 在同一天內劇烈跳動——這裡的資料一樣是
+  // 「當天有沒有練」的離散事件，用小時級精細度只會製造假的波動。
+  private getElapsedDaysThisWeek(now: Date): number {
     const taipei = this.getTaipeiComponents(now);
-    const isoDayOfWeek = taipei.dayOfWeek === 0 ? 7 : taipei.dayOfWeek; // 週一=1 ... 週日=7
-    return isoDayOfWeek / 7;
+    return taipei.dayOfWeek === 0 ? 7 : taipei.dayOfWeek; // 週一=1 ... 週日=7
   }
 
   // 辅助方法：计算ISO周数（基于UTC+8时区）
@@ -4168,9 +4178,11 @@ export class DbStorage implements IStorage {
     // 本週至今累積量還是 0，0 除以任何配速期望值都是 0，週一分數還是明顯偏
     // 低、週日明顯偏高，這是「本週至今累積」這個窗口本身的結構性問題，不是
     // 配速常數沒調好。滾動窗口任何一天打開都涵蓋完整 7 天的真實訓練紀錄，不
-    // 再有這個問題。只影響 habitIndex 這四個子分數裡的三個——weeklyScore／
-    // trendPct（趨勢）維持原本「本週至今」的日曆週語意不變，那是另外兩個獨立
-    // 顯示的欄位，使用者這次沒有反應過這兩個有問題，不擴大改動範圍。
+    // 再有這個問題。只影響 habitIndex 這四個子分數裡的三個——weeklyScore
+    // 維持原本「本週至今」的日曆週語意不變，那是另外一個獨立顯示的欄位，使用
+    // 者當時沒有反應過這個有問題，不擴大改動範圍。（trendPct 在 2026-08-31
+    // 也套用了「日」顆粒度原則，見下方說明；它比較窗口的長度變了，但
+    // thisWeek 本身的日曆週語意沒變。）
     const trailingWindowStart = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
     // Taiwan has no DST, so a flat 7-day offset always lands on the exact
     // same wall-clock moment N weeks earlier.
@@ -4187,10 +4199,20 @@ export class DbStorage implements IStorage {
     // 平均比，跌幅會比單獨跟最高的那一週比溫和很多——不用另外寫「趨勢是正的
     // 就加分」這種特例，效果是平均本身自然帶出來的。如果近期趨勢本來就在走
     // 低，4 週平均也會跟著低，不會有這種緩衝，如實反映真的退步了。
+    //
+    // 2026-08-31：end 改用「本週至今算滿了幾個完整天」（getElapsedDaysThisWeek，
+    // 跟 getWeekProgress／訓練量分等三個子分數同一套「日」顆粒度原則）而不是
+    // now - weekStart 的毫秒差值——原本的毫秒差值會讓比較窗口的終點卡在「現在
+    // 這個時鐘時間點」，只要近 4 週裡有一週的訓練紀錄剛好落在這個時間點附近
+    // （例如上週三晚上 8 點練的），記錄就會隨著現在時間一過晚上 8 點而忽然被
+    // 納入/排除比較窗口，造成 trendPct／trendScore 在同一天、甚至同一小時內
+    // 劇烈跳動——這是使用者實測回報的真實 bug。改成天顆粒度後，同一天內不管
+    // 幾點呼叫，elapsedDays 都不變，比較窗口就穩定，只有跨過一天的邊界才會變。
+    const elapsedDaysThisWeek = this.getElapsedDaysThisWeek(now);
     const recentWeekStretches = await Promise.all(
       [1, 2, 3, 4].map((weeksAgo) => {
         const start = new Date(weekStart.getTime() - weeksAgo * 7 * 24 * 60 * 60 * 1000);
-        const end = new Date(start.getTime() + (now.getTime() - weekStart.getTime()));
+        const end = new Date(start.getTime() + elapsedDaysThisWeek * 24 * 60 * 60 * 1000);
         return this.getWeeklyStats(start, end);
       })
     );
