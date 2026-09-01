@@ -66,25 +66,33 @@ export function computeMuscleCompositeScore(
   return { setsPct, volumePct, composite };
 }
 
-// 均衡度分數 = 最弱肌群複合分 ÷ 最強肌群複合分。
-// 用「最弱/最強比值」而非平均或標準差，是因為均衡度的痛點通常是那條最短的
-// 木板（哪個肌群被嚴重忽略），不是整體離散程度——只有一兩個肌群落後很多，
-// 其餘都接近滿分時，標準差可能還好看，但體感上是「明顯不均衡」，比值能
-// 直接反映這件事。只計入有歷史容量資料（avgVolume > 0）可比對的肌群，跟
-// 「系統建議：最需加強的肌群」使用相同的篩選條件，避免把「還沒有基準可比」
-// 的肌群當成拉低分數的異常值。
+// 均衡度分數 = 後段（最弱 bottomN 個）肌群複合分平均 ÷ 最強肌群複合分。
+// 原本用「最弱/最強比值」（只看單一最低值），實測回報：一週訓練循環
+// （split）裡本來就常有一兩個肌群那幾天輪不到，單一最弱值一抓到 0 就直接把
+// 整個均衡分砍到 0，而且是規律訓練也逃不掉的結構性問題，不是真的不均衡。
+// 改成看「最弱 bottomN 個的平均」（預設 2 個）而非只看那一個最低值，單一
+// 肌群剛好沒被這個窗口捕捉到不會再直接把分數砍到 0，但如果同時有兩個以上
+// 肌群持續被忽略，分數還是會如實偏低——跟原本「找出最短木板」的精神一致，
+// 只是不再對單一一塊木板的雜訊那麼敏感。bottomN 排除最強值本身（取
+// values.length - 1 為上限），確保「最弱幾個」不會把最強值也算進去、稀釋掉
+// 比較基準。只計入有歷史容量資料（avgVolume > 0）可比對的肌群，跟「系統建
+// 議：最需加強的肌群」使用相同的篩選條件，避免把「還沒有基準可比」的肌群當
+// 成拉低分數的異常值。
 export function computeBalanceScore(
   composites: { name: string; composite: number; hasVolumeHistory: boolean }[],
+  bottomN: number = 2,
 ): number | null {
   const comparable = composites.filter(c => c.hasVolumeHistory);
   if (comparable.length < 2) return null;
 
-  const values = comparable.map(c => c.composite);
-  const max = Math.max(...values);
+  const values = comparable.map(c => c.composite).sort((a, b) => a - b);
+  const max = values[values.length - 1];
   if (max <= 0) return null;
-  const min = Math.min(...values);
 
-  return Math.round((min / max) * 100);
+  const n = Math.max(1, Math.min(bottomN, values.length - 1));
+  const bottomAvg = values.slice(0, n).reduce((sum, v) => sum + v, 0) / n;
+
+  return Math.round((bottomAvg / max) * 100);
 }
 
 // 覆蓋分數 = 雷達圖多邊形面積 ÷ 「每軸都剛好 100%」時的面積，越接近/超過 100%

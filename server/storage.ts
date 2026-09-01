@@ -4187,6 +4187,20 @@ export class DbStorage implements IStorage {
     // Taiwan has no DST, so a flat 7-day offset always lands on the exact
     // same wall-clock moment N weeks earlier.
     //
+    // 2026-09-01：trailingBalanceScore（餵給 habitIndex 的均衡分）另外用一個
+    // 拉長到 14 天的窗口，不沿用上面訓練量分/覆蓋分共用的 7 天窗口——使用者
+    // 實測回報：很多訓練 split 的循環週期本身就長於 7 天（例如某肌群固定
+    // 8~10 天才輪到一次），這種完全正常、規律的訓練習慣，只要拿 7 天窗口切
+    // 一刀，永遠會有 1~2 個肌群「這 7 天剛好沒輪到」，均衡分因此長期偏低、
+    // 甚至常常掛 0，不是訓練真的不均衡。拉長到 14 天給多數 split 循環一個完
+    // 整週期的緩衝，同時搭配 @shared/muscleGroupStats 的 computeBalanceScore
+    // 改用「後段平均」取代單一最弱值，兩者一起處理「一週內總有一兩個肌群沒
+    // 法練到」這個結構性問題。訓練量分/覆蓋分維持 7 天不變：訓練量看的是
+    // 「總量」、覆蓋分看的是雷達圖面積，兩者本來就沒有「單一肌群完全沒練到
+    // 就直接砍到 0」這種尖銳問題，不需要跟著拉長窗口。
+    const BALANCE_WINDOW_DAYS = 14;
+    const balanceWindowStart = new Date(now.getTime() - BALANCE_WINDOW_DAYS * 24 * 60 * 60 * 1000);
+    //
     // 跟「本週至今」比對的基準是「近 4 週同一段時間至今」的平均，不是只比上
     // 一週——用等長、等起點的區間直接比較，完全不需要除法／外推（v3.12 除以
     // 很小的 weekProgress 外推整週預估值，曾經算出 +2689% 這種荒謬數字，外推
@@ -4216,13 +4230,14 @@ export class DbStorage implements IStorage {
         return this.getWeeklyStats(start, end);
       })
     );
-    const [thisWeek, muscleWeekly, averages, ranking, trailingOverall, trailingMuscleWeekly] = await Promise.all([
+    const [thisWeek, muscleWeekly, averages, ranking, trailingOverall, trailingMuscleWeekly, balanceMuscleWeekly] = await Promise.all([
       this.getWeeklyStats(weekStart, weekEnd),
       this.getMuscleGroupWeeklyStats(),
       this.getMuscleGroupAverages(),
       this.getRankingData(),
       this.getWeeklyStats(trailingWindowStart, now),
       this.getMuscleGroupWeeklyStats(trailingWindowStart.toISOString(), now.toISOString()),
+      this.getMuscleGroupWeeklyStats(balanceWindowStart.toISOString(), now.toISOString()),
     ]);
     const recentWeeksAvgSameStretch =
       recentWeekStretches.reduce((sum, w) => sum + w.totalBaselineValue, 0) / recentWeekStretches.length;
@@ -4258,10 +4273,12 @@ export class DbStorage implements IStorage {
     // 0-100（或視情況缺席不計入），跟畫面上既有的均衡度／覆蓋分數同一套算法
     // （見 @shared/muscleGroupStats），不是另外發明一套。
     //
-    // 覆蓋分／均衡分算兩份：畫面上顯示的（跟 muscleComposites 雷達圖同一份，
-    // 日曆週至今，維持跟 FitnessForge 主站自己畫面一致）跟餵給運動習慣指數用
-    // 的（過去 7 天滾動窗口，見上面 trailingWindowStart 的說明，避免週一必
-    // 低、週日必高）。
+    // 覆蓋分算兩份、均衡分算三份：畫面上顯示的（跟 muscleComposites 雷達圖
+    // 同一份，日曆週至今，維持跟 FitnessForge 主站自己畫面一致）、餵給運動
+    // 習慣指數用的覆蓋分（過去 7 天滾動窗口，見上面 trailingWindowStart 的
+    // 說明，避免週一必低、週日必高），以及均衡分另外多一份餵給運動習慣指數
+    // 用的版本（過去 14 天，見上面 balanceWindowStart 的說明，給訓練 split
+    // 循環一個完整週期的緩衝，避免單一肌群剛好卡在窗口外就把分數砍到 0）。
     //
     // 為什麼不能只留滾動窗口那份、把顯示的也一起換掉：滾動窗口每天都在變（就
     // 算今天沒練，昨天以前的紀錄也會逐日從窗口另一端掉出去），畫面上的雷達圖
@@ -4309,7 +4326,20 @@ export class DbStorage implements IStorage {
       const { composite } = computeMuscleCompositeScore(name, sets, volume, avgVolume);
       return { name, composite, hasVolumeHistory: avgVolume > 0 };
     });
-    const trailingBalanceScore = computeBalanceScore(trailingComposites);
+    // 均衡分改吃上面另外拉長到 14 天的窗口（balanceMuscleWeekly），不是
+    // trailingComposites（7 天，訓練量分/覆蓋分共用）——weekProgress 參數傳
+    // BALANCE_WINDOW_DAYS / 7（= 2），讓 computeMuscleCompositeScore 把「週維
+    // 持組數」「個人平均週容量」這兩個以「週」為單位的基準等比放大成「兩週」
+    // 基準，兩週的量才能拿來跟兩週的基準比，不是拿兩週的量硬比一週的基準。
+    const balanceComposites = MUSCLE_NAMES.map(name => {
+      const g = balanceMuscleWeekly.muscleGroups.find(m => m.muscleGroup === name);
+      const sets = g?.totalSets ?? 0;
+      const volume = g?.totalVolume ?? 0;
+      const avgVolume = Number(averages[AVG_FIELD[name]]) || 0;
+      const { composite } = computeMuscleCompositeScore(name, sets, volume, avgVolume, BALANCE_WINDOW_DAYS / 7);
+      return { name, composite, hasVolumeHistory: avgVolume > 0 };
+    });
+    const trailingBalanceScore = computeBalanceScore(balanceComposites);
     const rawTrailingCoverageScore = computeCoverageScore(trailingComposites.map(c => c.composite));
     const trailingActivityComposite = ranking.averageActivityValue > 0
       ? (trailingOverall.activityValue / ranking.averageActivityValue) * 100
