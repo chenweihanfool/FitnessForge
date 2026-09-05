@@ -1,4 +1,4 @@
-import { Switch, Route, Link, Router as WouterRouter } from "wouter";
+import { Switch, Route, Link, Router as WouterRouter, useLocation } from "wouter";
 import { BASE_PATH } from "@/lib/basePath";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { QuickLogDialog } from "@/components/quick-log-dialog";
 import { Plus, Home } from "lucide-react";
 import { changelog } from "@/data/changelog";
 import { useState } from "react";
@@ -44,6 +45,8 @@ function Router() {
 
 function AppShell() {
   const [showChangelog, setShowChangelog] = useState(false);
+  const [showQuickLog, setShowQuickLog] = useState(false);
+  const [, setLocation] = useLocation();
   const latestVersion = changelog[0]?.version ?? "";
   const { user, isLoggedIn, isWhitelisted, isAdmin, isLoading } = useAuth();
 
@@ -92,10 +95,13 @@ function AppShell() {
               </button>
             </div>
             <div className="flex items-center gap-2">
-              <Button size="icon" variant="default" data-testid="button-quick-add" asChild>
-                <Link href="/entries">
-                  <Plus className="h-4 w-4" />
-                </Link>
+              <Button
+                size="icon"
+                variant="default"
+                data-testid="button-quick-add"
+                onClick={() => setShowQuickLog(true)}
+              >
+                <Plus className="h-4 w-4" />
               </Button>
               <ThemeToggle />
             </div>
@@ -140,6 +146,12 @@ function AppShell() {
           </ScrollArea>
         </DialogContent>
       </Dialog>
+
+      <QuickLogDialog
+        open={showQuickLog}
+        onOpenChange={setShowQuickLog}
+        onSelectExercise={(exerciseId) => setLocation(`/entries?addExercise=${exerciseId}`)}
+      />
     </SidebarProvider>
   );
 }
