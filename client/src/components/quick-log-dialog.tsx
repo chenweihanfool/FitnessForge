@@ -9,7 +9,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Search, Dumbbell, Heart, Footprints, Activity } from "lucide-react";
@@ -95,7 +94,13 @@ export function QuickLogDialog({ open, onOpenChange, onSelectExercise }: QuickLo
 
   return (
     <Dialog open={open} onOpenChange={(next) => { onOpenChange(next); if (!next) setSearch(""); }}>
-      <DialogContent className="max-h-[85vh] flex flex-col" data-testid="dialog-quick-log">
+      {/* 不額外包一層 ScrollArea／flex 容器：base DialogContent（@/components/ui/dialog）
+          本身就已經是 max-h-[90vh] overflow-y-auto，跟 entries.tsx／
+          ranking-detail-dialog.tsx 用的是同一份，讓整個對話框（含標題、搜尋框、
+          清單）一起用瀏覽器原生滾動捲動——先前疊了一層 ScrollArea + flex-1，
+          在 flex 版面裡高度沒有正確被限制住，結果變成內層吃掉觸控滾動事件、
+          但自己又沒有實際可捲動的空間，手機版整個對話框完全無法捲動。 */}
+      <DialogContent data-testid="dialog-quick-log">
         <DialogHeader>
           <DialogTitle>快速記錄</DialogTitle>
           <DialogDescription>選擇運動項目，直接跳轉新增記錄並預填該動作</DialogDescription>
@@ -111,58 +116,56 @@ export function QuickLogDialog({ open, onOpenChange, onSelectExercise }: QuickLo
             data-testid="input-quick-log-search"
           />
         </div>
-        <ScrollArea className="flex-1 -mx-1 px-1" style={{ maxHeight: '55vh' }}>
-          {isLoading ? (
-            <div className="space-y-2 py-1">
-              {[1, 2, 3, 4].map((i) => (
-                <Skeleton key={i} className="h-14 w-full" />
-              ))}
-            </div>
-          ) : sortedExercises.length > 0 ? (
-            <div className="space-y-1.5 py-1">
-              {sortedExercises.map((exercise) => {
-                const progress = progressByExerciseId.get(exercise.id);
-                const Icon = (exercise.category && CATEGORY_ICON[exercise.category]) || Activity;
-                return (
-                  <button
-                    key={exercise.id}
-                    type="button"
-                    onClick={() => handleSelect(exercise.id)}
-                    className="w-full flex items-center gap-3 rounded-lg border p-3 text-left hover-elevate active-elevate-2"
-                    data-testid={`quick-log-option-${exercise.id}`}
-                  >
-                    <Icon className="h-4 w-4 text-primary shrink-0" />
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium truncate">{exercise.name}</p>
-                      {progress && progress.currentWeekValue > 0 ? (
-                        <p className="text-xs text-muted-foreground">
-                          本週已練 {progress.currentWeekValue.toFixed(1)} {progress.unit}
-                        </p>
-                      ) : (
-                        <p className="text-xs text-muted-foreground">本週尚未記錄</p>
-                      )}
-                    </div>
-                    {progress?.hasHistory ? (
-                      <Badge
-                        variant={progress.progressPct < 100 ? "outline" : "secondary"}
-                        className="shrink-0"
-                        data-testid={`quick-log-progress-${exercise.id}`}
-                      >
-                        {progress.progressPct.toFixed(0)}%
-                      </Badge>
+        {isLoading ? (
+          <div className="space-y-2 py-1">
+            {[1, 2, 3, 4].map((i) => (
+              <Skeleton key={i} className="h-14 w-full" />
+            ))}
+          </div>
+        ) : sortedExercises.length > 0 ? (
+          <div className="space-y-1.5 py-1">
+            {sortedExercises.map((exercise) => {
+              const progress = progressByExerciseId.get(exercise.id);
+              const Icon = (exercise.category && CATEGORY_ICON[exercise.category]) || Activity;
+              return (
+                <button
+                  key={exercise.id}
+                  type="button"
+                  onClick={() => handleSelect(exercise.id)}
+                  className="w-full flex items-center gap-3 rounded-lg border p-3 text-left hover-elevate active-elevate-2"
+                  data-testid={`quick-log-option-${exercise.id}`}
+                >
+                  <Icon className="h-4 w-4 text-primary shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium truncate">{exercise.name}</p>
+                    {progress && progress.currentWeekValue > 0 ? (
+                      <p className="text-xs text-muted-foreground">
+                        本週已練 {progress.currentWeekValue.toFixed(1)} {progress.unit}
+                      </p>
                     ) : (
-                      <Badge variant="outline" className="shrink-0 text-muted-foreground">
-                        尚無資料
-                      </Badge>
+                      <p className="text-xs text-muted-foreground">本週尚未記錄</p>
                     )}
-                  </button>
-                );
-              })}
-            </div>
-          ) : (
-            <p className="text-sm text-muted-foreground text-center py-8">找不到符合的運動項目</p>
-          )}
-        </ScrollArea>
+                  </div>
+                  {progress?.hasHistory ? (
+                    <Badge
+                      variant={progress.progressPct < 100 ? "outline" : "secondary"}
+                      className="shrink-0"
+                      data-testid={`quick-log-progress-${exercise.id}`}
+                    >
+                      {progress.progressPct.toFixed(0)}%
+                    </Badge>
+                  ) : (
+                    <Badge variant="outline" className="shrink-0 text-muted-foreground">
+                      尚無資料
+                    </Badge>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground text-center py-8">找不到符合的運動項目</p>
+        )}
       </DialogContent>
     </Dialog>
   );

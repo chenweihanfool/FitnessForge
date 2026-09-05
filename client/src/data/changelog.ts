@@ -6,6 +6,15 @@ export interface ChangelogEntry {
 }
 export const changelog: ChangelogEntry[] = [
   {
+    version: "v3.27",
+    date: "2026-09-05",
+    title: "快速記錄對話框無法捲動的問題",
+    items: [
+      "QuickLogDialog 原本在 DialogContent 裡多包了一層 ScrollArea + flex-1 想單獨限制清單區域的高度，但在 flex 版面下 ScrollArea 的高度沒有被正確限制住，導致內層吃掉了觸控滾動事件、自己卻沒有實際可捲動的空間——手機版整個對話框完全無法捲動，運動清單被截斷在畫面外也看不到",
+      "移除多包的 ScrollArea／flex 容器，改成直接讓整個對話框用 base DialogContent（@/components/ui/dialog）本身就有的 max-h-[90vh] overflow-y-auto 捲動——跟 entries.tsx／ranking-detail-dialog.tsx 用的是同一份，不是另外發明一套版面",
+    ],
+  },
+  {
     version: "v3.26",
     date: "2026-09-05",
     title: "快速記錄改掛在既有的頂欄「+」，不再需要捲到頁尾才看得到",
