@@ -4,7 +4,6 @@ import { TrendChart } from "@/components/trend-chart";
 import { useLocation } from "wouter";
 import { RankingMetricCard } from "@/components/ranking-metric-card";
 import { RankingDetailDialog } from "@/components/ranking-detail-dialog";
-import { QuickLogDialog } from "@/components/quick-log-dialog";
 import { ScaleProgressBar } from "@/components/scale-progress-bar";
 import { Activity, TrendingUp, Award, X, TrendingDown, Dumbbell, Heart, Footprints, Plus, Check, Minus, Star, Pencil, ClipboardList, RefreshCw, Loader2, ChevronDown, ChevronRight, Trophy, Radar as RadarIcon, Lightbulb, Save, History } from "lucide-react";
 import { RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer, Legend, Tooltip as RechartsTooltip } from "recharts";
@@ -191,7 +190,6 @@ export default function Dashboard() {
   const [selectedDayName, setSelectedDayName] = useState<string>("");
   const [showMuscleDetail, setShowMuscleDetail] = useState(false);
   const [showSnapshotHistory, setShowSnapshotHistory] = useState(false);
-  const [showQuickLog, setShowQuickLog] = useState(false);
 
   const handleAddEntry = (exerciseId: string) => {
     setLocation(`/entries?addExercise=${exerciseId}`);
@@ -2667,24 +2665,6 @@ export default function Dashboard() {
           metric={rankingDetailMetric}
         />
       )}
-
-      {/* 首頁快速記錄入口：大加號 FAB，點開後列出所有運動、可搜尋，預設按
-          本週訓練進度排序（還沒練/練得少的排前面），選了就跳轉到新增記錄
-          頁面並預填該動作——沿用既有的 handleAddEntry／entries.tsx 的
-          ?addExercise= 預填流程，不另外寫一套。 */}
-      <Button
-        size="icon"
-        className="fixed bottom-6 right-6 z-50 h-14 w-14 rounded-full shadow-lg"
-        onClick={() => setShowQuickLog(true)}
-        data-testid="button-quick-log-fab"
-      >
-        <Plus className="h-6 w-6" />
-      </Button>
-      <QuickLogDialog
-        open={showQuickLog}
-        onOpenChange={setShowQuickLog}
-        onSelectExercise={handleAddEntry}
-      />
     </div>
   );
 }

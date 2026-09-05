@@ -6,6 +6,15 @@ export interface ChangelogEntry {
 }
 export const changelog: ChangelogEntry[] = [
   {
+    version: "v3.26",
+    date: "2026-09-05",
+    title: "快速記錄改掛在既有的頂欄「+」，不再需要捲到頁尾才看得到",
+    items: [
+      "v3.25 在首頁內容最下方新增一顆 fixed 定位的大圓形「+」，但實測手機版會被排進頁面內容的正常排版流程裡，要捲到最底才看得到，不符合「不需捲動就能用」的原意",
+      "移除該顆 FAB，改成直接把快速記錄清單（QuickLogDialog）掛到頂欄原本就有的「+」按鈕（App.tsx 的 button-quick-add）——原本點下去只是單純導到 /entries 頁面，現在改成打開含搜尋框、按本週訓練進度排序的運動選擇清單，選了才跳轉並預填，頂欄本身固定在畫面上緣，任何頁面、任何捲動位置都看得到，不用另外處理定位問題",
+    ],
+  },
+  {
     version: "v3.25",
     date: "2026-09-05",
     title: "首頁新增快速記錄入口；力量項目分組樣板合併成一個按鈕",
