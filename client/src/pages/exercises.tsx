@@ -297,7 +297,7 @@ export default function Exercises() {
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>主要分类（可选）</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value}>
+                      <Select onValueChange={field.onChange} value={field.value ?? undefined}>
                         <FormControl>
                           <SelectTrigger data-testid="select-exercise-category">
                             <SelectValue placeholder="选择分类" />
@@ -379,7 +379,7 @@ export default function Exercises() {
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>次要分类（可选）</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value}>
+                      <Select onValueChange={field.onChange} value={field.value ?? undefined}>
                         <FormControl>
                           <SelectTrigger data-testid="select-exercise-split-category">
                             <SelectValue placeholder="选择次要分类" />
@@ -683,7 +683,7 @@ export default function Exercises() {
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>主要分类（可选）</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
+                    <Select onValueChange={field.onChange} value={field.value ?? undefined}>
                       <FormControl>
                         <SelectTrigger data-testid="select-edit-category">
                           <SelectValue placeholder="选择分类" />
@@ -765,7 +765,7 @@ export default function Exercises() {
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>次要分类（可选）</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
+                    <Select onValueChange={field.onChange} value={field.value ?? undefined}>
                       <FormControl>
                         <SelectTrigger data-testid="select-edit-split-category">
                           <SelectValue placeholder="选择次要分类" />

@@ -28,8 +28,15 @@ export const insertExerciseSchema = z.object({
   name: z.string().min(1),
   unit: z.string().min(1),
   weightFactor: z.number().default(1),
-  category: z.string().optional(),
-  splitCategory: z.string().optional(),
+  // 兩者原本用 .optional()（只吃 undefined），但 exercises 表這兩欄本身是
+  // nullable text column，GET /api/exercises 讀出來、沒設定的值序列化成 JSON
+  // 就是 null 不是 undefined——原本的表單編輯路徑從來不會真的傳 null 進來
+  // （要嘛給字串、要嘛整個 key 省略），所以這個落差一直沒被踩到，直到匯出
+  // 再原封不動匯入（真正的完整 round-trip）才暴露出來：safeParse 對著 null
+  // 直接回報「Expected string, received null」，17 筆裡 15 筆的 splitCategory
+  // 剛好是 null 就整批失敗。改成 nullable + optional，兩種輸入都收。
+  category: z.string().nullable().optional(),
+  splitCategory: z.string().nullable().optional(),
   splitRatio: z.number().min(0).max(1).default(0),
   muscleChest: z.number().min(0).max(100).default(0),
   muscleBack: z.number().min(0).max(100).default(0),

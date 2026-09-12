@@ -6,6 +6,15 @@ export interface ChangelogEntry {
 }
 export const changelog: ChangelogEntry[] = [
   {
+    version: "v3.29",
+    date: "2026-09-12",
+    title: "運動項目 JSON 匯出後直接匯入會整批失敗的問題",
+    items: [
+      "v3.28 的匯出/匯入 round-trip 實測失敗：exercises 表的 category／splitCategory 是 nullable 欄位，沒設定時 GET /api/exercises 讀出來是 JSON null，但 insertExerciseSchema 原本用 z.string().optional()，只吃 undefined 不吃 null，safeParse 直接回報「Expected string, received null」——原本的表單編輯路徑從來不會真的傳 null 進來，所以這個落差一直沒被踩到，直到真正的完整匯出再原封不動匯入才暴露出來。",
+      "insertExerciseSchema 的 category／splitCategory 改成 z.string().nullable().optional()，兩種輸入都收，跟 DB 欄位本身的 nullable 語意對齊；exercises.tsx 表單裡對應的 Select value 一併補上 ?? undefined，避免型別跟著鬆動。",
+    ],
+  },
+  {
     version: "v3.28",
     date: "2026-09-12",
     title: "運動項目參數支援 JSON 匯出/匯入 + 全歷史重新計算；修掉編輯運動存不進去動作係數的 bug",
