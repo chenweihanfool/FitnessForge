@@ -6,6 +6,16 @@ export interface ChangelogEntry {
 }
 export const changelog: ChangelogEntry[] = [
   {
+    version: "v3.28",
+    date: "2026-09-12",
+    title: "運動項目參數支援 JSON 匯出/匯入 + 全歷史重新計算；修掉編輯運動存不進去動作係數的 bug",
+    items: [
+      "修掉一個潛伏很久的 bug：DbStorage 的 createExercise／updateExercise 一直沒有把 movementCoefficient（動作係數）、intensityFactor（強度因子）寫進資料庫（updateExercise 還漏寫全部 8 個肌群百分比），表單編輯這些欄位一律靜默被 DB 預設值蓋掉——這也是 recalculateAllBaselines() 裡會出現一份寫死「運動名稱→係數」對照表的原因：正常路徑存不進去，只能繞道用一次性腳本硬改。",
+      "管理員後台新增「運動項目參數（JSON）」卡片：匯出全部運動項目的完整參數（含動作係數、強度因子、8 個肌群百分比）成 JSON 檔備份/批次調整；調整完整份匯入覆蓋——匯入是整份覆蓋、不是 partial patch，JSON 裡沒寫到的欄位會被 schema 預設值蓋掉，所以務必用匯出的完整檔案去改，不要自己砍欄位。",
+      "recalculateAllBaselines()（重新計算歷史基準值）拿掉原本寫死的係數對照表，改成單純讀「目前」exercises 表的參數；管理員後台新增按鈕觸發（帶確認對話框，因為會覆蓋寫回全部歷史記錄，沒有復原功能）——匯入新參數後要套用到既有記錄，需要另外按這顆，不會匯入就自動觸發。",
+    ],
+  },
+  {
     version: "v3.27",
     date: "2026-09-05",
     title: "快速記錄對話框無法捲動的問題",

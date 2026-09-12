@@ -1,6 +1,7 @@
 import {
   type Exercise,
   type InsertExercise,
+  insertExerciseSchema,
   type WorkoutEntry,
   type InsertWorkoutEntry,
   type WorkoutEntryWithExercise,
@@ -66,6 +67,46 @@ function calculateBaseline(
   return value * (sets || 1) * weightFactor;
 }
 
+// importExercises 的實作邏輯跟用 MemStorage 還是 DbStorage 無關——只透過
+// IStorage 本身既有的 getExercises/createExercise/updateExercise 三支方法
+// 操作，兩個 class 各自的 importExercises 都直接委派到這裡，不重複寫兩份。
+// 以 name 比對既有運動：找得到就整份覆蓋更新（不是 partial patch，JSON 裡
+// 沒寫到的欄位會被 insertExerciseSchema 的 zod 預設值蓋掉，所以匯出的 JSON
+// 要嘛帶齊全部欄位、要嘛只調整已有欄位再原樣送回，不要手動砍欄位），找不到
+// 就新建。單筆驗證失敗只跳過那一筆、記進 errors，不會讓整批中斷。
+async function importExercisesImpl(
+  storage: Pick<IStorage, 'getExercises' | 'createExercise' | 'updateExercise'>,
+  items: unknown[],
+): Promise<{ created: number; updated: number; errors: string[] }> {
+  const existing = await storage.getExercises();
+  const byName = new Map(existing.map((e) => [e.name, e]));
+
+  let created = 0;
+  let updated = 0;
+  const errors: string[] = [];
+
+  for (let i = 0; i < items.length; i++) {
+    const raw = items[i];
+    const label = raw && typeof raw === 'object' && 'name' in raw ? String((raw as any).name) : `#${i}`;
+    const parsed = insertExerciseSchema.safeParse(raw);
+    if (!parsed.success) {
+      errors.push(`${label}：${parsed.error.issues.map((iss) => iss.message).join('; ')}`);
+      continue;
+    }
+    const match = byName.get(parsed.data.name);
+    if (match) {
+      await storage.updateExercise(match.id, parsed.data);
+      updated++;
+    } else {
+      const newExercise = await storage.createExercise(parsed.data);
+      byName.set(newExercise.name, newExercise);
+      created++;
+    }
+  }
+
+  return { created, updated, errors };
+}
+
 export interface IStorage {
   // 运动类型 CRUD
   getExercises(): Promise<Exercise[]>;
@@ -73,6 +114,11 @@ export interface IStorage {
   createExercise(exercise: InsertExercise): Promise<Exercise>;
   updateExercise(id: string, exercise: InsertExercise): Promise<Exercise | undefined>;
   deleteExercise(id: string): Promise<boolean>;
+  // 批次匯入運動項目參數（JSON）：以 name 比對既有運動——名稱存在就整份覆蓋
+  // 更新（含尚未在 JSON 裡出現的欄位會被覆蓋成 schema 預設值，不是 partial
+  // patch），不存在就新建。單筆驗證失敗不會讓整批中斷，錯誤收集在 errors
+  // 裡個別回報（帶著該筆的 name/index，方便使用者知道是哪一筆要修正）。
+  importExercises(items: unknown[]): Promise<{ created: number; updated: number; errors: string[] }>;
 
   // 运动记录 CRUD
   getWorkoutEntries(): Promise<WorkoutEntryWithExercise[]>;
@@ -250,7 +296,12 @@ export interface IStorage {
   // key，不動原本已存的 8 個肌群分數（那些是用當時的歷史平均算的，重算會跟著
   // 現在的平均值飄動，沒必要也沒被要求動）。
   backfillAerobicRadarSnapshots(): Promise<{ updatedSnapshots: number }>;
-  recalculateAllBaselines(): Promise<{ updatedEntries: number; updatedWeeks: number; updatedExercises: number }>;
+  // 用「目前」exercises 表裡的參數（movementCoefficient／intensityFactor／
+  // weightFactor 等）重新計算每一筆歷史記錄的 baselineValue 並寫回資料庫，
+  // 連帶更新受影響週的肌群統計——importExercises 批次調整完參數後，要靠這支
+  // 才會讓歷史資料實際套用新標準，import 本身不會自動觸發（重寫全部歷史
+  // baseline 是有代價的操作，交給呼叫端明確決定要不要做）。
+  recalculateAllBaselines(): Promise<{ updatedEntries: number; updatedWeeks: number }>;
   convertExerciseUnit(exerciseName: string, newUnit: string, valueMultiplier: number): Promise<{ updatedExercise: boolean; updatedEntries: number }>;
 
   // 用户设置
@@ -417,6 +468,10 @@ export class MemStorage implements IStorage {
     };
     this.exercises.set(id, updated);
     return updated;
+  }
+
+  async importExercises(items: unknown[]): Promise<{ created: number; updated: number; errors: string[] }> {
+    return importExercisesImpl(this, items);
   }
 
   async deleteExercise(id: string): Promise<boolean> {
@@ -1857,7 +1912,7 @@ export class MemStorage implements IStorage {
     return { updatedSnapshots };
   }
 
-  async recalculateAllBaselines(): Promise<{ updatedEntries: number; updatedWeeks: number; updatedExercises: number }> {
+  async recalculateAllBaselines(): Promise<{ updatedEntries: number; updatedWeeks: number }> {
     let updatedEntries = 0;
     const weekStartsSet = new Set<string>();
 
@@ -1879,7 +1934,7 @@ export class MemStorage implements IStorage {
       await this.updateWeeklyMuscleStats(ws);
     }
 
-    return { updatedEntries, updatedWeeks: weekStartsSet.size, updatedExercises: 0 };
+    return { updatedEntries, updatedWeeks: weekStartsSet.size };
   }
 
   private userSettingsMap: Map<string, string> = new Map();
@@ -2075,6 +2130,12 @@ export class DbStorage implements IStorage {
   }
 
   async createExercise(insertExercise: InsertExercise): Promise<Exercise> {
+    // movementCoefficient／intensityFactor／8 個肌群百分比原本沒有寫進這裡，
+    // 新建運動時這些欄位一律靜默退回 DB 預設值（1.0／0），使用者在表單上填的
+    // 值完全沒被存到——這也是 recalculateAllBaselines() 裡當初會出現一份寫死
+    // 「運動名稱→係數」對照表的原因：正常的建立/編輯路徑本來就存不進去，只
+    // 能用一次性腳本硬改。這裡補齊，之後 importExercises／表單編輯才是真的
+    // 有效的路徑。
     const result = await this.db.insert(exercises).values({
       name: insertExercise.name,
       unit: insertExercise.unit,
@@ -2082,11 +2143,24 @@ export class DbStorage implements IStorage {
       category: insertExercise.category ?? null,
       splitCategory: insertExercise.splitCategory ?? null,
       splitRatio: insertExercise.splitRatio ?? 0,
+      muscleChest: insertExercise.muscleChest ?? 0,
+      muscleBack: insertExercise.muscleBack ?? 0,
+      muscleLegs: insertExercise.muscleLegs ?? 0,
+      muscleShoulders: insertExercise.muscleShoulders ?? 0,
+      muscleArms: insertExercise.muscleArms ?? 0,
+      muscleCore: insertExercise.muscleCore ?? 0,
+      muscleGlutes: insertExercise.muscleGlutes ?? 0,
+      muscleFullBody: insertExercise.muscleFullBody ?? 0,
+      movementCoefficient: insertExercise.movementCoefficient ?? 1,
+      intensityFactor: insertExercise.intensityFactor ?? 1,
     }).returning();
     return result[0];
   }
 
   async updateExercise(id: string, insertExercise: InsertExercise): Promise<Exercise | undefined> {
+    // movementCoefficient／intensityFactor 原本沒有寫進這裡，編輯既有運動時
+    // 這兩個欄位不管表單填什麼都會被靜默忽略、維持原值不變——同一個問題見
+    // createExercise 的說明。
     const result = await this.db
       .update(exercises)
       .set({
@@ -2104,10 +2178,16 @@ export class DbStorage implements IStorage {
         muscleCore: insertExercise.muscleCore ?? 0,
         muscleGlutes: insertExercise.muscleGlutes ?? 0,
         muscleFullBody: insertExercise.muscleFullBody ?? 0,
+        movementCoefficient: insertExercise.movementCoefficient ?? 1,
+        intensityFactor: insertExercise.intensityFactor ?? 1,
       })
       .where(eq(exercises.id, id))
       .returning();
     return result[0];
+  }
+
+  async importExercises(items: unknown[]): Promise<{ created: number; updated: number; errors: string[] }> {
+    return importExercisesImpl(this, items);
   }
 
   async deleteExercise(id: string): Promise<boolean> {
@@ -3791,43 +3871,15 @@ export class DbStorage implements IStorage {
     return { updatedSnapshots };
   }
 
-  async recalculateAllBaselines(): Promise<{ updatedEntries: number; updatedWeeks: number; updatedExercises: number }> {
-    const exerciseCoefficients: Record<string, { movementCoefficient: number; intensityFactor: number }> = {
-      '啞鈴深蹲': { movementCoefficient: 1.2, intensityFactor: 1 },
-      '弓步蹲': { movementCoefficient: 1.2, intensityFactor: 1 },
-      '深蹲': { movementCoefficient: 1.2, intensityFactor: 1 },
-      '硬舉': { movementCoefficient: 1.2, intensityFactor: 1 },
-      '二頭肌彎舉': { movementCoefficient: 0.8, intensityFactor: 1 },
-      '捲腹': { movementCoefficient: 0.8, intensityFactor: 1 },
-      '超人式': { movementCoefficient: 0.8, intensityFactor: 1 },
-      '雙槓捲腹': { movementCoefficient: 0.8, intensityFactor: 1 },
-      '伏地起身': { movementCoefficient: 1, intensityFactor: 1 },
-      '反向划船': { movementCoefficient: 1, intensityFactor: 1 },
-      '引體吊掛': { movementCoefficient: 1, intensityFactor: 1 },
-      '站立肩推': { movementCoefficient: 1, intensityFactor: 1 },
-      '雙槓臂屈伸': { movementCoefficient: 1, intensityFactor: 1 },
-      '跑步': { movementCoefficient: 1, intensityFactor: 1 },
-      '跑步機負重': { movementCoefficient: 1, intensityFactor: 2 },
-      '開合跳': { movementCoefficient: 1, intensityFactor: 1.5 },
-      '每周平均步数': { movementCoefficient: 1, intensityFactor: 1 },
-    };
-
-    let updatedExercises = 0;
-    const allExercises = await this.db.select().from(exercises);
-    for (const ex of allExercises) {
-      const coeffs = exerciseCoefficients[ex.name];
-      if (coeffs) {
-        await this.db
-          .update(exercises)
-          .set({
-            movementCoefficient: coeffs.movementCoefficient,
-            intensityFactor: coeffs.intensityFactor,
-          })
-          .where(eq(exercises.id, ex.id));
-        updatedExercises++;
-      }
-    }
-
+  // 2026-09-12：拿掉原本寫死在這裡的「運動名稱→movementCoefficient/
+  // intensityFactor」對照表——那份表其實是繞過 updateExercise() 當時的一個
+  // bug（createExercise／updateExercise 漏寫 movementCoefficient／
+  // intensityFactor／muscle 系列欄位，表單編輯完全存不進去，只能改用這種
+  // 硬寫死值 + 全表重算的方式救回來，已在上面修掉）留下的產物，不是這支函式
+  // 該有的職責。現在單純讀「目前」exercises 表裡的值，讓 importExercises
+  // 批次調整參數之後，呼叫這支就能把調整結果套用到全部歷史記錄——不用再為了
+  // 改係數就得改這支函式本身。
+  async recalculateAllBaselines(): Promise<{ updatedEntries: number; updatedWeeks: number }> {
     const allEntries = await this.db
       .select({
         entryId: workoutEntries.id,
@@ -3851,9 +3903,8 @@ export class DbStorage implements IStorage {
     for (const entry of allEntries) {
       const wf = entry.entryWeightFactor ?? entry.exerciseWeightFactor;
       const sets = entry.sets ?? 1;
-      const coeffs = exerciseCoefficients[entry.exerciseName];
-      const mc = coeffs?.movementCoefficient ?? entry.exerciseMovementCoefficient ?? 1;
-      const intf = coeffs?.intensityFactor ?? entry.exerciseIntensityFactor ?? 1;
+      const mc = entry.exerciseMovementCoefficient ?? 1;
+      const intf = entry.exerciseIntensityFactor ?? 1;
 
       let newBaseline: number;
       if (entry.exerciseCategory === '有氧' && entry.exerciseUnit === 'KM') {
@@ -3880,7 +3931,7 @@ export class DbStorage implements IStorage {
       await this.updateWeeklyMuscleStats(ws);
     }
 
-    return { updatedEntries, updatedWeeks: weekStartsSet.size, updatedExercises };
+    return { updatedEntries, updatedWeeks: weekStartsSet.size };
   }
 
   async convertExerciseUnit(exerciseName: string, newUnit: string, valueMultiplier: number): Promise<{ updatedExercise: boolean, updatedEntries: number }> {
