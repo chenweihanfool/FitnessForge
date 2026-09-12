@@ -6,6 +6,15 @@ export interface ChangelogEntry {
 }
 export const changelog: ChangelogEntry[] = [
   {
+    version: "v3.30",
+    date: "2026-09-12",
+    title: "重新計算歷史基準值改用資料庫交易，中途失敗不會留下算到一半的狀態",
+    items: [
+      "recalculateAllBaselines() 原本是逐筆各自送出 UPDATE，中途斷線或伺服器重啟的話會停在「一部分記錄用新參數、一部分還是舊參數」的中間狀態，且這支操作本身沒有復原功能",
+      "改成把全部記錄的 baselineValue 更新包在同一個資料庫交易（transaction）裡，要嘛全部成功寫入、要嘛整個 rollback 回原狀，不會再有算到一半的資料；週肌群統計的重算維持在交易外，那是可以隨時從記錄重新推算的衍生快取，不需要跟著本體交易綁在一起",
+    ],
+  },
+  {
     version: "v3.29",
     date: "2026-09-12",
     title: "運動項目 JSON 匯出後直接匯入會整批失敗的問題",

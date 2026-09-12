@@ -3900,32 +3900,42 @@ export class DbStorage implements IStorage {
     let updatedEntries = 0;
     const weekStartsSet = new Set<string>();
 
-    for (const entry of allEntries) {
-      const wf = entry.entryWeightFactor ?? entry.exerciseWeightFactor;
-      const sets = entry.sets ?? 1;
-      const mc = entry.exerciseMovementCoefficient ?? 1;
-      const intf = entry.exerciseIntensityFactor ?? 1;
+    // 全部包在同一個交易裡：這支會覆蓋寫回「每一筆」歷史記錄的
+    // baselineValue，且沒有復原功能（呼叫端的 UI 也是這樣提醒使用者的）。
+    // 原本是逐筆各自 await this.db.update(...)，中途斷線/伺服器重啟的話會
+    // 停在「一部分記錄用新參數、一部分還是舊參數」的中間狀態——包成單一
+    // transaction 之後，要嘛全部成功寫入、要嘛整個 rollback 回原狀，不會再
+    // 有算到一半的資料。週肌群統計的重算（下面那個迴圈）維持在交易外——那是
+    // 從 workoutEntries 重新推算出來的衍生快取，本來就是可以隨時重算的，不
+    // 需要跟著本體交易綁在一起。
+    await this.db.transaction(async (tx) => {
+      for (const entry of allEntries) {
+        const wf = entry.entryWeightFactor ?? entry.exerciseWeightFactor;
+        const sets = entry.sets ?? 1;
+        const mc = entry.exerciseMovementCoefficient ?? 1;
+        const intf = entry.exerciseIntensityFactor ?? 1;
 
-      let newBaseline: number;
-      if (entry.exerciseCategory === '有氧' && entry.exerciseUnit === 'KM') {
-        const kmMultiplier = entry.exerciseName === '跑步機負重' ? 20 : 10;
-        newBaseline = entry.value * kmMultiplier * intf * 2.2;
-      } else {
-        newBaseline = calculateBaseline(
-          entry.value, sets, wf,
-          entry.exerciseCategory, mc, intf, entry.exerciseName
-        );
+        let newBaseline: number;
+        if (entry.exerciseCategory === '有氧' && entry.exerciseUnit === 'KM') {
+          const kmMultiplier = entry.exerciseName === '跑步機負重' ? 20 : 10;
+          newBaseline = entry.value * kmMultiplier * intf * 2.2;
+        } else {
+          newBaseline = calculateBaseline(
+            entry.value, sets, wf,
+            entry.exerciseCategory, mc, intf, entry.exerciseName
+          );
+        }
+
+        await tx
+          .update(workoutEntries)
+          .set({ baselineValue: newBaseline })
+          .where(eq(workoutEntries.id, entry.entryId));
+
+        updatedEntries++;
+        const weekStart = this.getWeekStart(entry.date);
+        weekStartsSet.add(this.formatTaipeiDate(weekStart));
       }
-
-      await this.db
-        .update(workoutEntries)
-        .set({ baselineValue: newBaseline })
-        .where(eq(workoutEntries.id, entry.entryId));
-
-      updatedEntries++;
-      const weekStart = this.getWeekStart(entry.date);
-      weekStartsSet.add(this.formatTaipeiDate(weekStart));
-    }
+    });
 
     for (const ws of weekStartsSet) {
       await this.updateWeeklyMuscleStats(ws);
