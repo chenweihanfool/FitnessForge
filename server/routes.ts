@@ -602,6 +602,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // 批次匯入運動項目參數（JSON）——body 是 { exercises: [...] } 陣列，每筆
+  // 用 name 比對既有運動，找得到就整份覆蓋更新、找不到就新建。只調整
+  // exercises 表本身，不會自動觸發歷史 baselineValue 重算——想套用到既有
+  // 記錄請在匯入成功後另外呼叫 /api/admin/recalculate-baselines。
+  app.post("/api/admin/exercises/import", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const items = req.body?.exercises;
+      if (!Array.isArray(items)) {
+        return res.status(400).json({ error: "請求格式錯誤，需要 { exercises: [...] }" });
+      }
+      const result = await storage.importExercises(items);
+      res.json({ success: true, ...result });
+    } catch (error) {
+      console.error("匯入運動項目失敗:", error);
+      res.status(500).json({ error: "匯入運動項目失敗" });
+    }
+  });
+
   app.post("/api/admin/convert-exercise-unit", requireAuth, requireAdmin, async (req, res) => {
     try {
       const { exerciseName, newUnit, valueMultiplier } = req.body;

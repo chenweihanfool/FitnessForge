@@ -1,9 +1,9 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
 import { useLocation } from "wouter";
-import { Shield, Trash2, UserPlus, Users } from "lucide-react";
+import { Shield, Trash2, UserPlus, Users, Download, Upload, RefreshCw, Dumbbell } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,7 +16,19 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
+import { Exercise } from "@shared/schema";
 
 type WhitelistEntry = {
   username: string;
@@ -31,10 +43,87 @@ export default function AdminPage() {
   const { toast } = useToast();
   const [newUsername, setNewUsername] = useState("");
   const [newNote, setNewNote] = useState("");
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { data: whitelist = [], isLoading: listLoading } = useQuery<WhitelistEntry[]>({
     queryKey: ["/api/admin/whitelist"],
     enabled: isAdmin,
+  });
+
+  const { data: exercises = [] } = useQuery<Exercise[]>({
+    queryKey: ["/api/exercises"],
+    enabled: isAdmin,
+  });
+
+  const handleExportExercises = () => {
+    const blob = new Blob([JSON.stringify(exercises, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `exercises-${new Date().toISOString().slice(0, 10)}.json`;
+    link.style.visibility = "hidden";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  const importMutation = useMutation({
+    mutationFn: async (payload: unknown[]) => {
+      const res = await apiRequest("POST", "/api/admin/exercises/import", { exercises: payload });
+      return res.json() as Promise<{ created: number; updated: number; errors: string[] }>;
+    },
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/exercises"] });
+      toast({
+        title: "匯入完成",
+        description: `新建 ${result.created} 個、更新 ${result.updated} 個${
+          result.errors.length > 0 ? `，${result.errors.length} 筆失敗：${result.errors.join("；")}` : ""
+        }`,
+        variant: result.errors.length > 0 ? "destructive" : undefined,
+      });
+    },
+    onError: () => toast({ title: "匯入失敗", description: "請確認 JSON 格式正確", variant: "destructive" }),
+  });
+
+  const handleImportFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // 允許連續選同一個檔案觸發 onChange
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const parsed = JSON.parse(text);
+      const items = Array.isArray(parsed) ? parsed : parsed?.exercises;
+      if (!Array.isArray(items)) {
+        toast({ title: "匯入失敗", description: "JSON 需要是運動項目陣列，或 { exercises: [...] } 物件", variant: "destructive" });
+        return;
+      }
+      importMutation.mutate(items);
+    } catch {
+      toast({ title: "匯入失敗", description: "檔案不是合法的 JSON", variant: "destructive" });
+    }
+  };
+
+  const recalcMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/admin/recalculate-baselines");
+      return res.json() as Promise<{ updatedEntries: number; updatedWeeks: number }>;
+    },
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/entries"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/stats/ranking"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/stats/trends"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/stats/weekly-progress"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/stats/current-week-details"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/stats/category-breakdown"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/stats/muscle-group-weekly"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/plan/progress"] });
+      toast({
+        title: "重新計算完成",
+        description: `已更新 ${result.updatedEntries} 筆記錄、${result.updatedWeeks} 個週的肌群統計`,
+      });
+    },
+    onError: () => toast({ title: "重新計算失敗", variant: "destructive" }),
   });
 
   const addMutation = useMutation({
@@ -168,6 +257,69 @@ export default function AdminPage() {
               </TableBody>
             </Table>
           )}
+        </CardContent>
+      </Card>
+
+      {/* 運動項目參數：JSON 匯出/匯入 + 全歷史重新計算 */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Dumbbell className="h-4 w-4" />
+            運動項目參數（JSON）
+            <Badge variant="secondary">{exercises.length}</Badge>
+          </CardTitle>
+          <CardDescription>
+            匯出全部運動項目的完整參數（重量係數、動作係數、強度因子、肌群分配）備份或批次調整，
+            調整完再整份匯入覆蓋——匯入只會更新運動項目本身，不會自動套用到歷史記錄，
+            需要的話請在匯入後另外按「重新計算歷史基準值」。
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" onClick={handleExportExercises} disabled={exercises.length === 0}>
+              <Download className="mr-2 h-4 w-4" />
+              匯出 JSON
+            </Button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".json,application/json"
+              className="hidden"
+              onChange={handleImportFileChange}
+            />
+            <Button
+              variant="outline"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={importMutation.isPending}
+            >
+              <Upload className="mr-2 h-4 w-4" />
+              {importMutation.isPending ? "匯入中…" : "匯入 JSON"}
+            </Button>
+
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="destructive" disabled={recalcMutation.isPending}>
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                  {recalcMutation.isPending ? "計算中…" : "重新計算歷史基準值"}
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>重新計算所有歷史記錄的基準值？</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    會用目前運動項目的參數（重量係數、動作係數、強度因子）重新計算「每一筆」歷史運動記錄的基準值並覆蓋寫回，
+                    連帶更新受影響週的肌群統計。這個動作沒有復原功能，請確認運動項目參數已經調整成你要的樣子再執行。
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>取消</AlertDialogCancel>
+                  <AlertDialogAction onClick={() => recalcMutation.mutate()}>
+                    確定重新計算
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          </div>
         </CardContent>
       </Card>
     </div>
