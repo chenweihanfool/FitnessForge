@@ -115,6 +115,17 @@ export default function Entries() {
   const [customSets, setCustomSets] = useState<{ weight: number | ""; reps: number | "" }[]>([
     { weight: "", reps: "" },
   ]);
+
+  // 簡易（非樣板）力量記錄的重量拆成「基礎重量」+「附加負重」兩欄，讓使用
+  // 者不用自己心算「預設值 + 附加公斤數」再填一個數字——原本 FormDescription
+  // 就是這樣要求使用者手動算的，這裡改成系統自動加總。baseWeightFactor 是
+  // UI 顯示/編輯用的獨立狀態（不直接綁 react-hook-form 的 weightFactor 欄
+  // 位），因為要避免「addedLoad 每次變動都疊加到上一次已經加總過的
+  // weightFactor 上」這種重複累加的錯誤——form 實際送出的 weightFactor 由
+  // 下面的 effect 統一算成 baseWeightFactor + addedLoad 寫入，兩個獨立輸入
+  // 框永遠對應各自單純的數字，不會互相污染。
+  const [baseWeightFactor, setBaseWeightFactor] = useState<number | "">("");
+  const [addedLoad, setAddedLoad] = useState<number | "">(0);
   const { toast } = useToast();
 
   const { data: exercises } = useQuery<Exercise[]>({
@@ -151,6 +162,8 @@ export default function Entries() {
       setProgIncrement(2.5);
       setProgNumSets(4);
       setCustomSets([{ weight: "", reps: "" }]);
+      setBaseWeightFactor("");
+      setAddedLoad(0);
       toast({
         title: "成功",
         description: "运动记录已添加",
@@ -295,7 +308,14 @@ export default function Entries() {
     setProgIncrement(2.5);
     setProgNumSets(4);
     setCustomSets([{ weight: "", reps: "" }]);
-  }, [selectedExerciseId]);
+    // 基礎重量預設回新選定運動的重量係數，附加負重歸零——這裡是唯一一處統一
+    // 處理，不管是使用者手動在下拉選單選運動、還是從快速記錄／課表點擊直接
+    // 帶 ?addExercise= 網址參數進來（那個路徑是 form.setValue 直接改
+    // exerciseId，不會經過 Select 的 onValueChange），都會觸發這個 effect。
+    const selectedExercise = exercises?.find((e) => e.id === selectedExerciseId);
+    setBaseWeightFactor(selectedExercise?.weightFactor ?? "");
+    setAddedLoad(0);
+  }, [selectedExerciseId, exercises]);
 
   useEffect(() => {
     if (setsTemplate !== 'progressive') return;
@@ -323,6 +343,17 @@ export default function Entries() {
       form.setValue('weightFactor', parseFloat(result.avgWeight.toFixed(2)));
     }
   }, [setsTemplate, customSets]);
+
+  // 簡易（非樣板）力量記錄：實際送出的 weightFactor = 基礎重量 + 附加負重，
+  // 讓徒手動作的使用者額外背負重量時（負重背心、手持啞鈴等）不用自己心算
+  // 「預設值 + 附加公斤數」再填回單一欄位。樣板模式（逐組遞增／逐組自訂）
+  // 已經各自把 weightFactor 算好寫回 form 了，這裡跳過避免互相覆蓋。
+  useEffect(() => {
+    if (setsTemplate !== null) return;
+    const base = typeof baseWeightFactor === 'number' ? baseWeightFactor : 0;
+    const added = typeof addedLoad === 'number' ? addedLoad : 0;
+    form.setValue('weightFactor', base + added);
+  }, [setsTemplate, baseWeightFactor, addedLoad]);
 
   const onSubmit = (data: InsertWorkoutEntry) => {
     // 用户输入的时间是台北时间（UTC+8）
@@ -437,6 +468,8 @@ export default function Entries() {
             setProgIncrement(2.5);
             setProgNumSets(4);
             setCustomSets([{ weight: "", reps: "" }]);
+            setBaseWeightFactor("");
+            setAddedLoad(0);
           }
         }}>
           <DialogTrigger asChild>
@@ -526,31 +559,80 @@ export default function Entries() {
                       render={({ field }) => {
                         const isStrengthEx = selectedExercise?.category === '力量';
                         const isProgReadOnly = isStrengthEx && setsTemplate !== null;
+                        if (!isStrengthEx) {
+                          return (
+                            <FormItem>
+                              <FormLabel>权重系数</FormLabel>
+                              <FormControl>
+                                <Input
+                                  type="number"
+                                  step="0.01"
+                                  min="0"
+                                  placeholder="输入权重系数"
+                                  {...field}
+                                  value={field.value ?? selectedExercise?.weightFactor ?? 1}
+                                  onChange={(e) => field.onChange(parseFloat(e.target.value) || 1)}
+                                  data-testid="input-entry-weight-factor"
+                                />
+                              </FormControl>
+                              <FormDescription className="text-xs text-muted-foreground">
+                                {`默认值: ${selectedExercise?.weightFactor ?? 1}（可临时修改本次记录的权重）`}
+                              </FormDescription>
+                              <FormMessage />
+                            </FormItem>
+                          );
+                        }
+                        // 力量項目：非樣板模式下拆成「基礎重量」+「附加負重」兩欄，
+                        // 送出的 weightFactor（field.value）由上面那個 effect 統一
+                        // 算成兩者相加，這裡只負責顯示/編輯這兩個獨立輸入框；樣板
+                        // 模式維持原本行為，顯示樣板算好的 field.value，唯讀。
+                        const totalWeight = isProgReadOnly
+                          ? field.value ?? 0
+                          : (typeof baseWeightFactor === 'number' ? baseWeightFactor : 0)
+                            + (typeof addedLoad === 'number' ? addedLoad : 0);
                         return (
                           <FormItem>
-                            <FormLabel>{isStrengthEx ? '強度系數 / 使用重量' : '权重系数'}</FormLabel>
-                            <FormControl>
-                              <Input
-                                type="number"
-                                step="0.01"
-                                min="0"
-                                placeholder={isStrengthEx ? "输入強度系數或使用重量" : "输入权重系数"}
-                                {...field}
-                                value={field.value ?? selectedExercise?.weightFactor ?? 1}
-                                readOnly={isProgReadOnly}
-                                className={isProgReadOnly ? "bg-muted" : ""}
-                                onChange={(e) => {
-                                  if (!isProgReadOnly) field.onChange(parseFloat(e.target.value) || 1);
-                                }}
-                                data-testid="input-entry-weight-factor"
-                              />
-                            </FormControl>
+                            <FormLabel>強度系數 / 使用重量</FormLabel>
+                            <div className="grid grid-cols-2 gap-2">
+                              <div>
+                                <label className="text-xs text-muted-foreground mb-1 block">基礎重量 (kg)</label>
+                                <FormControl>
+                                  <Input
+                                    type="number"
+                                    step="0.01"
+                                    min="0"
+                                    placeholder="基礎重量"
+                                    value={isProgReadOnly ? (field.value ?? 0) : baseWeightFactor}
+                                    readOnly={isProgReadOnly}
+                                    className={isProgReadOnly ? "bg-muted" : ""}
+                                    onChange={(e) => {
+                                      if (!isProgReadOnly) setBaseWeightFactor(e.target.value ? parseFloat(e.target.value) : "");
+                                    }}
+                                    data-testid="input-entry-weight-factor"
+                                  />
+                                </FormControl>
+                              </div>
+                              <div>
+                                <label className="text-xs text-muted-foreground mb-1 block">附加負重 (kg，選填)</label>
+                                <Input
+                                  type="number"
+                                  step="0.5"
+                                  min="0"
+                                  placeholder="0"
+                                  value={addedLoad}
+                                  readOnly={isProgReadOnly}
+                                  className={isProgReadOnly ? "bg-muted" : ""}
+                                  onChange={(e) => {
+                                    if (!isProgReadOnly) setAddedLoad(e.target.value ? parseFloat(e.target.value) : "");
+                                  }}
+                                  data-testid="input-entry-added-load"
+                                />
+                              </div>
+                            </div>
                             <FormDescription className="text-xs text-muted-foreground">
                               {isProgReadOnly
                                 ? (setsTemplate === 'progressive' ? "已由遞增樣板自動填入平均重量" : "已由自訂樣板換算自動填入平均重量")
-                                : isStrengthEx
-                                  ? `預設 ${selectedExercise?.weightFactor ?? 1}（空手訓練強度當量）。如有額外負重，請填入 預設值 + 附加公斤數`
-                                  : `默认值: ${selectedExercise?.weightFactor ?? 1}（可临时修改本次记录的权重）`}
+                                : `預設 ${selectedExercise?.weightFactor ?? 1}（空手訓練強度當量，徒手動作直接用這個就好）。有額外負重（負重背心、手持啞鈴等）就填「附加負重」，系統會自動加總——合計 ${totalWeight}kg`}
                             </FormDescription>
                             <FormMessage />
                           </FormItem>
