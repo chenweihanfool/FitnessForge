@@ -3,8 +3,10 @@ services:
     build:
       context: .
       args:
-        # Must match BASE_PATH below and the path Apache mounts this app at.
-        VITE_BASE_PATH: /fitness
+        # Must match BASE_PATH below. Empty = app served at the domain root
+        # (current VPS deployment at forge.weihanc.cloud). Set to /fitness
+        # in .env for the old subpath setup behind Apache.
+        VITE_BASE_PATH: ${VITE_BASE_PATH:-}
     restart: unless-stopped
     environment:
       # Points at an existing Postgres instance (shared with tasktracker and
@@ -22,22 +24,31 @@ services:
       # weekly-radar-snapshot.yml GitHub Actions cron call -- must match that
       # workflow's SNAPSHOT_SECRET repo secret, or the endpoint always 401s.
       SNAPSHOT_SECRET: ${SNAPSHOT_SECRET}
-      # Full external URL (with the /fitness path), used to build the Google
-      # OAuth callback URL -- must exactly match an Authorized redirect URI
-      # registered on the Google Cloud OAuth client.
-      PUBLIC_BASE_URL: https://cwh2023.synology.me/fitness
+      # Full external URL (including BASE_PATH, if any), used to build the
+      # Google OAuth callback URL -- must exactly match an Authorized redirect
+      # URI registered on the Google Cloud OAuth client.
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-https://forge.weihanc.cloud}
       # Server-side counterpart of the build-time VITE_BASE_PATH above --
-      # strips this prefix from incoming request paths (see server/index.ts)
-      # since Apache forwards the full /fitness/... path unstripped.
-      BASE_PATH: /fitness
+      # strips this prefix from incoming request paths (see server/index.ts).
+      # Empty on the VPS (domain root); /fitness for the old Apache subpath.
+      BASE_PATH: ${BASE_PATH:-}
       # Shared secret for the steps-auto-sync endpoint (steps-sync script)
       STEPS_SYNC_SECRET: ${STEPS_SYNC_SECRET}
       NODE_ENV: production
       PORT: "5000"
+    # pgnet: shared network where the pg13 Postgres container lives, so
+    # DATABASE_URL can use the pg13 hostname. It is external and must exist
+    # before `docker compose up` (docker network create pgnet).
+    networks:
+      - pgnet
+      - default
     ports:
-      # Bound to localhost only -- Apache reverse-proxies /fitness to this
-      # port, the app is never directly internet-reachable on its own port.
-      # 5138 is a guess to avoid colliding with pf-cwh's 5137 -- HERMES
-      # should double check nothing else on the host is already using it
-      # before first deploy.
-      - "127.0.0.1:5138:5000"
+      # Published on all interfaces because the reverse proxy (Caddy) runs in
+      # a container and reaches the app via the host gateway (172.18.0.1), so
+      # a 127.0.0.1-only bind would be unreachable. Set APP_BIND=127.0.0.1 if
+      # the proxy runs directly on the host. 5138 avoids pf-cwh's 5137.
+      - "${APP_BIND:-0.0.0.0}:5138:5000"
+
+networks:
+  pgnet:
+    external: true
