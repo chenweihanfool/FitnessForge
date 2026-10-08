@@ -22,7 +22,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -177,6 +177,12 @@ type DayEntriesData = {
   }>;
   totalBaselineValue: number;
   dailyStepsBaseline: number;
+};
+
+const formatWeekRange = (startIso: string, endIso: string) => {
+  const fmt = (iso: string) =>
+    new Date(iso).toLocaleDateString("zh-TW", { month: "numeric", day: "numeric", timeZone: "Asia/Taipei" });
+  return `${fmt(startIso)} – ${fmt(endIso)}`;
 };
 
 export default function Dashboard() {
@@ -341,7 +347,6 @@ export default function Dashboard() {
   const [selectedPlanMode, setSelectedPlanMode] = useState<'recovery' | 'normal'>('normal');
   const [modeManuallyChanged, setModeManuallyChanged] = useState(false);
   const [showModeLogic, setShowModeLogic] = useState(false);
-  const [rankingOpen, setRankingOpen] = useState(false);
 
   useEffect(() => {
     if (!modeManuallyChanged) {
@@ -519,1256 +524,1373 @@ export default function Dashboard() {
   })();
 
   return (
-    <div className="space-y-6" data-testid="page-dashboard">
-      <div>
-        <h1 className="text-3xl font-bold">仪表板</h1>
-        <p className="text-muted-foreground mt-2">查看您的运动数据和进展</p>
+    <div className="space-y-4 xl:space-y-5 mx-auto w-full max-w-[1600px]" data-testid="page-dashboard">
+      {/* 標頭列：標題 + 本周步數快速更新（桌面同一列，省一整排高度） */}
+      <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
+        <div>
+          <div className="flex flex-wrap items-center gap-3">
+            <h1 className="text-2xl xl:text-3xl font-bold tracking-tight">仪表板</h1>
+            {rankingData?.currentWeek && (
+              <Badge variant="outline" className="rounded-full px-3 py-1 font-normal tabular-nums" data-testid="badge-current-week-range">
+                本周 {formatWeekRange(rankingData.currentWeek.weekStart, rankingData.currentWeek.weekEnd)}
+              </Badge>
+            )}
+          </div>
+          <p className="text-sm text-muted-foreground mt-1">查看您的运动数据和进展</p>
+        </div>
+        <div className="w-full sm:w-auto sm:min-w-[24rem] empty:hidden">
+              {stepsLoaded && stepsExerciseId && (
+                <Card data-testid="card-steps-quick-update">
+                  <CardContent className="flex items-center justify-between gap-4 py-3 px-4">
+                    <div className="flex items-center gap-2">
+                      <Footprints className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-sm text-muted-foreground">本周每日平均步数</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {stepsData ? (
+                        <>
+                          <div className="flex flex-col items-end">
+                            <span className="text-sm font-medium" data-testid="text-steps-daily-avg">
+                              {stepsData.dailyAverage.toLocaleString()} 步/天
+                            </span>
+                            {stepsData.source === "auto" && (
+                              <span className="text-[10px] text-muted-foreground" data-testid="text-steps-auto-badge">
+                                🤖 自動估算{stepsData.sourceDays ? `（基於${stepsData.sourceDays}天資料）` : ""}
+                              </span>
+                            )}
+                          </div>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            onClick={() => {
+                              setStepsInput(String(stepsData.dailyAverage));
+                              setShowStepsDialog(true);
+                            }}
+                            data-testid="button-steps-quick-edit"
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                        </>
+                      ) : (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            setStepsInput("");
+                            setShowStepsDialog(true);
+                          }}
+                          data-testid="button-steps-quick-edit"
+                        >
+                          <Plus className="h-4 w-4 mr-1" />
+                          記錄步數
+                        </Button>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+        </div>
       </div>
 
-      {/* 歷史趨勢圖 */}
-      {trendData && trendData.length > 1 && (
-        <TrendChart data={trendData} title="歷史趨勢" />
-      )}
+      {/* 第一屏：歷史趨勢 + 肌群雷達並排，不用往下捲就能看到兩個主圖 */}
+      <div className="flex flex-col gap-4 xl:gap-5 lg:flex-row lg:items-start">
+        <div className="min-w-0 space-y-4 empty:hidden lg:flex-[11_1_0%]">
+                {/* 歷史趨勢圖 */}
+                {trendData && trendData.length > 1 && (
+                  <TrendChart data={trendData} title="歷史趨勢" />
+                )}
+        </div>
+        <div className="min-w-0 space-y-4 empty:hidden lg:flex-[10_1_0%]">
+                {/* 本周肌群均衡度 雷達圖（組數+容量複合分，8 肌群 + 有氧） */}
+                {(() => {
+                  const muscleNames = ['胸', '背', '腿', '肩', '二头肌', '核心', '臀', '三头肌', '有氧'];
+                  const hasAnyAvg = muscleNames.some(name => (muscleVolumeMap[name]?.avg ?? 0) > 0);
+                  if (!hasAnyAvg) return null;
 
-      {/* 本周綜合摘要 */}
-      {rankingData && milestones && (
-        <Card data-testid="card-weekly-assessment">
-          <CardHeader className="pb-3">
-            <CardTitle className="flex items-center justify-between gap-2 flex-wrap">
-              <span className="flex items-center gap-2">
-                <Award className="h-5 w-5" />
-                本周綜合摘要
-              </span>
-              <div className="flex items-center gap-3">
-                <div className="flex items-center gap-1">
-                  {[1, 2, 3, 4, 5].map((star) => (
-                    <Star
-                      key={star}
-                      className={`h-4 w-4 ${star <= milestones.achievedCount ? 'text-yellow-500 fill-yellow-500' : 'text-muted-foreground/30'}`}
-                      data-testid={`star-${star}`}
-                    />
-                  ))}
-                  <span className="text-sm font-medium ml-1" data-testid="text-milestone-count">{milestones.achievedCount}/5</span>
-                </div>
-                <Badge 
-                  variant="secondary"
-                  className={
-                    trendDirection === 'up' 
-                      ? 'bg-green-100 dark:bg-green-950/40 text-green-700 dark:text-green-400' 
-                      : trendDirection === 'down'
-                        ? 'bg-red-100 dark:bg-red-950/40 text-red-700 dark:text-red-400'
-                        : ''
-                  }
-                  data-testid="badge-trend-direction"
-                >
-                  {trendDirection === 'up' ? (
-                    <span className="flex items-center gap-1"><TrendingUp className="h-3 w-3" />连续上升</span>
-                  ) : trendDirection === 'down' ? (
-                    <span className="flex items-center gap-1"><TrendingDown className="h-3 w-3" />连续下降</span>
-                  ) : (
-                    <span className="flex items-center gap-1"><Minus className="h-3 w-3" />持平</span>
-                  )}
-                </Badge>
-              </div>
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {/* 综合得分 vs 均值 */}
-              <div className="space-y-2 cursor-pointer hover-elevate rounded-md p-1 -m-1" data-testid="section-composite-score" onClick={() => setShowDetailsDialog(true)}>
-                <div className="flex items-center justify-between gap-2 flex-wrap">
-                  <span className="text-sm text-muted-foreground">综合得分</span>
-                  <div className="flex items-center gap-2">
-                    <span className="text-lg font-bold" data-testid="text-current-total">
-                      {milestones.currentTotal.toFixed(1)}
-                    </span>
-                    <span className="text-sm text-muted-foreground">/ 均 {milestones.avgTotal.toFixed(1)}</span>
-                    {milestones.avgTotal > 0 && (
-                      <span className={`text-sm font-semibold ${
-                        milestones.currentTotal >= milestones.avgTotal 
-                          ? 'text-green-600 dark:text-green-400' 
-                          : 'text-red-600 dark:text-red-400'
-                      }`} data-testid="text-total-diff">
-                        {milestones.currentTotal >= milestones.avgTotal ? '+' : ''}
-                        {((milestones.currentTotal - milestones.avgTotal) / milestones.avgTotal * 100).toFixed(0)}%
-                      </span>
-                    )}
-                  </div>
-                </div>
-                <div className="w-full bg-muted rounded-full h-2.5">
-                  <div
-                    className={`h-2.5 rounded-full transition-all ${
-                      milestones.currentTotal >= milestones.avgTotal ? 'bg-green-500' : 'bg-orange-500'
-                    }`}
-                    style={{ width: `${Math.min((milestones.currentTotal / Math.max(milestones.avgTotal, 1)) * 100, 150)}%`, maxWidth: '100%' }}
-                    data-testid="bar-total-progress"
-                  />
-                </div>
-              </div>
+                  const radarData = muscleNames.map(name => {
+                    const volData = muscleVolumeMap[name];
+                    const g = muscleGroupStats?.muscleGroups.find(g => g.muscleGroup === name);
+                    const sets = g?.totalSets ?? 0;
+                    const volume = g?.totalVolume ?? 0;
+                    const avgVolume = volData?.avg ?? 0;
 
-              {/* 三大类 progress bars */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2" data-testid="section-category-bars">
-                {[
-                  { label: '力量', current: rankingData.currentWeek?.strengthValue || 0, avg: rankingData.averageStrengthValue, icon: Dumbbell, rank: rankingData.strengthRank },
-                  { label: '有氧', current: rankingData.currentWeek?.cardioValue || 0, avg: rankingData.averageCardioValue, icon: Heart, rank: rankingData.cardioRank },
-                  { label: '活动量', current: rankingData.currentWeek?.activityValue || 0, avg: rankingData.averageActivityValue, icon: Footprints, rank: rankingData.activityRank },
-                ].map((cat) => {
-                  const pct = cat.avg > 0 ? ((cat.current - cat.avg) / cat.avg * 100) : 0;
-                  const isAbove = cat.current >= cat.avg;
-                  return (
-                    <div key={cat.label} className="p-3 rounded-lg bg-muted/50 space-y-2" data-testid={`category-bar-${cat.label}`}>
-                      <div className="flex items-center justify-between gap-1">
-                        <span className="text-xs font-medium flex items-center gap-1">
-                          <cat.icon className="h-3 w-3" />
-                          {cat.label}
-                        </span>
-                        <span className="text-xs text-muted-foreground">#{cat.rank}</span>
-                      </div>
-                      <div className="flex items-baseline gap-1">
-                        <span className="text-sm font-bold">{cat.current.toFixed(1)}</span>
-                        <span className="text-xs text-muted-foreground">/ {cat.avg.toFixed(1)}</span>
-                        {cat.avg > 0 && (
-                          <span className={`text-xs font-semibold ${isAbove ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-                            {isAbove ? '+' : ''}{pct.toFixed(0)}%
-                          </span>
-                        )}
-                      </div>
-                      <div className="w-full bg-muted rounded-full h-1.5">
-                        <div
-                          className={`h-1.5 rounded-full transition-all ${isAbove ? 'bg-green-500' : 'bg-orange-500'}`}
-                          style={{ width: `${Math.min((cat.current / Math.max(cat.avg, 1)) * 100, 100)}%` }}
-                        />
-                      </div>
-                    </div>
+                    // 各肌群各自的維持組數基準（大肌群基準較高、小肌群較低）；「有氧」沒有
+                    // 組數概念，這裡的 sets 其實是本週有氧分鐘數，基準是週 60 分鐘，見
+                    // @shared/muscleGroupStats 的 MUSCLE_SETS_MAINTENANCE 說明
+                    const { setsPct, volumePct, composite } = computeMuscleCompositeScore(name, sets, volume, avgVolume);
+
+                    return { name, pct: composite, setsPct, volumePct, baseline: 100, sets, volume, avgVolume };
+                  });
+
+                  // Recommendations: weakest muscles with composite < 80 that have volume history
+                  const recommendations = radarData
+                    .filter(d => d.avgVolume > 0 && d.pct < 80)
+                    .sort((a, b) => a.pct - b.pct)
+                    .slice(0, 3);
+
+                  // 均衡度分數：最弱/最強肌群複合分的比值，見 @shared/muscleGroupStats
+                  const balanceScore = computeBalanceScore(
+                    radarData.map(d => ({ name: d.name, composite: d.pct, hasVolumeHistory: d.avgVolume > 0 }))
                   );
-                })}
-              </div>
 
-              {/* 里程碑阶段 */}
-              <div className="flex items-center gap-2 pt-2 border-t flex-wrap" data-testid="section-milestone-stages">
-                {[
-                  { stage: 1, name: '参与', achieved: milestones.hasEntry, detail: '至少1次训练记录', status: milestones.hasEntry ? '已达成' : '未达成' },
-                  { stage: 2, name: '纪律', achieved: milestones.hasDiscipline, detail: `训练天数 ≥ 3（目前 ${milestones.trainingDays} 天）`, status: milestones.hasDiscipline ? '已达成' : `${milestones.trainingDays}/3 天` },
-                  { stage: 3, name: '容量', achieved: milestones.totalAbove, detail: `总分超过生涯均值（均 ${milestones.avgTotal.toFixed(0)}）`, status: milestones.totalAbove ? '已达成' : `${milestones.currentTotal.toFixed(0)} / ${milestones.avgTotal.toFixed(0)}` },
-                  { stage: 4, name: '强度', achieved: milestones.allMusclesAtMaintenance, detail: `≥50% 肌群达维持量+容量（${milestones.musclesFullyMetCount}/${milestones.musclesTotalCount}）`, status: milestones.allMusclesAtMaintenance ? '已达成' : `${milestones.musclesFullyMetCount}/${milestones.musclesTotalCount} 肌群` },
-                  { stage: 5, name: '突破', achieved: milestones.breakthrough, detail: '前10% 或 4周新高', status: milestones.breakthrough ? '已达成' : milestones.inTop10 ? '前10%' : milestones.isFourWeekHigh ? '4周新高' : '未达成' },
-                ].map((m) => (
-                  <Popover key={m.stage}>
-                    <PopoverTrigger asChild>
-                      <button
-                        className={`flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-medium transition-colors cursor-pointer ${
-                          m.achieved
-                            ? 'bg-green-100 dark:bg-green-950/40 text-green-700 dark:text-green-400'
-                            : 'bg-muted text-muted-foreground'
-                        }`}
-                        data-testid={`milestone-badge-${m.stage}`}
-                      >
-                        <span className={`flex items-center justify-center w-4 h-4 rounded-full text-[10px] font-bold ${
-                          m.achieved
-                            ? 'bg-green-600 text-white dark:bg-green-500'
-                            : 'bg-muted-foreground/20 text-muted-foreground'
-                        }`}>
-                          {m.stage}
-                        </span>
-                        {m.name}
-                      </button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-48 p-3" side="bottom">
-                      <div className="space-y-1">
-                        <p className="text-sm font-medium">{m.stage}. {m.name}</p>
-                        <p className="text-xs text-muted-foreground">{m.detail}</p>
-                        <p className={`text-xs font-medium ${m.achieved ? 'text-green-600 dark:text-green-400' : 'text-muted-foreground'}`}>
-                          {m.status}
-                        </p>
-                      </div>
-                    </PopoverContent>
-                  </Popover>
-                ))}
-              </div>
+                  // 覆蓋分數：雷達圖多邊形面積 ÷ 每軸都 100% 時的面積，見 @shared/muscleGroupStats
+                  const rawCoverageScore = computeCoverageScore(radarData.map(d => d.pct));
 
-              {/* 排名 + 快捷连结 */}
-              <div className="flex items-center justify-between gap-2 flex-wrap" data-testid="section-rank-milestones">
-                <div className="flex items-center gap-3">
-                  <span className="text-sm text-muted-foreground">本周排名</span>
-                  <span className="text-sm font-bold" data-testid="text-current-rank">
-                    #{rankingData.rank} / {rankingData.totalWeeks} 周
-                  </span>
-                </div>
-                <div className="flex items-center gap-1">
-                  <Button variant="ghost" size="sm" onClick={() => setShowWeekRecordsDialog(true)} data-testid="button-view-week-records">
-                    本周记录
-                  </Button>
-                  {rankingData.bestWeek && (
-                    <Button variant="ghost" size="sm" onClick={() => setShowBestWeekDialog(true)} data-testid="button-view-best-week">
-                      历史最佳
-                    </Button>
-                  )}
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+                  // 活動量（例如步數）不當成獨立軸放進雷達圖——沒有「肌群」的同儕關係，
+                  // 改成幫覆蓋分數加成（封頂 +10%），且必須顯示加成來源，見
+                  // @shared/muscleGroupStats 的 applyActivityBonus 說明
+                  const activityAvg = rankingData?.averageActivityValue ?? 0;
+                  const activityComposite = activityAvg > 0
+                    ? ((rankingData?.currentWeek?.activityValue ?? 0) / activityAvg) * 100
+                    : 0;
+                  const { adjustedCoverage: coverageScore, bonusPoints: activityBonusPoints } =
+                    applyActivityBonus(rawCoverageScore, activityComposite);
 
-      {/* 本周肌群均衡度 雷達圖（組數+容量複合分，8 肌群 + 有氧） */}
-      {(() => {
-        const muscleNames = ['胸', '背', '腿', '肩', '二头肌', '核心', '臀', '三头肌', '有氧'];
-        const hasAnyAvg = muscleNames.some(name => (muscleVolumeMap[name]?.avg ?? 0) > 0);
-        if (!hasAnyAvg) return null;
+                  const weekStart = muscleGroupStats?.weekStart;
+                  const scores = Object.fromEntries(radarData.map(d => [d.name, d.pct]));
 
-        const radarData = muscleNames.map(name => {
-          const volData = muscleVolumeMap[name];
-          const g = muscleGroupStats?.muscleGroups.find(g => g.muscleGroup === name);
-          const sets = g?.totalSets ?? 0;
-          const volume = g?.totalVolume ?? 0;
-          const avgVolume = volData?.avg ?? 0;
-
-          // 各肌群各自的維持組數基準（大肌群基準較高、小肌群較低）；「有氧」沒有
-          // 組數概念，這裡的 sets 其實是本週有氧分鐘數，基準是週 60 分鐘，見
-          // @shared/muscleGroupStats 的 MUSCLE_SETS_MAINTENANCE 說明
-          const { setsPct, volumePct, composite } = computeMuscleCompositeScore(name, sets, volume, avgVolume);
-
-          return { name, pct: composite, setsPct, volumePct, baseline: 100, sets, volume, avgVolume };
-        });
-
-        // Recommendations: weakest muscles with composite < 80 that have volume history
-        const recommendations = radarData
-          .filter(d => d.avgVolume > 0 && d.pct < 80)
-          .sort((a, b) => a.pct - b.pct)
-          .slice(0, 3);
-
-        // 均衡度分數：最弱/最強肌群複合分的比值，見 @shared/muscleGroupStats
-        const balanceScore = computeBalanceScore(
-          radarData.map(d => ({ name: d.name, composite: d.pct, hasVolumeHistory: d.avgVolume > 0 }))
-        );
-
-        // 覆蓋分數：雷達圖多邊形面積 ÷ 每軸都 100% 時的面積，見 @shared/muscleGroupStats
-        const rawCoverageScore = computeCoverageScore(radarData.map(d => d.pct));
-
-        // 活動量（例如步數）不當成獨立軸放進雷達圖——沒有「肌群」的同儕關係，
-        // 改成幫覆蓋分數加成（封頂 +10%），且必須顯示加成來源，見
-        // @shared/muscleGroupStats 的 applyActivityBonus 說明
-        const activityAvg = rankingData?.averageActivityValue ?? 0;
-        const activityComposite = activityAvg > 0
-          ? ((rankingData?.currentWeek?.activityValue ?? 0) / activityAvg) * 100
-          : 0;
-        const { adjustedCoverage: coverageScore, bonusPoints: activityBonusPoints } =
-          applyActivityBonus(rawCoverageScore, activityComposite);
-
-        const weekStart = muscleGroupStats?.weekStart;
-        const scores = Object.fromEntries(radarData.map(d => [d.name, d.pct]));
-
-        return (
-          <>
-            <Card data-testid="card-muscle-radar">
-              <CardHeader className="pb-2">
-                <CardTitle className="flex items-center justify-between gap-2 text-base flex-wrap">
-                  <span
-                    className="flex items-center gap-2 cursor-pointer"
-                    onClick={() => setShowMuscleDetail(v => !v)}
-                  >
-                    <RadarIcon className="h-5 w-5" />
-                    本周肌群均衡度
-                    {balanceScore !== null && (
-                      <Badge
-                        variant="outline"
-                        className={
-                          balanceScore >= 80
-                            ? "text-green-600 border-green-600/40 bg-green-500/10"
-                            : balanceScore >= 50
-                            ? "text-amber-600 border-amber-600/40 bg-amber-500/10"
-                            : "text-red-600 border-red-600/40 bg-red-500/10"
-                        }
-                        data-testid="badge-balance-score"
-                      >
-                        均衡度 {balanceScore}%
-                      </Badge>
-                    )}
-                    {coverageScore !== null && (
-                      <Badge
-                        variant="outline"
-                        className={
-                          coverageScore >= 100
-                            ? "text-green-600 border-green-600/40 bg-green-500/10"
-                            : coverageScore >= 60
-                            ? "text-amber-600 border-amber-600/40 bg-amber-500/10"
-                            : "text-red-600 border-red-600/40 bg-red-500/10"
-                        }
-                        data-testid="badge-coverage-score"
-                      >
-                        覆蓋 {coverageScore}%{activityBonusPoints > 0 ? `（含活動量 +${activityBonusPoints}%）` : ''}
-                      </Badge>
-                    )}
-                    {showMuscleDetail
-                      ? <ChevronDown className="h-4 w-4 text-muted-foreground" />
-                      : <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                    }
-                  </span>
-                  {weekStart && (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="text-xs h-7 gap-1"
-                      onClick={async () => {
-                        try {
-                          await apiRequest("POST", "/api/stats/radar-snapshot", {
-                            weekStart,
-                            scores,
-                            recommendations: recommendations.map(r => r.name),
-                          });
-                          toast({ title: "雷達圖已儲存", description: `第 ${weekStart} 週快照已保存` });
-                        } catch {
-                          toast({ title: "儲存失敗", variant: "destructive" });
-                        }
-                      }}
-                    >
-                      <Save className="h-3 w-3" />
-                      儲存快照
-                    </Button>
-                  )}
-                </CardTitle>
-                <p className="text-xs text-muted-foreground mt-1">複合評分 = 組數 40% + 容量 60%，對比歷史均值</p>
-                {balanceScore !== null && (
-                  <p className="text-xs text-muted-foreground mt-0.5">均衡度 = 最弱肌群 ÷ 最強肌群複合分，數字越低代表落差越大</p>
-                )}
-                {coverageScore !== null && (
-                  <p className="text-xs text-muted-foreground mt-0.5">覆蓋 = 雷達圖多邊形面積 ÷ 每軸都達 100% 時的面積，數字越高代表整體訓練量越飽滿；活動量（如步數）達成率另外加成，封頂 +10%</p>
-                )}
-              </CardHeader>
-              <CardContent>
-                <ResponsiveContainer width="100%" height={380}>
-                  <RadarChart data={radarData} outerRadius="78%">
-                    <PolarGrid stroke="hsl(var(--muted-foreground) / 0.25)" />
-                    <PolarAngleAxis
-                      dataKey="name"
-                      tick={{ fontSize: 12, fill: 'hsl(var(--foreground) / 0.75)' }}
-                    />
-                    <PolarRadiusAxis
-                      domain={[0, 150]}
-                      ticks={[0, 50, 100, 150] as any}
-                      tickFormatter={(v: number) => v === 100 ? '維持' : `${v}%`}
-                      tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
-                      axisLine={false}
-                      angle={90}
-                    />
-                    <RechartsTooltip
-                      content={({ active, payload }) => {
-                        if (!active || !payload?.length) return null;
-                        const d = payload[0].payload;
-                        return (
-                          <div className="rounded-md border bg-popover p-2.5 shadow-md text-xs space-y-0.5">
-                            <p className="font-semibold">{d.name}</p>
-                            <p className="text-muted-foreground">複合分: <span className="font-bold text-foreground">{d.pct}%</span></p>
-                            <p className="text-muted-foreground">組數分: <span className="font-medium">{d.setsPct}%</span> ({d.sets} / {getMuscleSetsMaintenance(d.name)} 組)</p>
-                            {d.volumePct !== null && (
-                              <p className="text-muted-foreground">容量分: <span className="font-medium">{d.volumePct}%</span></p>
-                            )}
-                          </div>
-                        );
-                      }}
-                    />
-                    <Radar
-                      name="維持量"
-                      dataKey="baseline"
-                      stroke="#d4a900"
-                      strokeDasharray="4 3"
-                      strokeWidth={1.5}
-                      fill="transparent"
-                      dot={false}
-                    />
-                    <Radar
-                      name="本周複合分"
-                      dataKey="pct"
-                      stroke="hsl(var(--primary))"
-                      strokeWidth={2}
-                      fill="hsl(var(--primary))"
-                      fillOpacity={0.25}
-                      dot={false}
-                    />
-                  </RadarChart>
-                </ResponsiveContainer>
-                <div className="flex items-center justify-center gap-4 text-xs text-muted-foreground -mt-2">
-                  <span className="flex items-center gap-1.5">
-                    <span className="inline-block w-5 border-t-2 border-dashed border-yellow-600" />
-                    維持量基準
-                  </span>
-                  <span className="flex items-center gap-1.5">
-                    <span className="inline-block w-5 border-t-2 border-primary" />
-                    本周複合分
-                  </span>
-                </div>
-
-                {/* AI-style recommendations */}
-                {recommendations.length > 0 && (() => {
-                  // Map Chinese muscle group names → exercise muscle field keys
-                  const muscleFieldMap: Record<string, keyof Exercise> = {
-                    '胸': 'muscleChest', '背': 'muscleBack', '腿': 'muscleLegs',
-                    '肩': 'muscleShoulders', '二头肌': 'muscleArms', '三头肌': 'muscleArms',
-                    '核心': 'muscleCore', '臀': 'muscleGlutes',
-                  };
                   return (
-                    <div className="mt-4 rounded-lg border bg-muted/30 p-3 space-y-2">
-                      <p className="text-xs font-semibold flex items-center gap-1.5">
-                        <Lightbulb className="h-3.5 w-3.5 text-yellow-500" />
-                        系統建議：最需加強的肌群
-                      </p>
-                      <div className="space-y-2.5">
-                        {recommendations.map((r, i) => {
-                          const priority = ['🔴', '🟠', '🟡'][i] ?? '•';
-                          const deficit = 100 - r.pct;
-                          const reason = r.volumePct !== null
-                            ? `複合分 ${r.pct}%（組數 ${r.setsPct}% / 容量 ${r.volumePct}%），不足 ${deficit}%`
-                            : `組數分 ${r.setsPct}%（本週 ${r.sets} 組 / 維持需 ${getMuscleSetsMaintenance(r.name)} 組）`;
-                          const field = muscleFieldMap[r.name];
-                          const suggestedExercises = field
-                            ? (exercises ?? [])
-                                .filter(e => ((e[field] as number) ?? 0) >= 20)
-                                .sort((a, b) => ((b[field] as number) ?? 0) - ((a[field] as number) ?? 0))
-                                .slice(0, 4)
-                            : [];
-                          return (
-                            <div key={r.name} className="flex items-start gap-2 text-xs">
-                              <span className="mt-0.5">{priority}</span>
-                              <div className="flex-1 min-w-0">
-                                <div>
-                                  <span className="font-semibold">{r.name}</span>
-                                  <span className="text-muted-foreground ml-1.5">{reason}</span>
+                    <>
+                      <Card data-testid="card-muscle-radar">
+                        <CardHeader className="pb-2">
+                          <CardTitle className="flex items-center justify-between gap-2 text-base flex-wrap">
+                            <span
+                              className="flex items-center gap-2 cursor-pointer"
+                              onClick={() => setShowMuscleDetail(v => !v)}
+                            >
+                              <RadarIcon className="h-5 w-5" />
+                              本周肌群均衡度
+                              {balanceScore !== null && (
+                                <Badge
+                                  variant="outline"
+                                  className={
+                                    balanceScore >= 80
+                                      ? "text-green-600 border-green-600/40 bg-green-500/10"
+                                      : balanceScore >= 50
+                                      ? "text-amber-600 border-amber-600/40 bg-amber-500/10"
+                                      : "text-red-600 border-red-600/40 bg-red-500/10"
+                                  }
+                                  data-testid="badge-balance-score"
+                                >
+                                  均衡度 {balanceScore}%
+                                </Badge>
+                              )}
+                              {coverageScore !== null && (
+                                <Badge
+                                  variant="outline"
+                                  className={
+                                    coverageScore >= 100
+                                      ? "text-green-600 border-green-600/40 bg-green-500/10"
+                                      : coverageScore >= 60
+                                      ? "text-amber-600 border-amber-600/40 bg-amber-500/10"
+                                      : "text-red-600 border-red-600/40 bg-red-500/10"
+                                  }
+                                  data-testid="badge-coverage-score"
+                                >
+                                  覆蓋 {coverageScore}%{activityBonusPoints > 0 ? `（含活動量 +${activityBonusPoints}%）` : ''}
+                                </Badge>
+                              )}
+                              {showMuscleDetail
+                                ? <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                                : <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                              }
+                            </span>
+                            {weekStart && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="text-xs h-7 gap-1"
+                                onClick={async () => {
+                                  try {
+                                    await apiRequest("POST", "/api/stats/radar-snapshot", {
+                                      weekStart,
+                                      scores,
+                                      recommendations: recommendations.map(r => r.name),
+                                    });
+                                    toast({ title: "雷達圖已儲存", description: `第 ${weekStart} 週快照已保存` });
+                                  } catch {
+                                    toast({ title: "儲存失敗", variant: "destructive" });
+                                  }
+                                }}
+                              >
+                                <Save className="h-3 w-3" />
+                                儲存快照
+                              </Button>
+                            )}
+                          </CardTitle>
+                          <details className="mt-1 text-xs text-muted-foreground" data-testid="details-radar-help">
+                            <summary className="cursor-pointer select-none hover:text-foreground">計分說明</summary>
+                            <p className="mt-1">複合評分 = 組數 40% + 容量 60%，對比歷史均值</p>
+                            {balanceScore !== null && (
+                              <p className="mt-0.5">均衡度 = 最弱 2 個肌群複合分平均 ÷ 最強肌群複合分，數字越低代表落差越大</p>
+                            )}
+                            {coverageScore !== null && (
+                              <p className="mt-0.5">覆蓋 = 雷達圖多邊形面積 ÷ 每軸都達 100% 時的面積，數字越高代表整體訓練量越飽滿；活動量（如步數）達成率另外加成，封頂 +10%</p>
+                            )}
+                          </details>
+                        </CardHeader>
+                        <CardContent>
+                          <ResponsiveContainer width="100%" height={320}>
+                            <RadarChart data={radarData} outerRadius="78%">
+                              <PolarGrid stroke="hsl(var(--muted-foreground) / 0.25)" />
+                              <PolarAngleAxis
+                                dataKey="name"
+                                tick={{ fontSize: 12, fill: 'hsl(var(--foreground) / 0.75)' }}
+                              />
+                              <PolarRadiusAxis
+                                domain={[0, 150]}
+                                ticks={[0, 50, 100, 150] as any}
+                                tickFormatter={(v: number) => v === 100 ? '維持' : `${v}%`}
+                                tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
+                                axisLine={false}
+                                angle={90}
+                              />
+                              <RechartsTooltip
+                                content={({ active, payload }) => {
+                                  if (!active || !payload?.length) return null;
+                                  const d = payload[0].payload;
+                                  return (
+                                    <div className="rounded-md border bg-popover p-2.5 shadow-md text-xs space-y-0.5">
+                                      <p className="font-semibold">{d.name}</p>
+                                      <p className="text-muted-foreground">複合分: <span className="font-bold text-foreground">{d.pct}%</span></p>
+                                      <p className="text-muted-foreground">組數分: <span className="font-medium">{d.setsPct}%</span> ({d.sets} / {getMuscleSetsMaintenance(d.name)} 組)</p>
+                                      {d.volumePct !== null && (
+                                        <p className="text-muted-foreground">容量分: <span className="font-medium">{d.volumePct}%</span></p>
+                                      )}
+                                    </div>
+                                  );
+                                }}
+                              />
+                              <Radar
+                                name="維持量"
+                                dataKey="baseline"
+                                stroke="#d4a900"
+                                strokeDasharray="4 3"
+                                strokeWidth={1.5}
+                                fill="transparent"
+                                dot={false}
+                              />
+                              <Radar
+                                name="本周複合分"
+                                dataKey="pct"
+                                stroke="hsl(var(--primary))"
+                                strokeWidth={2}
+                                fill="hsl(var(--primary))"
+                                fillOpacity={0.25}
+                                dot={false}
+                              />
+                            </RadarChart>
+                          </ResponsiveContainer>
+                          <div className="flex items-center justify-center gap-4 text-xs text-muted-foreground -mt-2">
+                            <span className="flex items-center gap-1.5">
+                              <span className="inline-block w-5 border-t-2 border-dashed border-yellow-600" />
+                              維持量基準
+                            </span>
+                            <span className="flex items-center gap-1.5">
+                              <span className="inline-block w-5 border-t-2 border-primary" />
+                              本周複合分
+                            </span>
+                          </div>
+
+                          {/* AI-style recommendations */}
+                          {recommendations.length > 0 && (() => {
+                            // Map Chinese muscle group names → exercise muscle field keys
+                            const muscleFieldMap: Record<string, keyof Exercise> = {
+                              '胸': 'muscleChest', '背': 'muscleBack', '腿': 'muscleLegs',
+                              '肩': 'muscleShoulders', '二头肌': 'muscleArms', '三头肌': 'muscleArms',
+                              '核心': 'muscleCore', '臀': 'muscleGlutes',
+                            };
+                            return (
+                              <div className="mt-4 rounded-lg border bg-muted/30 p-3 space-y-2">
+                                <p className="text-xs font-semibold flex items-center gap-1.5">
+                                  <Lightbulb className="h-3.5 w-3.5 text-yellow-500" />
+                                  系統建議：最需加強的肌群
+                                </p>
+                                <div className="space-y-2.5">
+                                  {recommendations.map((r, i) => {
+                                    const priority = ['🔴', '🟠', '🟡'][i] ?? '•';
+                                    const deficit = 100 - r.pct;
+                                    const reason = r.volumePct !== null
+                                      ? `複合分 ${r.pct}%（組數 ${r.setsPct}% / 容量 ${r.volumePct}%），不足 ${deficit}%`
+                                      : `組數分 ${r.setsPct}%（本週 ${r.sets} 組 / 維持需 ${getMuscleSetsMaintenance(r.name)} 組）`;
+                                    const field = muscleFieldMap[r.name];
+                                    const suggestedExercises = field
+                                      ? (exercises ?? [])
+                                          .filter(e => ((e[field] as number) ?? 0) >= 20)
+                                          .sort((a, b) => ((b[field] as number) ?? 0) - ((a[field] as number) ?? 0))
+                                          .slice(0, 4)
+                                      : [];
+                                    return (
+                                      <div key={r.name} className="flex items-start gap-2 text-xs">
+                                        <span className="mt-0.5">{priority}</span>
+                                        <div className="flex-1 min-w-0">
+                                          <div>
+                                            <span className="font-semibold">{r.name}</span>
+                                            <span className="text-muted-foreground ml-1.5">{reason}</span>
+                                          </div>
+                                          {suggestedExercises.length > 0 && (
+                                            <div className="flex flex-wrap gap-1 mt-1.5">
+                                              {suggestedExercises.map(ex => (
+                                                <button
+                                                  key={ex.id}
+                                                  onClick={() => handleAddEntry(ex.id)}
+                                                  className="inline-flex items-center gap-1 rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary hover:bg-primary/20 transition-colors"
+                                                >
+                                                  <Plus className="h-2.5 w-2.5" />
+                                                  {ex.name}
+                                                </button>
+                                              ))}
+                                            </div>
+                                          )}
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
                                 </div>
-                                {suggestedExercises.length > 0 && (
-                                  <div className="flex flex-wrap gap-1 mt-1.5">
-                                    {suggestedExercises.map(ex => (
-                                      <button
-                                        key={ex.id}
-                                        onClick={() => handleAddEntry(ex.id)}
-                                        className="inline-flex items-center gap-1 rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary hover:bg-primary/20 transition-colors"
-                                      >
-                                        <Plus className="h-2.5 w-2.5" />
-                                        {ex.name}
-                                      </button>
-                                    ))}
-                                  </div>
-                                )}
                               </div>
+                            );
+                          })()}
+
+                          {recommendations.length === 0 && radarData.every(d => d.pct >= 80) && (
+                            <div className="mt-4 rounded-lg border bg-green-50 dark:bg-green-950/20 border-green-200 dark:border-green-800/30 p-3">
+                              <p className="text-xs text-green-700 dark:text-green-400 flex items-center gap-1.5">
+                                <Check className="h-3.5 w-3.5" />
+                                本週所有肌群均衡度良好，繼續保持！
+                              </p>
                             </div>
-                          );
-                        })}
-                      </div>
-                    </div>
+                          )}
+                        </CardContent>
+                      </Card>
+                    </>
                   );
                 })()}
+                {/* 本周肌群训练详情 - 点击雷达图展开 */}
+                {showMuscleDetail && !muscleGroupLoading && (
+                  <Card data-testid="card-muscle-group-stats">
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2">
+                        <Dumbbell className="h-5 w-5" />
+                        本周肌群训练
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                        {(() => {
+                          const ALL_MUSCLES = ['胸', '背', '腿', '肩', '二头肌', '核心', '臀', '三头肌'];
 
-                {recommendations.length === 0 && radarData.every(d => d.pct >= 80) && (
-                  <div className="mt-4 rounded-lg border bg-green-50 dark:bg-green-950/20 border-green-200 dark:border-green-800/30 p-3">
-                    <p className="text-xs text-green-700 dark:text-green-400 flex items-center gap-1.5">
-                      <Check className="h-3.5 w-3.5" />
-                      本週所有肌群均衡度良好，繼續保持！
-                    </p>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </>
-        );
-      })()}
-
-      {/* 歷史雷達圖快照 */}
-      <Card data-testid="card-radar-history">
-        <CardHeader className="pb-2">
-          <CardTitle
-            className="flex items-center gap-2 text-base cursor-pointer"
-            onClick={() => setShowSnapshotHistory(v => !v)}
-          >
-            <History className="h-5 w-5" />
-            歷史週雷達圖快照
-            {showSnapshotHistory
-              ? <ChevronDown className="h-4 w-4 text-muted-foreground" />
-              : <ChevronRight className="h-4 w-4 text-muted-foreground" />
-            }
-          </CardTitle>
-        </CardHeader>
-        {showSnapshotHistory && (
-          <CardContent>
-            {!radarSnapshotHistory ? (
-              <div className="flex justify-center py-6"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
-            ) : radarSnapshotHistory.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-6">尚無儲存的快照。每周日晚間 GitHub Actions 會自動儲存，或點雷達圖右上角「儲存快照」手動儲存。</p>
-            ) : (
-              <div className="space-y-4">
-                {radarSnapshotHistory.map(snap => {
-                  const scores: Record<string, number> = JSON.parse(snap.scoresJson);
-                  const recs: string[] = JSON.parse(snap.recommendationsJson);
-                  const muscleNames = ['胸', '背', '腿', '肩', '二头肌', '核心', '臀', '三头肌', '有氧'];
-                  const radarData = muscleNames.map(name => ({
-                    name,
-                    // 有氧軸是後來加的，backfill 之前存的舊快照沒有這個 key，
-                    // 缺值一律當 0%（見 /api/admin/backfill-aerobic-radar-snapshots）
-                    pct: scores[name] ?? 0,
-                    baseline: 100,
-                  }));
-                  // 快照只存了最終複合分，沒存當時哪些肌群有歷史容量資料可比對，
-                  // 所以均衡度這裡把全部 9 軸都當作可比對——多數情況下跟即時
-                  // 版一致，只有極少數「當週某肌群剛好還沒有比對基準」的情況會有
-                  // 微小落差，可接受的近似值。覆蓋分數則本來就用全部軸，沒有這個問題。
-                  // 這裡沒有套用活動量加成——舊快照沒存當週的活動量數字，且
-                  // 「歷史每一週的活動量達成率」需要額外跨表比對日期，複雜度/風險
-                  // 不成比例，範圍先限定在即時版（見下方 histCoverageScore）。
-                  const histBalanceScore = computeBalanceScore(
-                    radarData.map(d => ({ name: d.name, composite: d.pct, hasVolumeHistory: true }))
-                  );
-                  const histCoverageScore = computeCoverageScore(radarData.map(d => d.pct));
-                  return (
-                    <div key={snap.weekStart} className="rounded-lg border p-3 space-y-2">
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm font-semibold">{snap.weekStart} 當週</span>
-                        <span className="text-xs text-muted-foreground">
-                          儲存於 {new Date(snap.createdAt).toLocaleDateString('zh-TW')}
-                        </span>
-                      </div>
-                      {(histBalanceScore !== null || histCoverageScore !== null) && (
-                        <div className="flex flex-wrap gap-1.5">
-                          {histBalanceScore !== null && (
-                            <Badge
-                              variant="outline"
-                              className={
-                                histBalanceScore >= 80
-                                  ? "text-green-600 border-green-600/40 bg-green-500/10 text-[11px]"
-                                  : histBalanceScore >= 50
-                                  ? "text-amber-600 border-amber-600/40 bg-amber-500/10 text-[11px]"
-                                  : "text-red-600 border-red-600/40 bg-red-500/10 text-[11px]"
-                              }
-                            >
-                              均衡度 {histBalanceScore}%
-                            </Badge>
-                          )}
-                          {histCoverageScore !== null && (
-                            <Badge
-                              variant="outline"
-                              className={
-                                histCoverageScore >= 100
-                                  ? "text-green-600 border-green-600/40 bg-green-500/10 text-[11px]"
-                                  : histCoverageScore >= 60
-                                  ? "text-amber-600 border-amber-600/40 bg-amber-500/10 text-[11px]"
-                                  : "text-red-600 border-red-600/40 bg-red-500/10 text-[11px]"
-                              }
-                            >
-                              覆蓋 {histCoverageScore}%
-                            </Badge>
-                          )}
-                        </div>
-                      )}
-                      <ResponsiveContainer width="100%" height={220}>
-                        <RadarChart data={radarData} outerRadius="72%">
-                          <PolarGrid stroke="hsl(var(--muted-foreground) / 0.2)" />
-                          <PolarAngleAxis dataKey="name" tick={{ fontSize: 11, fill: 'hsl(var(--foreground) / 0.7)' }} />
-                          <PolarRadiusAxis domain={[0, 150]} ticks={[0, 50, 100, 150] as any} tickFormatter={(v: number) => v === 100 ? '維持' : `${v}%`} tick={{ fontSize: 9, fill: 'hsl(var(--muted-foreground))' }} axisLine={false} angle={90} />
-                          <Radar name="維持量" dataKey="baseline" stroke="#d4a900" strokeDasharray="4 3" strokeWidth={1.5} fill="transparent" dot={false} />
-                          <Radar name="複合分" dataKey="pct" stroke="hsl(var(--primary))" strokeWidth={2} fill="hsl(var(--primary))" fillOpacity={0.22} dot={false} />
-                        </RadarChart>
-                      </ResponsiveContainer>
-                      <div className="flex flex-wrap gap-1.5 pt-1">
-                        {muscleNames.map(name => {
-                          const val = scores[name] ?? 0;
-                          const color = val >= 100 ? 'text-green-600 dark:text-green-400' : val >= 80 ? 'text-yellow-600 dark:text-yellow-400' : 'text-red-500';
-                          return (
-                            <span key={name} className="text-[11px] flex items-center gap-0.5">
-                              <span className="text-muted-foreground">{name}</span>
-                              <span className={`font-semibold ${color}`}>{val}%</span>
-                            </span>
+                          const weekMap = new Map(
+                            (muscleGroupStats?.muscleGroups || []).map(g => [g.muscleGroup, g])
                           );
-                        })}
-                      </div>
-                      {recs.length > 0 && (
-                        <p className="text-xs text-muted-foreground">
-                          當週最需加強：{recs.join('、')}
-                        </p>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </CardContent>
-        )}
-      </Card>
 
-      {/* 本周肌群训练详情 - 点击雷达图展开 */}
-      {showMuscleDetail && !muscleGroupLoading && (
-        <Card data-testid="card-muscle-group-stats">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Dumbbell className="h-5 w-5" />
-              本周肌群训练
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              {(() => {
-                const ALL_MUSCLES = ['胸', '背', '腿', '肩', '二头肌', '核心', '臀', '三头肌'];
+                          const getSetStatus = (sets: number) => {
+                            if (sets === 0) return { color: 'bg-muted-foreground/20', textColor: 'text-muted-foreground', label: '未訓練' };
+                            if (sets < 4) return { color: 'bg-red-500', textColor: 'text-red-600 dark:text-red-400', label: '低于维持量' };
+                            if (sets <= 8) return { color: 'bg-yellow-500', textColor: 'text-yellow-600 dark:text-yellow-400', label: '维持中' };
+                            if (sets <= 15) return { color: 'bg-green-500', textColor: 'text-green-600 dark:text-green-400', label: '最佳区间' };
+                            if (sets <= 20) return { color: 'bg-green-500', textColor: 'text-green-600 dark:text-green-400', label: '高强度' };
+                            return { color: 'bg-purple-500', textColor: 'text-purple-600 dark:text-purple-400', label: '超量警示' };
+                          };
 
-                const weekMap = new Map(
-                  (muscleGroupStats?.muscleGroups || []).map(g => [g.muscleGroup, g])
-                );
+                          const getCombinedStatus = (sets: number, setsOk: boolean, volumeOk: boolean, hasHistory: boolean) => {
+                            if (sets === 0) return { label: '--', badgeClass: 'bg-muted text-muted-foreground', tintClass: '' };
+                            if (!hasHistory) return { label: '--', badgeClass: 'bg-muted text-muted-foreground', tintClass: '' };
+                            if (setsOk && volumeOk) return { label: '全達標', badgeClass: 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400', tintClass: 'bg-green-50 dark:bg-green-950/20 border border-green-200/50 dark:border-green-800/30' };
+                            if (!setsOk && volumeOk) return { label: '缺組數', badgeClass: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400', tintClass: 'bg-amber-50/50 dark:bg-amber-950/10 border border-amber-200/40 dark:border-amber-800/20' };
+                            if (setsOk && !volumeOk) return { label: '缺容量', badgeClass: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400', tintClass: 'bg-amber-50/50 dark:bg-amber-950/10 border border-amber-200/40 dark:border-amber-800/20' };
+                            return { label: '未達標', badgeClass: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400', tintClass: 'bg-red-50/50 dark:bg-red-950/10 border border-red-200/40 dark:border-red-800/20' };
+                          };
 
-                const getSetStatus = (sets: number) => {
-                  if (sets === 0) return { color: 'bg-muted-foreground/20', textColor: 'text-muted-foreground', label: '未訓練' };
-                  if (sets < 4) return { color: 'bg-red-500', textColor: 'text-red-600 dark:text-red-400', label: '低于维持量' };
-                  if (sets <= 8) return { color: 'bg-yellow-500', textColor: 'text-yellow-600 dark:text-yellow-400', label: '维持中' };
-                  if (sets <= 15) return { color: 'bg-green-500', textColor: 'text-green-600 dark:text-green-400', label: '最佳区间' };
-                  if (sets <= 20) return { color: 'bg-green-500', textColor: 'text-green-600 dark:text-green-400', label: '高强度' };
-                  return { color: 'bg-purple-500', textColor: 'text-purple-600 dark:text-purple-400', label: '超量警示' };
-                };
+                          const getSortPriority = (name: string) => {
+                            const g = weekMap.get(name);
+                            const sets = g?.totalSets || 0;
+                            const vol = g?.totalVolume || 0;
+                            const vd = muscleVolumeMap[name];
+                            const avg = vd?.avg || 0;
+                            const hasHist = avg > 0;
+                            if (sets === 0) return hasHist ? 2 : 4;
+                            const sok = sets >= 4;
+                            const vok = hasHist && vol >= avg;
+                            if (!sok && !vok) return 0;
+                            if (!sok || !vok) return 1;
+                            return 3;
+                          };
+                          const sortedMuscles = [...ALL_MUSCLES].sort((a, b) => getSortPriority(a) - getSortPriority(b));
 
-                const getCombinedStatus = (sets: number, setsOk: boolean, volumeOk: boolean, hasHistory: boolean) => {
-                  if (sets === 0) return { label: '--', badgeClass: 'bg-muted text-muted-foreground', tintClass: '' };
-                  if (!hasHistory) return { label: '--', badgeClass: 'bg-muted text-muted-foreground', tintClass: '' };
-                  if (setsOk && volumeOk) return { label: '全達標', badgeClass: 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400', tintClass: 'bg-green-50 dark:bg-green-950/20 border border-green-200/50 dark:border-green-800/30' };
-                  if (!setsOk && volumeOk) return { label: '缺組數', badgeClass: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400', tintClass: 'bg-amber-50/50 dark:bg-amber-950/10 border border-amber-200/40 dark:border-amber-800/20' };
-                  if (setsOk && !volumeOk) return { label: '缺容量', badgeClass: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400', tintClass: 'bg-amber-50/50 dark:bg-amber-950/10 border border-amber-200/40 dark:border-amber-800/20' };
-                  return { label: '未達標', badgeClass: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400', tintClass: 'bg-red-50/50 dark:bg-red-950/10 border border-red-200/40 dark:border-red-800/20' };
-                };
+                          return sortedMuscles.map((muscleName) => {
+                            const group = weekMap.get(muscleName);
+                            const totalSets = group?.totalSets || 0;
+                            const totalVolume = group?.totalVolume || 0;
+                            const status = getSetStatus(totalSets);
+                            const maxSets = 20;
+                            const volData = muscleVolumeMap[muscleName];
+                            const volAvg = volData?.avg || 0;
+                            const hasVolHistory = volAvg > 0;
+                            const setsOk = totalSets >= 4;
+                            const volumeOk = hasVolHistory && totalVolume >= volAvg;
 
-                const getSortPriority = (name: string) => {
-                  const g = weekMap.get(name);
-                  const sets = g?.totalSets || 0;
-                  const vol = g?.totalVolume || 0;
-                  const vd = muscleVolumeMap[name];
-                  const avg = vd?.avg || 0;
-                  const hasHist = avg > 0;
-                  if (sets === 0) return hasHist ? 2 : 4;
-                  const sok = sets >= 4;
-                  const vok = hasHist && vol >= avg;
-                  if (!sok && !vok) return 0;
-                  if (!sok || !vok) return 1;
-                  return 3;
-                };
-                const sortedMuscles = [...ALL_MUSCLES].sort((a, b) => getSortPriority(a) - getSortPriority(b));
+                            const combined = getCombinedStatus(totalSets, setsOk, volumeOk, hasVolHistory);
 
-                return sortedMuscles.map((muscleName) => {
-                  const group = weekMap.get(muscleName);
-                  const totalSets = group?.totalSets || 0;
-                  const totalVolume = group?.totalVolume || 0;
-                  const status = getSetStatus(totalSets);
-                  const maxSets = 20;
-                  const volData = muscleVolumeMap[muscleName];
-                  const volAvg = volData?.avg || 0;
-                  const hasVolHistory = volAvg > 0;
-                  const setsOk = totalSets >= 4;
-                  const volumeOk = hasVolHistory && totalVolume >= volAvg;
+                            const volDiffPercent = hasVolHistory && volAvg > 0 && totalSets > 0
+                              ? Math.round(((totalVolume - volAvg) / volAvg) * 100)
+                              : 0;
 
-                  const combined = getCombinedStatus(totalSets, setsOk, volumeOk, hasVolHistory);
-
-                  const volDiffPercent = hasVolHistory && volAvg > 0 && totalSets > 0
-                    ? Math.round(((totalVolume - volAvg) / volAvg) * 100)
-                    : 0;
-
-                  return (
-                    <div
-                      key={muscleName}
-                      className={`space-y-2 p-3 rounded-lg ${combined.tintClass || 'bg-muted/50'}`}
-                      data-testid={`muscle-group-stat-${muscleName}`}
-                    >
-                      <div className="flex justify-between items-center gap-1">
-                        <span className="text-sm font-medium">{muscleName}</span>
-                        <Badge
-                          variant="secondary"
-                          className={`text-[10px] px-1.5 py-0 h-5 no-default-hover-elevate no-default-active-elevate ${combined.badgeClass}`}
-                          data-testid={`combined-status-${muscleName}`}
-                        >
-                          {combined.label}
-                        </Badge>
-                      </div>
-                      <div className="flex justify-between items-center gap-2">
-                        <span className="text-xs text-muted-foreground" data-testid={`sets-${muscleName}`}>
-                          {totalSets} 组
-                        </span>
-                        <span className="text-sm font-bold" data-testid={`volume-${muscleName}`}>
-                          {totalVolume.toFixed(1)}
-                        </span>
-                      </div>
-                      <div className="pt-4">
-                        <ScaleProgressBar
-                          currentValue={totalSets}
-                          maxValue={Math.max(totalSets, maxSets)}
-                          markers={[
-                            { value: 4, label: '维', colorClass: 'bg-yellow-500', textColorClass: 'text-yellow-600 dark:text-yellow-400' },
-                            { value: 15, label: '优', colorClass: 'bg-chart-3', textColorClass: 'text-chart-3' }
-                          ]}
-                          barColorClass={status.color}
-                          height="h-2"
-                          showLabels={false}
-                        />
-                      </div>
-                      <div className="flex justify-between items-center gap-1">
-                        <span className={`text-xs ${status.textColor}`} data-testid={`status-${muscleName}`}>
-                          {status.label}
-                        </span>
-                        {hasVolHistory && totalSets > 0 ? (
-                          <span
-                            className={`text-xs ${volDiffPercent >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}
-                            data-testid={`volume-status-${muscleName}`}
-                          >
-                            容量 {totalVolume.toFixed(0)} / 均 {volAvg.toFixed(0)} ({volDiffPercent >= 0 ? '+' : ''}{volDiffPercent}%)
-                          </span>
-                        ) : (
-                          <span className="text-xs text-muted-foreground" data-testid={`volume-status-${muscleName}`}>
-                            {hasVolHistory ? `均 ${volAvg.toFixed(0)}` : '--'}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  );
-                });
-              })()}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {stepsLoaded && stepsExerciseId && (
-        <Card data-testid="card-steps-quick-update">
-          <CardContent className="flex items-center justify-between gap-4 py-3 px-4">
-            <div className="flex items-center gap-2">
-              <Footprints className="h-4 w-4 text-muted-foreground" />
-              <span className="text-sm text-muted-foreground">本周每日平均步数</span>
-            </div>
-            <div className="flex items-center gap-2">
-              {stepsData ? (
-                <>
-                  <div className="flex flex-col items-end">
-                    <span className="text-sm font-medium" data-testid="text-steps-daily-avg">
-                      {stepsData.dailyAverage.toLocaleString()} 步/天
-                    </span>
-                    {stepsData.source === "auto" && (
-                      <span className="text-[10px] text-muted-foreground" data-testid="text-steps-auto-badge">
-                        🤖 自動估算{stepsData.sourceDays ? `（基於${stepsData.sourceDays}天資料）` : ""}
-                      </span>
-                    )}
-                  </div>
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    onClick={() => {
-                      setStepsInput(String(stepsData.dailyAverage));
-                      setShowStepsDialog(true);
-                    }}
-                    data-testid="button-steps-quick-edit"
-                  >
-                    <Pencil className="h-4 w-4" />
-                  </Button>
-                </>
-              ) : (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => {
-                    setStepsInput("");
-                    setShowStepsDialog(true);
-                  }}
-                  data-testid="button-steps-quick-edit"
-                >
-                  <Plus className="h-4 w-4 mr-1" />
-                  記錄步數
-                </Button>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* 本周訓練計畫 */}
-      <Card data-testid="card-training-plan">
-        <CardHeader className="pb-3">
-          <CardTitle className="flex items-center justify-between gap-2 flex-wrap">
-            <span className="flex items-center gap-2">
-              <ClipboardList className="h-5 w-5" />
-              本周訓練計畫
-            </span>
-            {planProgress && (
-              <div className="flex items-center gap-2">
-                <Badge variant={planProgress.mode === 'recovery' ? 'secondary' : 'default'} data-testid="badge-plan-mode">
-                  {planProgress.mode === 'recovery' ? '恢復周' : '正常周'}
-                </Badge>
-                <Badge variant="outline" data-testid="badge-plan-completion">
-                  {planProgress.completionPercentage}% 完成
-                </Badge>
-              </div>
-            )}
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {planProgressLoading ? (
-            <div className="space-y-2">
-              <Skeleton className="h-4 w-full" />
-              <Skeleton className="h-4 w-3/4" />
-              <Skeleton className="h-4 w-1/2" />
-            </div>
-          ) : !planProgress ? (
-            <div className="space-y-4">
-              {modeRecommendation && (
-                <div className="space-y-2" data-testid="section-mode-recommendation">
-                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">系統建議依據</p>
-                  {/* Metrics summary */}
-                  <div className="grid grid-cols-3 gap-1.5 text-xs">
-                    {[
-                      { label: `滾動均值（近${modeRecommendation.rollingWeeks}週）`, value: modeRecommendation.rollingAvg },
-                      { label: '近4週均分', value: modeRecommendation.recent4Avg },
-                      { label: '差距', value: `${modeRecommendation.diffPct > 0 ? '+' : ''}${modeRecommendation.diffPct}%` },
-                      { label: '近4週超均次數', value: `${modeRecommendation.aboveAvgCount} / 4` },
-                      { label: '上週總分', value: modeRecommendation.lastWeekTotal },
-                      { label: '超均門檻 (×110%)', value: Math.round(modeRecommendation.rollingAvg * 1.1) },
-                    ].map(m => (
-                      <div key={m.label} className="rounded-md bg-muted/50 px-2 py-1.5 flex flex-col gap-0.5">
-                        <span className="text-muted-foreground leading-tight">{m.label}</span>
-                        <span className="font-semibold text-foreground tabular-nums">{m.value}</span>
-                      </div>
-                    ))}
-                  </div>
-                  {/* Conditions */}
-                  <div className="space-y-1.5">
-                    {(() => {
-                      const r = modeRecommendation;
-                      const c1 = r.recent4Avg > r.rollingAvg * 1.12;
-                      const c2 = r.aboveAvgCount >= 3 && r.lastWeekTotal > r.rollingAvg * 1.1;
-                      const c3 = r.recent4Avg < r.rollingAvg * 0.85;
-                      return [
-                        {
-                          id: 1,
-                          result: '恢復週',
-                          label: `近4週均分 > 滾動均值 × 112%（門檻 ${Math.round(r.rollingAvg * 1.12)}）`,
-                          detail: `近4週均分 ${r.recent4Avg} ${c1 ? '>' : '≤'} 門檻 ${Math.round(r.rollingAvg * 1.12)}`,
-                          condMet: c1,
-                        },
-                        {
-                          id: 2,
-                          result: '恢復週',
-                          label: `近4週 ≥ 3 週超均 且 上週 > 滾動均值 × 110%（門檻 ${Math.round(r.rollingAvg * 1.1)}）`,
-                          detail: `超均次數 ${r.aboveAvgCount}/4（需≥3），上週 ${r.lastWeekTotal} ${r.lastWeekTotal > r.rollingAvg * 1.1 ? '>' : '≤'} 門檻 ${Math.round(r.rollingAvg * 1.1)}`,
-                          condMet: c2,
-                        },
-                        {
-                          id: 3,
-                          result: '正常週',
-                          label: `近4週均分 < 滾動均值 × 85%（門檻 ${Math.round(r.rollingAvg * 0.85)}）`,
-                          detail: `近4週均分 ${r.recent4Avg} ${c3 ? '<' : '≥'} 門檻 ${Math.round(r.rollingAvg * 0.85)}`,
-                          condMet: c3,
-                        },
-                        {
-                          id: 4,
-                          result: '正常週',
-                          label: '以上條件均不符合（訓練量穩定）',
-                          detail: `條件 1/2/3 均不符合，維持正常週節奏`,
-                          condMet: !c1 && !c2 && !c3,
-                        },
-                      ];
-                    })().map(cond => {
-                      const isMatched = modeRecommendation.matchedCondition === cond.id;
-                      return (
-                        <div
-                          key={cond.id}
-                          className={`rounded-md border px-3 py-2 text-sm transition-colors ${
-                            isMatched
-                              ? 'border-primary bg-primary/5'
-                              : 'border-border bg-muted/30 opacity-60'
-                          }`}
-                          data-testid={`condition-${cond.id}${isMatched ? '-matched' : ''}`}
-                        >
-                          <div className="flex items-start justify-between gap-2 flex-wrap">
-                            <div className="flex items-start gap-2 flex-1 min-w-0">
-                              <span className={`mt-0.5 shrink-0 text-xs font-bold ${isMatched ? 'text-primary' : 'text-muted-foreground'}`}>
-                                {isMatched ? '▶' : `${cond.id}.`}
-                              </span>
-                              <div className="min-w-0">
-                                <span className={`font-medium ${isMatched ? 'text-foreground' : 'text-muted-foreground'}`}>
-                                  {cond.label}
-                                </span>
-                                <p className="text-xs text-muted-foreground mt-0.5">{cond.detail}</p>
+                            return (
+                              <div
+                                key={muscleName}
+                                className={`space-y-2 p-3 rounded-lg ${combined.tintClass || 'bg-muted/50'}`}
+                                data-testid={`muscle-group-stat-${muscleName}`}
+                              >
+                                <div className="flex justify-between items-center gap-1">
+                                  <span className="text-sm font-medium">{muscleName}</span>
+                                  <Badge
+                                    variant="secondary"
+                                    className={`text-[10px] px-1.5 py-0 h-5 no-default-hover-elevate no-default-active-elevate ${combined.badgeClass}`}
+                                    data-testid={`combined-status-${muscleName}`}
+                                  >
+                                    {combined.label}
+                                  </Badge>
+                                </div>
+                                <div className="flex justify-between items-center gap-2">
+                                  <span className="text-xs text-muted-foreground" data-testid={`sets-${muscleName}`}>
+                                    {totalSets} 组
+                                  </span>
+                                  <span className="text-sm font-bold" data-testid={`volume-${muscleName}`}>
+                                    {totalVolume.toFixed(1)}
+                                  </span>
+                                </div>
+                                <div className="pt-4">
+                                  <ScaleProgressBar
+                                    currentValue={totalSets}
+                                    maxValue={Math.max(totalSets, maxSets)}
+                                    markers={[
+                                      { value: 4, label: '维', colorClass: 'bg-yellow-500', textColorClass: 'text-yellow-600 dark:text-yellow-400' },
+                                      { value: 15, label: '优', colorClass: 'bg-chart-3', textColorClass: 'text-chart-3' }
+                                    ]}
+                                    barColorClass={status.color}
+                                    height="h-2"
+                                    showLabels={false}
+                                  />
+                                </div>
+                                <div className="flex justify-between items-center gap-1">
+                                  <span className={`text-xs ${status.textColor}`} data-testid={`status-${muscleName}`}>
+                                    {status.label}
+                                  </span>
+                                  {hasVolHistory && totalSets > 0 ? (
+                                    <span
+                                      className={`text-xs ${volDiffPercent >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}
+                                      data-testid={`volume-status-${muscleName}`}
+                                    >
+                                      容量 {totalVolume.toFixed(0)} / 均 {volAvg.toFixed(0)} ({volDiffPercent >= 0 ? '+' : ''}{volDiffPercent}%)
+                                    </span>
+                                  ) : (
+                                    <span className="text-xs text-muted-foreground" data-testid={`volume-status-${muscleName}`}>
+                                      {hasVolHistory ? `均 ${volAvg.toFixed(0)}` : '--'}
+                                    </span>
+                                  )}
+                                </div>
                               </div>
-                            </div>
-                            <div className="flex items-center gap-1.5 shrink-0">
-                              <span className={`text-xs font-semibold ${cond.condMet ? 'text-green-600 dark:text-green-400' : 'text-muted-foreground'}`}>
-                                {cond.condMet ? '符合' : '不符合'}
+                            );
+                          });
+                        })()}
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+
+        </div>
+      </div>
+
+      {/* 其餘區塊收進分頁，一次只顯示一個，避免首頁拉得太長 */}
+      <Tabs defaultValue="summary" className="space-y-4">
+        <TabsList className="h-auto flex-wrap justify-start gap-1 rounded-xl bg-muted/60 p-1" data-testid="tabs-dashboard">
+          <TabsTrigger value="summary" className="gap-2 rounded-lg px-4 py-2" data-testid="tab-summary">
+            <Award className="h-4 w-4" />本周摘要
+          </TabsTrigger>
+          <TabsTrigger value="plan" className="gap-2 rounded-lg px-4 py-2" data-testid="tab-plan">
+            <ClipboardList className="h-4 w-4" />訓練計畫
+          </TabsTrigger>
+          <TabsTrigger value="progress" className="gap-2 rounded-lg px-4 py-2" data-testid="tab-progress">
+            <Activity className="h-4 w-4" />訓練進度
+          </TabsTrigger>
+          <TabsTrigger value="ranking" className="gap-2 rounded-lg px-4 py-2" data-testid="tab-ranking">
+            <Trophy className="h-4 w-4" />排名
+          </TabsTrigger>
+          <TabsTrigger value="history" className="gap-2 rounded-lg px-4 py-2" data-testid="tab-history">
+            <History className="h-4 w-4" />雷達歷史
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="summary" className="mt-0 space-y-4">
+                {/* 本周綜合摘要 */}
+                {rankingData && milestones && (
+                  <Card data-testid="card-weekly-assessment">
+                    <CardHeader className="pb-3">
+                      <CardTitle className="flex items-center justify-between gap-2 flex-wrap">
+                        <span className="flex items-center gap-2">
+                          <Award className="h-5 w-5" />
+                          本周綜合摘要
+                        </span>
+                        <div className="flex items-center gap-3">
+                          <div className="flex items-center gap-1">
+                            {[1, 2, 3, 4, 5].map((star) => (
+                              <Star
+                                key={star}
+                                className={`h-4 w-4 ${star <= milestones.achievedCount ? 'text-yellow-500 fill-yellow-500' : 'text-muted-foreground/30'}`}
+                                data-testid={`star-${star}`}
+                              />
+                            ))}
+                            <span className="text-sm font-medium ml-1" data-testid="text-milestone-count">{milestones.achievedCount}/5</span>
+                          </div>
+                          <Badge 
+                            variant="secondary"
+                            className={
+                              trendDirection === 'up' 
+                                ? 'bg-green-100 dark:bg-green-950/40 text-green-700 dark:text-green-400' 
+                                : trendDirection === 'down'
+                                  ? 'bg-red-100 dark:bg-red-950/40 text-red-700 dark:text-red-400'
+                                  : ''
+                            }
+                            data-testid="badge-trend-direction"
+                          >
+                            {trendDirection === 'up' ? (
+                              <span className="flex items-center gap-1"><TrendingUp className="h-3 w-3" />连续上升</span>
+                            ) : trendDirection === 'down' ? (
+                              <span className="flex items-center gap-1"><TrendingDown className="h-3 w-3" />连续下降</span>
+                            ) : (
+                              <span className="flex items-center gap-1"><Minus className="h-3 w-3" />持平</span>
+                            )}
+                          </Badge>
+                        </div>
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-4">
+                        {/* 综合得分 vs 均值 */}
+                        <div className="space-y-2 cursor-pointer hover-elevate rounded-md p-1 -m-1" data-testid="section-composite-score" onClick={() => setShowDetailsDialog(true)}>
+                          <div className="flex items-center justify-between gap-2 flex-wrap">
+                            <span className="text-sm text-muted-foreground">综合得分</span>
+                            <div className="flex items-center gap-2">
+                              <span className="text-lg font-bold" data-testid="text-current-total">
+                                {milestones.currentTotal.toFixed(1)}
                               </span>
-                              <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${
-                                cond.result === '恢復週'
-                                  ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300'
-                                  : 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300'
-                              }`}>
-                                {cond.result}
-                              </span>
+                              <span className="text-sm text-muted-foreground">/ 均 {milestones.avgTotal.toFixed(1)}</span>
+                              {milestones.avgTotal > 0 && (
+                                <span className={`text-sm font-semibold ${
+                                  milestones.currentTotal >= milestones.avgTotal 
+                                    ? 'text-green-600 dark:text-green-400' 
+                                    : 'text-red-600 dark:text-red-400'
+                                }`} data-testid="text-total-diff">
+                                  {milestones.currentTotal >= milestones.avgTotal ? '+' : ''}
+                                  {((milestones.currentTotal - milestones.avgTotal) / milestones.avgTotal * 100).toFixed(0)}%
+                                </span>
+                              )}
                             </div>
                           </div>
+                          <div className="w-full bg-muted rounded-full h-2.5">
+                            <div
+                              className={`h-2.5 rounded-full transition-all ${
+                                milestones.currentTotal >= milestones.avgTotal ? 'bg-green-500' : 'bg-orange-500'
+                              }`}
+                              style={{ width: `${Math.min((milestones.currentTotal / Math.max(milestones.avgTotal, 1)) * 100, 150)}%`, maxWidth: '100%' }}
+                              data-testid="bar-total-progress"
+                            />
+                          </div>
                         </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-              <p className="text-sm text-muted-foreground">選擇訓練模式並生成本週計畫</p>
-              <div className="flex items-center gap-3 flex-wrap">
-                <div className="flex gap-2">
-                  <Button
-                    variant={selectedPlanMode === 'recovery' ? 'default' : 'outline'}
-                    size="sm"
-                    onClick={() => { setSelectedPlanMode('recovery'); setModeManuallyChanged(true); }}
-                    data-testid="button-plan-mode-recovery"
-                  >
-                    恢復周
-                  </Button>
-                  <Button
-                    variant={selectedPlanMode === 'normal' ? 'default' : 'outline'}
-                    size="sm"
-                    onClick={() => { setSelectedPlanMode('normal'); setModeManuallyChanged(true); }}
-                    data-testid="button-plan-mode-normal"
-                  >
-                    正常周
-                  </Button>
-                </div>
-                <Button
-                  size="sm"
-                  onClick={() => generatePlanMutation.mutate(selectedPlanMode)}
-                  disabled={generatePlanMutation.isPending}
-                  data-testid="button-generate-plan"
-                >
-                  {generatePlanMutation.isPending ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <ClipboardList className="h-4 w-4" />
-                  )}
-                  <span className="ml-1">{generatePlanMutation.isPending ? '生成中...' : '生成計畫'}</span>
-                </Button>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                恢復周：目標為近8週滾動均值 × 75% | 正常周：目標為滾動均值 × 105%
-              </p>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              <div className="flex items-center justify-between gap-2 flex-wrap">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-sm font-medium">{planProgress.totalMet}/{planProgress.totalPlanned} 项达标</span>
-                  <div className="w-24 h-2 bg-muted rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-primary rounded-full transition-all"
-                      style={{ width: `${planProgress.completionPercentage}%` }}
-                    />
-                  </div>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <Button
-                    variant={selectedPlanMode === 'recovery' ? 'default' : 'outline'}
-                    size="sm"
-                    onClick={() => { setSelectedPlanMode('recovery'); setModeManuallyChanged(true); }}
-                    disabled={generatePlanMutation.isPending}
-                    data-testid="button-plan-mode-recovery-active"
-                  >
-                    恢復周
-                  </Button>
-                  <Button
-                    variant={selectedPlanMode === 'normal' ? 'default' : 'outline'}
-                    size="sm"
-                    onClick={() => { setSelectedPlanMode('normal'); setModeManuallyChanged(true); }}
-                    disabled={generatePlanMutation.isPending}
-                    data-testid="button-plan-mode-normal-active"
-                  >
-                    正常周
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => generatePlanMutation.mutate(selectedPlanMode)}
-                    disabled={generatePlanMutation.isPending}
-                    data-testid="button-regenerate-plan"
-                  >
-                    {generatePlanMutation.isPending ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <RefreshCw className="h-4 w-4" />
-                    )}
-                  </Button>
-                </div>
-              </div>
 
-              {planProgress.targetBaseline > 0 && (
-                <div className="space-y-1.5 p-2.5 rounded-md bg-muted/40" data-testid="plan-baseline-progress">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-muted-foreground">課表基準值進度</span>
-                    <span className={`font-medium tabular-nums ${planProgress.baselinePercentage >= 100 ? 'text-green-600 dark:text-green-400' : planProgress.baselinePercentage >= 60 ? 'text-primary' : ''}`}>
-                      {planProgress.actualBaseline} / {planProgress.targetBaseline}
-                      <span className="ml-1 text-muted-foreground">({planProgress.baselinePercentage}%)</span>
-                    </span>
-                  </div>
-                  <div className="h-2 bg-muted rounded-full overflow-hidden">
-                    <div
-                      className={`h-full rounded-full transition-all ${planProgress.baselinePercentage >= 100 ? 'bg-green-500' : 'bg-primary/70'}`}
-                      style={{ width: `${Math.min(100, planProgress.baselinePercentage)}%` }}
-                    />
-                  </div>
-                </div>
-              )}
+                        {/* 三大类 progress bars */}
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2" data-testid="section-category-bars">
+                          {[
+                            { label: '力量', current: rankingData.currentWeek?.strengthValue || 0, avg: rankingData.averageStrengthValue, icon: Dumbbell, rank: rankingData.strengthRank },
+                            { label: '有氧', current: rankingData.currentWeek?.cardioValue || 0, avg: rankingData.averageCardioValue, icon: Heart, rank: rankingData.cardioRank },
+                            { label: '活动量', current: rankingData.currentWeek?.activityValue || 0, avg: rankingData.averageActivityValue, icon: Footprints, rank: rankingData.activityRank },
+                          ].map((cat) => {
+                            const pct = cat.avg > 0 ? ((cat.current - cat.avg) / cat.avg * 100) : 0;
+                            const isAbove = cat.current >= cat.avg;
+                            return (
+                              <div key={cat.label} className="p-3 rounded-lg bg-muted/50 space-y-2" data-testid={`category-bar-${cat.label}`}>
+                                <div className="flex items-center justify-between gap-1">
+                                  <span className="text-xs font-medium flex items-center gap-1">
+                                    <cat.icon className="h-3 w-3" />
+                                    {cat.label}
+                                  </span>
+                                  <span className="text-xs text-muted-foreground">#{cat.rank}</span>
+                                </div>
+                                <div className="flex items-baseline gap-1">
+                                  <span className="text-sm font-bold">{cat.current.toFixed(1)}</span>
+                                  <span className="text-xs text-muted-foreground">/ {cat.avg.toFixed(1)}</span>
+                                  {cat.avg > 0 && (
+                                    <span className={`text-xs font-semibold ${isAbove ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                                      {isAbove ? '+' : ''}{pct.toFixed(0)}%
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="w-full bg-muted rounded-full h-1.5">
+                                  <div
+                                    className={`h-1.5 rounded-full transition-all ${isAbove ? 'bg-green-500' : 'bg-orange-500'}`}
+                                    style={{ width: `${Math.min((cat.current / Math.max(cat.avg, 1)) * 100, 100)}%` }}
+                                  />
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
 
-              {planProgress.completionPercentage >= 100 && (
-                <div className="flex items-center justify-between gap-3 p-3 rounded-md bg-green-500/10 border border-green-500/20" data-testid="plan-completion-banner">
-                  <div className="flex items-center gap-2">
-                    <Trophy className="h-4 w-4 text-green-600 dark:text-green-400 flex-shrink-0" />
-                    <div>
-                      <p className="text-sm font-medium text-green-700 dark:text-green-300">本週課表全部達標！</p>
-                      <p className="text-xs text-green-600/80 dark:text-green-400/80">出色的完成度，要繼續挑戰嗎？</p>
-                    </div>
-                  </div>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => generatePlanMutation.mutate(selectedPlanMode)}
-                    disabled={generatePlanMutation.isPending}
-                    data-testid="button-regenerate-plan-complete"
-                  >
-                    {generatePlanMutation.isPending ? (
-                      <Loader2 className="h-4 w-4 animate-spin mr-1.5" />
-                    ) : (
-                      <RefreshCw className="h-4 w-4 mr-1.5" />
-                    )}
-                    重新生成
-                  </Button>
-                </div>
-              )}
+                        {/* 里程碑阶段 */}
+                        <div className="flex items-center gap-2 pt-2 border-t flex-wrap" data-testid="section-milestone-stages">
+                          {[
+                            { stage: 1, name: '参与', achieved: milestones.hasEntry, detail: '至少1次训练记录', status: milestones.hasEntry ? '已达成' : '未达成' },
+                            { stage: 2, name: '纪律', achieved: milestones.hasDiscipline, detail: `训练天数 ≥ 3（目前 ${milestones.trainingDays} 天）`, status: milestones.hasDiscipline ? '已达成' : `${milestones.trainingDays}/3 天` },
+                            { stage: 3, name: '容量', achieved: milestones.totalAbove, detail: `总分超过生涯均值（均 ${milestones.avgTotal.toFixed(0)}）`, status: milestones.totalAbove ? '已达成' : `${milestones.currentTotal.toFixed(0)} / ${milestones.avgTotal.toFixed(0)}` },
+                            { stage: 4, name: '强度', achieved: milestones.allMusclesAtMaintenance, detail: `≥50% 肌群达维持量+容量（${milestones.musclesFullyMetCount}/${milestones.musclesTotalCount}）`, status: milestones.allMusclesAtMaintenance ? '已达成' : `${milestones.musclesFullyMetCount}/${milestones.musclesTotalCount} 肌群` },
+                            { stage: 5, name: '突破', achieved: milestones.breakthrough, detail: '前10% 或 4周新高', status: milestones.breakthrough ? '已达成' : milestones.inTop10 ? '前10%' : milestones.isFourWeekHigh ? '4周新高' : '未达成' },
+                          ].map((m) => (
+                            <Popover key={m.stage}>
+                              <PopoverTrigger asChild>
+                                <button
+                                  className={`flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-medium transition-colors cursor-pointer ${
+                                    m.achieved
+                                      ? 'bg-green-100 dark:bg-green-950/40 text-green-700 dark:text-green-400'
+                                      : 'bg-muted text-muted-foreground'
+                                  }`}
+                                  data-testid={`milestone-badge-${m.stage}`}
+                                >
+                                  <span className={`flex items-center justify-center w-4 h-4 rounded-full text-[10px] font-bold ${
+                                    m.achieved
+                                      ? 'bg-green-600 text-white dark:bg-green-500'
+                                      : 'bg-muted-foreground/20 text-muted-foreground'
+                                  }`}>
+                                    {m.stage}
+                                  </span>
+                                  {m.name}
+                                </button>
+                              </PopoverTrigger>
+                              <PopoverContent className="w-48 p-3" side="bottom">
+                                <div className="space-y-1">
+                                  <p className="text-sm font-medium">{m.stage}. {m.name}</p>
+                                  <p className="text-xs text-muted-foreground">{m.detail}</p>
+                                  <p className={`text-xs font-medium ${m.achieved ? 'text-green-600 dark:text-green-400' : 'text-muted-foreground'}`}>
+                                    {m.status}
+                                  </p>
+                                </div>
+                              </PopoverContent>
+                            </Popover>
+                          ))}
+                        </div>
 
-              <div className="space-y-3">
-                {planProgress.days.map((day) => (
-                  <div key={day.day} className="space-y-1" data-testid={`plan-day-${day.day}`}>
-                    <div className="flex items-center gap-2">
-                      <Badge variant="outline" className="text-xs">{day.dayName}</Badge>
-                      <span className="text-xs text-muted-foreground">
-                        {day.exercises.filter(e => e.status === 'met').length}/{day.exercises.length} 完成
+                        {/* 排名 + 快捷连结 */}
+                        <div className="flex items-center justify-between gap-2 flex-wrap" data-testid="section-rank-milestones">
+                          <div className="flex items-center gap-3">
+                            <span className="text-sm text-muted-foreground">本周排名</span>
+                            <span className="text-sm font-bold" data-testid="text-current-rank">
+                              #{rankingData.rank} / {rankingData.totalWeeks} 周
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <Button variant="ghost" size="sm" onClick={() => setShowWeekRecordsDialog(true)} data-testid="button-view-week-records">
+                              本周记录
+                            </Button>
+                            {rankingData.bestWeek && (
+                              <Button variant="ghost" size="sm" onClick={() => setShowBestWeekDialog(true)} data-testid="button-view-best-week">
+                                历史最佳
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+        </TabsContent>
+
+        <TabsContent value="plan" className="mt-0 space-y-4">
+                {/* 本周訓練計畫 */}
+                <Card data-testid="card-training-plan">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="flex items-center justify-between gap-2 flex-wrap">
+                      <span className="flex items-center gap-2">
+                        <ClipboardList className="h-5 w-5" />
+                        本周訓練計畫
                       </span>
-                    </div>
-                    <div className="grid gap-1.5 pl-2">
-                      {day.exercises.map((ex, idx) => {
-                        const hasBaseline = (ex.targetItemBaseline ?? 0) > 0;
-                        const progress = hasBaseline
-                          ? Math.min(100, ((ex.actualBaselineValue ?? 0) / ex.targetItemBaseline!) * 100)
-                          : (() => {
-                              const targetTotal = ex.targetValue * ex.targetSets;
-                              return targetTotal > 0 ? Math.min(100, (ex.actualValue / targetTotal) * 100) : 0;
-                            })();
-
-                        const specLabel = (ex.exerciseName === '跑步' || ex.exerciseName === '跑步機負重')
-                          ? `${ex.targetValue}分鐘 + ${ex.targetSets}km`
-                          : ex.weightFactor
-                            ? `${ex.weightFactor}kg × ${ex.targetValue}${ex.unit} × ${ex.targetSets}組`
-                            : `${ex.targetValue}${ex.unit} × ${ex.targetSets}組`;
-
-                        return (
-                          <div
-                            key={`${day.day}-${ex.exerciseId}-${idx}`}
-                            className={`space-y-0.5 rounded-md p-1 -m-1 ${ex.status !== 'met' ? 'cursor-pointer hover-elevate' : ''}`}
-                            data-testid={`plan-exercise-${day.day}-${idx}`}
-                            onClick={ex.status !== 'met' ? () => handleAddEntry(ex.exerciseId) : undefined}
-                          >
-                            <div className="flex items-center gap-2 text-sm">
-                              <div className="w-4 h-4 flex items-center justify-center flex-shrink-0">
-                                {ex.status === 'met' ? (
-                                  <Check className="h-4 w-4 text-green-600 dark:text-green-400" />
-                                ) : ex.status === 'partial' ? (
-                                  <div className="w-3 h-3 rounded-full border-2 border-primary bg-primary/30" />
-                                ) : (
-                                  <div className="w-3 h-3 rounded-full border-2 border-muted-foreground/30" />
-                                )}
-                              </div>
-                              <span className={`flex-shrink-0 ${ex.status === 'met' ? 'text-muted-foreground line-through' : ''}`}>
-                                {ex.exerciseName}
-                              </span>
-                              <span className="text-xs text-muted-foreground flex-shrink-0">
-                                {specLabel}
-                              </span>
-                              <div className="flex-1 min-w-12 h-1.5 bg-muted rounded-full overflow-hidden">
-                                <div
-                                  className={`h-full rounded-full transition-all ${ex.status === 'met' ? 'bg-green-500' : ex.status === 'partial' ? 'bg-primary/60' : 'bg-muted-foreground/20'}`}
-                                  style={{ width: `${progress}%` }}
-                                />
-                              </div>
-                              {hasBaseline ? (
-                                <span className="text-xs text-muted-foreground flex-shrink-0 tabular-nums">
-                                  {(ex.actualBaselineValue ?? 0) > 0
-                                    ? `${(ex.actualBaselineValue ?? 0).toFixed(0)}/${ex.targetItemBaseline!.toFixed(0)}`
-                                    : ex.targetItemBaseline!.toFixed(0)}
-                                </span>
-                              ) : ex.actualValue > 0 ? (
-                                <span className="text-xs text-muted-foreground flex-shrink-0 tabular-nums">
-                                  {ex.actualValue.toFixed(0)}
-                                </span>
-                              ) : null}
+                      {planProgress && (
+                        <div className="flex items-center gap-2">
+                          <Badge variant={planProgress.mode === 'recovery' ? 'secondary' : 'default'} data-testid="badge-plan-mode">
+                            {planProgress.mode === 'recovery' ? '恢復周' : '正常周'}
+                          </Badge>
+                          <Badge variant="outline" data-testid="badge-plan-completion">
+                            {planProgress.completionPercentage}% 完成
+                          </Badge>
+                        </div>
+                      )}
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    {planProgressLoading ? (
+                      <div className="space-y-2">
+                        <Skeleton className="h-4 w-full" />
+                        <Skeleton className="h-4 w-3/4" />
+                        <Skeleton className="h-4 w-1/2" />
+                      </div>
+                    ) : !planProgress ? (
+                      <div className="space-y-4">
+                        {modeRecommendation && (
+                          <div className="space-y-2" data-testid="section-mode-recommendation">
+                            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">系統建議依據</p>
+                            {/* Metrics summary */}
+                            <div className="grid grid-cols-3 gap-1.5 text-xs">
+                              {[
+                                { label: `滾動均值（近${modeRecommendation.rollingWeeks}週）`, value: modeRecommendation.rollingAvg },
+                                { label: '近4週均分', value: modeRecommendation.recent4Avg },
+                                { label: '差距', value: `${modeRecommendation.diffPct > 0 ? '+' : ''}${modeRecommendation.diffPct}%` },
+                                { label: '近4週超均次數', value: `${modeRecommendation.aboveAvgCount} / 4` },
+                                { label: '上週總分', value: modeRecommendation.lastWeekTotal },
+                                { label: '超均門檻 (×110%)', value: Math.round(modeRecommendation.rollingAvg * 1.1) },
+                              ].map(m => (
+                                <div key={m.label} className="rounded-md bg-muted/50 px-2 py-1.5 flex flex-col gap-0.5">
+                                  <span className="text-muted-foreground leading-tight">{m.label}</span>
+                                  <span className="font-semibold text-foreground tabular-nums">{m.value}</span>
+                                </div>
+                              ))}
                             </div>
-                            {(ex.reason || ex.historyRef) && (
-                              <div className="pl-6 text-[11px] text-muted-foreground/70 leading-tight" data-testid={`plan-exercise-reason-${day.day}-${idx}`}>
-                                {ex.reason}{ex.historyRef ? ` (${ex.historyRef})` : ''}
+                            {/* Conditions */}
+                            <div className="space-y-1.5">
+                              {(() => {
+                                const r = modeRecommendation;
+                                const c1 = r.recent4Avg > r.rollingAvg * 1.12;
+                                const c2 = r.aboveAvgCount >= 3 && r.lastWeekTotal > r.rollingAvg * 1.1;
+                                const c3 = r.recent4Avg < r.rollingAvg * 0.85;
+                                return [
+                                  {
+                                    id: 1,
+                                    result: '恢復週',
+                                    label: `近4週均分 > 滾動均值 × 112%（門檻 ${Math.round(r.rollingAvg * 1.12)}）`,
+                                    detail: `近4週均分 ${r.recent4Avg} ${c1 ? '>' : '≤'} 門檻 ${Math.round(r.rollingAvg * 1.12)}`,
+                                    condMet: c1,
+                                  },
+                                  {
+                                    id: 2,
+                                    result: '恢復週',
+                                    label: `近4週 ≥ 3 週超均 且 上週 > 滾動均值 × 110%（門檻 ${Math.round(r.rollingAvg * 1.1)}）`,
+                                    detail: `超均次數 ${r.aboveAvgCount}/4（需≥3），上週 ${r.lastWeekTotal} ${r.lastWeekTotal > r.rollingAvg * 1.1 ? '>' : '≤'} 門檻 ${Math.round(r.rollingAvg * 1.1)}`,
+                                    condMet: c2,
+                                  },
+                                  {
+                                    id: 3,
+                                    result: '正常週',
+                                    label: `近4週均分 < 滾動均值 × 85%（門檻 ${Math.round(r.rollingAvg * 0.85)}）`,
+                                    detail: `近4週均分 ${r.recent4Avg} ${c3 ? '<' : '≥'} 門檻 ${Math.round(r.rollingAvg * 0.85)}`,
+                                    condMet: c3,
+                                  },
+                                  {
+                                    id: 4,
+                                    result: '正常週',
+                                    label: '以上條件均不符合（訓練量穩定）',
+                                    detail: `條件 1/2/3 均不符合，維持正常週節奏`,
+                                    condMet: !c1 && !c2 && !c3,
+                                  },
+                                ];
+                              })().map(cond => {
+                                const isMatched = modeRecommendation.matchedCondition === cond.id;
+                                return (
+                                  <div
+                                    key={cond.id}
+                                    className={`rounded-md border px-3 py-2 text-sm transition-colors ${
+                                      isMatched
+                                        ? 'border-primary bg-primary/5'
+                                        : 'border-border bg-muted/30 opacity-60'
+                                    }`}
+                                    data-testid={`condition-${cond.id}${isMatched ? '-matched' : ''}`}
+                                  >
+                                    <div className="flex items-start justify-between gap-2 flex-wrap">
+                                      <div className="flex items-start gap-2 flex-1 min-w-0">
+                                        <span className={`mt-0.5 shrink-0 text-xs font-bold ${isMatched ? 'text-primary' : 'text-muted-foreground'}`}>
+                                          {isMatched ? '▶' : `${cond.id}.`}
+                                        </span>
+                                        <div className="min-w-0">
+                                          <span className={`font-medium ${isMatched ? 'text-foreground' : 'text-muted-foreground'}`}>
+                                            {cond.label}
+                                          </span>
+                                          <p className="text-xs text-muted-foreground mt-0.5">{cond.detail}</p>
+                                        </div>
+                                      </div>
+                                      <div className="flex items-center gap-1.5 shrink-0">
+                                        <span className={`text-xs font-semibold ${cond.condMet ? 'text-green-600 dark:text-green-400' : 'text-muted-foreground'}`}>
+                                          {cond.condMet ? '符合' : '不符合'}
+                                        </span>
+                                        <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${
+                                          cond.result === '恢復週'
+                                            ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300'
+                                            : 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300'
+                                        }`}>
+                                          {cond.result}
+                                        </span>
+                                      </div>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+                        <p className="text-sm text-muted-foreground">選擇訓練模式並生成本週計畫</p>
+                        <div className="flex items-center gap-3 flex-wrap">
+                          <div className="flex gap-2">
+                            <Button
+                              variant={selectedPlanMode === 'recovery' ? 'default' : 'outline'}
+                              size="sm"
+                              onClick={() => { setSelectedPlanMode('recovery'); setModeManuallyChanged(true); }}
+                              data-testid="button-plan-mode-recovery"
+                            >
+                              恢復周
+                            </Button>
+                            <Button
+                              variant={selectedPlanMode === 'normal' ? 'default' : 'outline'}
+                              size="sm"
+                              onClick={() => { setSelectedPlanMode('normal'); setModeManuallyChanged(true); }}
+                              data-testid="button-plan-mode-normal"
+                            >
+                              正常周
+                            </Button>
+                          </div>
+                          <Button
+                            size="sm"
+                            onClick={() => generatePlanMutation.mutate(selectedPlanMode)}
+                            disabled={generatePlanMutation.isPending}
+                            data-testid="button-generate-plan"
+                          >
+                            {generatePlanMutation.isPending ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <ClipboardList className="h-4 w-4" />
+                            )}
+                            <span className="ml-1">{generatePlanMutation.isPending ? '生成中...' : '生成計畫'}</span>
+                          </Button>
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          恢復周：目標為近8週滾動均值 × 75% | 正常周：目標為滾動均值 × 105%
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="space-y-4">
+                        <div className="flex items-center justify-between gap-2 flex-wrap">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-sm font-medium">{planProgress.totalMet}/{planProgress.totalPlanned} 项达标</span>
+                            <div className="w-24 h-2 bg-muted rounded-full overflow-hidden">
+                              <div
+                                className="h-full bg-primary rounded-full transition-all"
+                                style={{ width: `${planProgress.completionPercentage}%` }}
+                              />
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <Button
+                              variant={selectedPlanMode === 'recovery' ? 'default' : 'outline'}
+                              size="sm"
+                              onClick={() => { setSelectedPlanMode('recovery'); setModeManuallyChanged(true); }}
+                              disabled={generatePlanMutation.isPending}
+                              data-testid="button-plan-mode-recovery-active"
+                            >
+                              恢復周
+                            </Button>
+                            <Button
+                              variant={selectedPlanMode === 'normal' ? 'default' : 'outline'}
+                              size="sm"
+                              onClick={() => { setSelectedPlanMode('normal'); setModeManuallyChanged(true); }}
+                              disabled={generatePlanMutation.isPending}
+                              data-testid="button-plan-mode-normal-active"
+                            >
+                              正常周
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => generatePlanMutation.mutate(selectedPlanMode)}
+                              disabled={generatePlanMutation.isPending}
+                              data-testid="button-regenerate-plan"
+                            >
+                              {generatePlanMutation.isPending ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <RefreshCw className="h-4 w-4" />
+                              )}
+                            </Button>
+                          </div>
+                        </div>
+
+                        {planProgress.targetBaseline > 0 && (
+                          <div className="space-y-1.5 p-2.5 rounded-md bg-muted/40" data-testid="plan-baseline-progress">
+                            <div className="flex items-center justify-between text-xs">
+                              <span className="text-muted-foreground">課表基準值進度</span>
+                              <span className={`font-medium tabular-nums ${planProgress.baselinePercentage >= 100 ? 'text-green-600 dark:text-green-400' : planProgress.baselinePercentage >= 60 ? 'text-primary' : ''}`}>
+                                {planProgress.actualBaseline} / {planProgress.targetBaseline}
+                                <span className="ml-1 text-muted-foreground">({planProgress.baselinePercentage}%)</span>
+                              </span>
+                            </div>
+                            <div className="h-2 bg-muted rounded-full overflow-hidden">
+                              <div
+                                className={`h-full rounded-full transition-all ${planProgress.baselinePercentage >= 100 ? 'bg-green-500' : 'bg-primary/70'}`}
+                                style={{ width: `${Math.min(100, planProgress.baselinePercentage)}%` }}
+                              />
+                            </div>
+                          </div>
+                        )}
+
+                        {planProgress.completionPercentage >= 100 && (
+                          <div className="flex items-center justify-between gap-3 p-3 rounded-md bg-green-500/10 border border-green-500/20" data-testid="plan-completion-banner">
+                            <div className="flex items-center gap-2">
+                              <Trophy className="h-4 w-4 text-green-600 dark:text-green-400 flex-shrink-0" />
+                              <div>
+                                <p className="text-sm font-medium text-green-700 dark:text-green-300">本週課表全部達標！</p>
+                                <p className="text-xs text-green-600/80 dark:text-green-400/80">出色的完成度，要繼續挑戰嗎？</p>
+                              </div>
+                            </div>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => generatePlanMutation.mutate(selectedPlanMode)}
+                              disabled={generatePlanMutation.isPending}
+                              data-testid="button-regenerate-plan-complete"
+                            >
+                              {generatePlanMutation.isPending ? (
+                                <Loader2 className="h-4 w-4 animate-spin mr-1.5" />
+                              ) : (
+                                <RefreshCw className="h-4 w-4 mr-1.5" />
+                              )}
+                              重新生成
+                            </Button>
+                          </div>
+                        )}
+
+                        <div className="space-y-3">
+                          {planProgress.days.map((day) => (
+                            <div key={day.day} className="space-y-1" data-testid={`plan-day-${day.day}`}>
+                              <div className="flex items-center gap-2">
+                                <Badge variant="outline" className="text-xs">{day.dayName}</Badge>
+                                <span className="text-xs text-muted-foreground">
+                                  {day.exercises.filter(e => e.status === 'met').length}/{day.exercises.length} 完成
+                                </span>
+                              </div>
+                              <div className="grid gap-1.5 pl-2">
+                                {day.exercises.map((ex, idx) => {
+                                  const hasBaseline = (ex.targetItemBaseline ?? 0) > 0;
+                                  const progress = hasBaseline
+                                    ? Math.min(100, ((ex.actualBaselineValue ?? 0) / ex.targetItemBaseline!) * 100)
+                                    : (() => {
+                                        const targetTotal = ex.targetValue * ex.targetSets;
+                                        return targetTotal > 0 ? Math.min(100, (ex.actualValue / targetTotal) * 100) : 0;
+                                      })();
+
+                                  const specLabel = (ex.exerciseName === '跑步' || ex.exerciseName === '跑步機負重')
+                                    ? `${ex.targetValue}分鐘 + ${ex.targetSets}km`
+                                    : ex.weightFactor
+                                      ? `${ex.weightFactor}kg × ${ex.targetValue}${ex.unit} × ${ex.targetSets}組`
+                                      : `${ex.targetValue}${ex.unit} × ${ex.targetSets}組`;
+
+                                  return (
+                                    <div
+                                      key={`${day.day}-${ex.exerciseId}-${idx}`}
+                                      className={`space-y-0.5 rounded-md p-1 -m-1 ${ex.status !== 'met' ? 'cursor-pointer hover-elevate' : ''}`}
+                                      data-testid={`plan-exercise-${day.day}-${idx}`}
+                                      onClick={ex.status !== 'met' ? () => handleAddEntry(ex.exerciseId) : undefined}
+                                    >
+                                      <div className="flex items-center gap-2 text-sm">
+                                        <div className="w-4 h-4 flex items-center justify-center flex-shrink-0">
+                                          {ex.status === 'met' ? (
+                                            <Check className="h-4 w-4 text-green-600 dark:text-green-400" />
+                                          ) : ex.status === 'partial' ? (
+                                            <div className="w-3 h-3 rounded-full border-2 border-primary bg-primary/30" />
+                                          ) : (
+                                            <div className="w-3 h-3 rounded-full border-2 border-muted-foreground/30" />
+                                          )}
+                                        </div>
+                                        <span className={`flex-shrink-0 ${ex.status === 'met' ? 'text-muted-foreground line-through' : ''}`}>
+                                          {ex.exerciseName}
+                                        </span>
+                                        <span className="text-xs text-muted-foreground flex-shrink-0">
+                                          {specLabel}
+                                        </span>
+                                        <div className="flex-1 min-w-12 h-1.5 bg-muted rounded-full overflow-hidden">
+                                          <div
+                                            className={`h-full rounded-full transition-all ${ex.status === 'met' ? 'bg-green-500' : ex.status === 'partial' ? 'bg-primary/60' : 'bg-muted-foreground/20'}`}
+                                            style={{ width: `${progress}%` }}
+                                          />
+                                        </div>
+                                        {hasBaseline ? (
+                                          <span className="text-xs text-muted-foreground flex-shrink-0 tabular-nums">
+                                            {(ex.actualBaselineValue ?? 0) > 0
+                                              ? `${(ex.actualBaselineValue ?? 0).toFixed(0)}/${ex.targetItemBaseline!.toFixed(0)}`
+                                              : ex.targetItemBaseline!.toFixed(0)}
+                                          </span>
+                                        ) : ex.actualValue > 0 ? (
+                                          <span className="text-xs text-muted-foreground flex-shrink-0 tabular-nums">
+                                            {ex.actualValue.toFixed(0)}
+                                          </span>
+                                        ) : null}
+                                      </div>
+                                      {(ex.reason || ex.historyRef) && (
+                                        <div className="pl-6 text-[11px] text-muted-foreground/70 leading-tight" data-testid={`plan-exercise-reason-${day.day}-${idx}`}>
+                                          {ex.reason}{ex.historyRef ? ` (${ex.historyRef})` : ''}
+                                        </div>
+                                      )}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+
+                        {modeRecommendation && (
+                          <div className="pt-2 border-t space-y-2">
+                            <button
+                              type="button"
+                              className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                              onClick={() => setShowModeLogic(v => !v)}
+                              data-testid="button-toggle-mode-logic"
+                            >
+                              <ChevronRight className={`h-3 w-3 transition-transform ${showModeLogic ? 'rotate-90' : ''}`} />
+                              系統建議：{modeRecommendation.recommendation === 'recovery' ? '恢復週' : '正常週'}
+                              <span className="text-muted-foreground/70">（查看判斷依據）</span>
+                            </button>
+                            {showModeLogic && (
+                              <div className="space-y-2" data-testid="section-mode-logic-expanded">
+                                {/* Metrics summary */}
+                                <div className="grid grid-cols-3 gap-1.5 text-xs">
+                                  {[
+                                    { label: `滾動均值（近${modeRecommendation.rollingWeeks}週）`, value: modeRecommendation.rollingAvg },
+                                    { label: '近4週均分', value: modeRecommendation.recent4Avg },
+                                    { label: '差距', value: `${modeRecommendation.diffPct > 0 ? '+' : ''}${modeRecommendation.diffPct}%` },
+                                    { label: '近4週超均次數', value: `${modeRecommendation.aboveAvgCount} / 4` },
+                                    { label: '上週總分', value: modeRecommendation.lastWeekTotal },
+                                    { label: '超均門檻 (×110%)', value: Math.round(modeRecommendation.rollingAvg * 1.1) },
+                                  ].map(m => (
+                                    <div key={m.label} className="rounded-md bg-muted/50 px-2 py-1.5 flex flex-col gap-0.5">
+                                      <span className="text-muted-foreground leading-tight">{m.label}</span>
+                                      <span className="font-semibold text-foreground tabular-nums">{m.value}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                                {/* Conditions */}
+                                <div className="space-y-1.5">
+                                  {(() => {
+                                    const r = modeRecommendation;
+                                    const c1 = r.recent4Avg > r.rollingAvg * 1.12;
+                                    const c2 = r.aboveAvgCount >= 3 && r.lastWeekTotal > r.rollingAvg * 1.1;
+                                    const c3 = r.recent4Avg < r.rollingAvg * 0.85;
+                                    return [
+                                      {
+                                        id: 1,
+                                        result: '恢復週',
+                                        label: `近4週均分 > 滾動均值 × 112%（門檻 ${Math.round(r.rollingAvg * 1.12)}）`,
+                                        detail: `近4週均分 ${r.recent4Avg} ${c1 ? '>' : '≤'} 門檻 ${Math.round(r.rollingAvg * 1.12)}`,
+                                        condMet: c1,
+                                      },
+                                      {
+                                        id: 2,
+                                        result: '恢復週',
+                                        label: `近4週 ≥ 3 週超均 且 上週 > 滾動均值 × 110%（門檻 ${Math.round(r.rollingAvg * 1.1)}）`,
+                                        detail: `超均次數 ${r.aboveAvgCount}/4（需≥3），上週 ${r.lastWeekTotal} ${r.lastWeekTotal > r.rollingAvg * 1.1 ? '>' : '≤'} 門檻 ${Math.round(r.rollingAvg * 1.1)}`,
+                                        condMet: c2,
+                                      },
+                                      {
+                                        id: 3,
+                                        result: '正常週',
+                                        label: `近4週均分 < 滾動均值 × 85%（門檻 ${Math.round(r.rollingAvg * 0.85)}）`,
+                                        detail: `近4週均分 ${r.recent4Avg} ${c3 ? '<' : '≥'} 門檻 ${Math.round(r.rollingAvg * 0.85)}`,
+                                        condMet: c3,
+                                      },
+                                      {
+                                        id: 4,
+                                        result: '正常週',
+                                        label: '以上條件均不符合（訓練量穩定）',
+                                        detail: '條件 1/2/3 均不符合，維持正常週節奏',
+                                        condMet: !c1 && !c2 && !c3,
+                                      },
+                                    ];
+                                  })().map(cond => {
+                                    const isMatched = modeRecommendation.matchedCondition === cond.id;
+                                    return (
+                                      <div
+                                        key={cond.id}
+                                        className={`rounded-md border px-3 py-2 text-sm ${isMatched ? 'border-primary bg-primary/5' : 'border-border bg-muted/30 opacity-60'}`}
+                                        data-testid={`replan-condition-${cond.id}${isMatched ? '-matched' : ''}`}
+                                      >
+                                        <div className="flex items-start justify-between gap-2 flex-wrap">
+                                          <div className="flex items-start gap-2 flex-1 min-w-0">
+                                            <span className={`mt-0.5 shrink-0 text-xs font-bold ${isMatched ? 'text-primary' : 'text-muted-foreground'}`}>
+                                              {isMatched ? '▶' : `${cond.id}.`}
+                                            </span>
+                                            <div className="min-w-0">
+                                              <span className={`font-medium ${isMatched ? 'text-foreground' : 'text-muted-foreground'}`}>{cond.label}</span>
+                                              <p className="text-xs text-muted-foreground mt-0.5">{cond.detail}</p>
+                                            </div>
+                                          </div>
+                                          <div className="flex items-center gap-1.5 shrink-0">
+                                            <span className={`text-xs font-semibold ${cond.condMet ? 'text-green-600 dark:text-green-400' : 'text-muted-foreground'}`}>
+                                              {cond.condMet ? '符合' : '不符合'}
+                                            </span>
+                                            <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${cond.result === '恢復週' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300' : 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300'}`}>
+                                              {cond.result}
+                                            </span>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
                               </div>
                             )}
                           </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ))}
-              </div>
+                        )}
 
-              {modeRecommendation && (
-                <div className="pt-2 border-t space-y-2">
-                  <button
-                    type="button"
-                    className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
-                    onClick={() => setShowModeLogic(v => !v)}
-                    data-testid="button-toggle-mode-logic"
-                  >
-                    <ChevronRight className={`h-3 w-3 transition-transform ${showModeLogic ? 'rotate-90' : ''}`} />
-                    系統建議：{modeRecommendation.recommendation === 'recovery' ? '恢復週' : '正常週'}
-                    <span className="text-muted-foreground/70">（查看判斷依據）</span>
-                  </button>
-                  {showModeLogic && (
-                    <div className="space-y-2" data-testid="section-mode-logic-expanded">
-                      {/* Metrics summary */}
-                      <div className="grid grid-cols-3 gap-1.5 text-xs">
-                        {[
-                          { label: `滾動均值（近${modeRecommendation.rollingWeeks}週）`, value: modeRecommendation.rollingAvg },
-                          { label: '近4週均分', value: modeRecommendation.recent4Avg },
-                          { label: '差距', value: `${modeRecommendation.diffPct > 0 ? '+' : ''}${modeRecommendation.diffPct}%` },
-                          { label: '近4週超均次數', value: `${modeRecommendation.aboveAvgCount} / 4` },
-                          { label: '上週總分', value: modeRecommendation.lastWeekTotal },
-                          { label: '超均門檻 (×110%)', value: Math.round(modeRecommendation.rollingAvg * 1.1) },
-                        ].map(m => (
-                          <div key={m.label} className="rounded-md bg-muted/50 px-2 py-1.5 flex flex-col gap-0.5">
-                            <span className="text-muted-foreground leading-tight">{m.label}</span>
-                            <span className="font-semibold text-foreground tabular-nums">{m.value}</span>
-                          </div>
-                        ))}
-                      </div>
-                      {/* Conditions */}
-                      <div className="space-y-1.5">
-                        {(() => {
-                          const r = modeRecommendation;
-                          const c1 = r.recent4Avg > r.rollingAvg * 1.12;
-                          const c2 = r.aboveAvgCount >= 3 && r.lastWeekTotal > r.rollingAvg * 1.1;
-                          const c3 = r.recent4Avg < r.rollingAvg * 0.85;
-                          return [
-                            {
-                              id: 1,
-                              result: '恢復週',
-                              label: `近4週均分 > 滾動均值 × 112%（門檻 ${Math.round(r.rollingAvg * 1.12)}）`,
-                              detail: `近4週均分 ${r.recent4Avg} ${c1 ? '>' : '≤'} 門檻 ${Math.round(r.rollingAvg * 1.12)}`,
-                              condMet: c1,
-                            },
-                            {
-                              id: 2,
-                              result: '恢復週',
-                              label: `近4週 ≥ 3 週超均 且 上週 > 滾動均值 × 110%（門檻 ${Math.round(r.rollingAvg * 1.1)}）`,
-                              detail: `超均次數 ${r.aboveAvgCount}/4（需≥3），上週 ${r.lastWeekTotal} ${r.lastWeekTotal > r.rollingAvg * 1.1 ? '>' : '≤'} 門檻 ${Math.round(r.rollingAvg * 1.1)}`,
-                              condMet: c2,
-                            },
-                            {
-                              id: 3,
-                              result: '正常週',
-                              label: `近4週均分 < 滾動均值 × 85%（門檻 ${Math.round(r.rollingAvg * 0.85)}）`,
-                              detail: `近4週均分 ${r.recent4Avg} ${c3 ? '<' : '≥'} 門檻 ${Math.round(r.rollingAvg * 0.85)}`,
-                              condMet: c3,
-                            },
-                            {
-                              id: 4,
-                              result: '正常週',
-                              label: '以上條件均不符合（訓練量穩定）',
-                              detail: '條件 1/2/3 均不符合，維持正常週節奏',
-                              condMet: !c1 && !c2 && !c3,
-                            },
-                          ];
-                        })().map(cond => {
-                          const isMatched = modeRecommendation.matchedCondition === cond.id;
-                          return (
-                            <div
-                              key={cond.id}
-                              className={`rounded-md border px-3 py-2 text-sm ${isMatched ? 'border-primary bg-primary/5' : 'border-border bg-muted/30 opacity-60'}`}
-                              data-testid={`replan-condition-${cond.id}${isMatched ? '-matched' : ''}`}
+                        <div className="flex items-center justify-between gap-2 pt-2 border-t flex-wrap">
+                          <div className="flex gap-2">
+                            <Button
+                              variant={selectedPlanMode === 'recovery' ? 'default' : 'outline'}
+                              size="sm"
+                              onClick={() => { setSelectedPlanMode('recovery'); setModeManuallyChanged(true); }}
+                              data-testid="button-replan-mode-recovery"
                             >
-                              <div className="flex items-start justify-between gap-2 flex-wrap">
-                                <div className="flex items-start gap-2 flex-1 min-w-0">
-                                  <span className={`mt-0.5 shrink-0 text-xs font-bold ${isMatched ? 'text-primary' : 'text-muted-foreground'}`}>
-                                    {isMatched ? '▶' : `${cond.id}.`}
-                                  </span>
-                                  <div className="min-w-0">
-                                    <span className={`font-medium ${isMatched ? 'text-foreground' : 'text-muted-foreground'}`}>{cond.label}</span>
-                                    <p className="text-xs text-muted-foreground mt-0.5">{cond.detail}</p>
+                              恢復周
+                            </Button>
+                            <Button
+                              variant={selectedPlanMode === 'normal' ? 'default' : 'outline'}
+                              size="sm"
+                              onClick={() => { setSelectedPlanMode('normal'); setModeManuallyChanged(true); }}
+                              data-testid="button-replan-mode-normal"
+                            >
+                              正常周
+                            </Button>
+                          </div>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => generatePlanMutation.mutate(selectedPlanMode)}
+                            disabled={generatePlanMutation.isPending}
+                            data-testid="button-replan-generate"
+                          >
+                            {generatePlanMutation.isPending ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <RefreshCw className="h-4 w-4" />
+                            )}
+                            <span className="ml-1">重新生成</span>
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+        </TabsContent>
+
+        <TabsContent value="progress" className="mt-0 space-y-4">
+                {/* 本周训练进度 */}
+                {!weeklyProgressLoading && weeklyProgress && weeklyProgress.exercises.length > 0 && (
+                  <Card data-testid="card-weekly-progress">
+                    <CardHeader className="pb-3">
+                      <CardTitle className="flex items-center gap-2">
+                        <Activity className="h-5 w-5" />
+                        本周训练进度
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                        {/* 推荐训练项目 - 放在最前面 */}
+                        {weeklyProgress.recommendations && weeklyProgress.recommendations.length > 0 && (
+                          <>
+                            {weeklyProgress.recommendations.map((rec) => {
+                              const exerciseInfo = exercises?.find(e => e.id === rec.exerciseId);
+                              const muscleFieldMap: { field: keyof Exercise; name: string }[] = [
+                                { field: 'muscleChest', name: '胸' },
+                                { field: 'muscleBack', name: '背' },
+                                { field: 'muscleLegs', name: '腿' },
+                                { field: 'muscleShoulders', name: '肩' },
+                                { field: 'muscleArms', name: '二头肌' },
+                                { field: 'muscleCore', name: '核心' },
+                                { field: 'muscleGlutes', name: '臀' },
+                                { field: 'muscleFullBody', name: '三头肌' },
+                              ];
+                              const targetMuscles = exerciseInfo ? muscleFieldMap
+                                .filter(m => {
+                                  const value = exerciseInfo[m.field] as number | null;
+                                  return value && value > 0;
+                                })
+                                .map(m => m.name)
+                              : [];
+                    
+                              return (
+                                <div
+                                  key={`rec-${rec.exerciseId}`}
+                                  className="space-y-2 p-3 rounded-lg border-2 border-dashed border-primary/30 bg-primary/5 hover-elevate cursor-pointer group"
+                                  data-testid={`recommendation-${rec.exerciseId}`}
+                                  onClick={() => handleAddEntry(rec.exerciseId)}
+                                >
+                                  <div className="flex items-center justify-between text-sm">
+                                    <span className="font-medium truncate">{rec.exerciseName}</span>
+                                    <div className="flex items-center gap-1 shrink-0 ml-2">
+                                      <Plus className="h-4 w-4 text-primary" />
+                                    </div>
+                                  </div>
+                                  {targetMuscles.length > 0 && (
+                                    <div className="text-xs text-primary/80">
+                                      {targetMuscles.join(' / ')}
+                                    </div>
+                                  )}
+                                  <div className="flex items-center justify-between text-xs text-muted-foreground">
+                                    <span className="truncate">{rec.reason}</span>
+                                    <span className="text-primary font-medium shrink-0 ml-2">建议</span>
+                                  </div>
+                                  <div className="h-1.5 w-full overflow-hidden rounded-full bg-secondary">
+                                    <div
+                                      className="h-full bg-primary/50"
+                                      style={{ width: '0%' }}
+                                    />
                                   </div>
                                 </div>
-                                <div className="flex items-center gap-1.5 shrink-0">
-                                  <span className={`text-xs font-semibold ${cond.condMet ? 'text-green-600 dark:text-green-400' : 'text-muted-foreground'}`}>
-                                    {cond.condMet ? '符合' : '不符合'}
-                                  </span>
-                                  <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${cond.result === '恢復週' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300' : 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300'}`}>
-                                    {cond.result}
-                                  </span>
+                              );
+                            })}
+                          </>
+                        )}
+                        {/* 运动项目列表 - 按距离锻炼时间排序 */}
+                        {weeklyProgress.exercises
+                          .sort((a, b) => {
+                            // 按距上次锻炼天数降序排列，null值排最后
+                            const daysA = a.daysSinceLastWorkout ?? -1;
+                            const daysB = b.daysSinceLastWorkout ?? -1;
+                            return daysB - daysA;
+                          })
+                          .map((ex) => {
+                            const percentage = ex.differencePercentage || 0;
+                            const isAbove = percentage >= 0;
+                            const displayPercentage = Math.abs(percentage);
+                            const progressValue = Math.min(displayPercentage, 100);
+                  
+                            // 获取运动的主要锻炼肌群
+                            const exerciseInfo = exercises?.find(e => e.id === ex.exerciseId);
+                            const muscleFieldMap: { field: keyof Exercise; name: string }[] = [
+                              { field: 'muscleChest', name: '胸' },
+                              { field: 'muscleBack', name: '背' },
+                              { field: 'muscleLegs', name: '腿' },
+                              { field: 'muscleShoulders', name: '肩' },
+                              { field: 'muscleArms', name: '二头肌' },
+                              { field: 'muscleCore', name: '核心' },
+                              { field: 'muscleGlutes', name: '臀' },
+                              { field: 'muscleFullBody', name: '三头肌' },
+                            ];
+                            const primaryMuscles = exerciseInfo ? muscleFieldMap
+                              .filter(m => {
+                                const value = exerciseInfo[m.field] as number | null;
+                                return value && value > 0;
+                              })
+                              .sort((a, b) => {
+                                const valueA = (exerciseInfo[a.field] as number) || 0;
+                                const valueB = (exerciseInfo[b.field] as number) || 0;
+                                return valueB - valueA;
+                              })
+                              .slice(0, 3)
+                              .map(m => m.name)
+                            : [];
+
+                            return (
+                              <div
+                                key={ex.exerciseId}
+                                className="space-y-2 p-3 rounded-lg bg-muted/50 hover-elevate cursor-pointer group"
+                                data-testid={`progress-${ex.exerciseId}`}
+                                onClick={() => handleAddEntry(ex.exerciseId)}
+                              >
+                                <div className="flex items-center justify-between text-sm">
+                                  <span className="font-medium truncate">{ex.exerciseName}</span>
+                                  <div className="flex items-center gap-1 shrink-0 ml-2">
+                                    <Plus className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+                                    {ex.weeklyAverage !== null && ex.weeklyAverage > 0 ? (
+                                      <>
+                                        {isAbove ? (
+                                          <TrendingUp className="h-4 w-4 text-green-500" />
+                                        ) : (
+                                          <TrendingDown className="h-4 w-4 text-orange-500" />
+                                        )}
+                                        <span
+                                          className={
+                                            isAbove ? "text-green-600 dark:text-green-400 font-semibold" : "text-orange-600 dark:text-orange-400 font-semibold"
+                                          }
+                                        >
+                                          {isAbove ? "+" : ""}
+                                          {percentage.toFixed(0)}%
+                                        </span>
+                                      </>
+                                    ) : (
+                                      <span className="text-muted-foreground text-xs">新</span>
+                                    )}
+                                  </div>
                                 </div>
+                                {primaryMuscles.length > 0 && (
+                                  <div className="text-xs text-primary/80">
+                                    {primaryMuscles.join(' / ')}
+                                  </div>
+                                )}
+                                <div className="flex items-center justify-between text-xs text-muted-foreground">
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <span>
+                                      本周: {ex.currentWeekValue.toFixed(1)} {ex.exerciseUnit}
+                                    </span>
+                                    {ex.weeklyAverage !== null && ex.weeklyAverage > 0 && (
+                                      <>
+                                        <span>|</span>
+                                        <span>
+                                          平均: {ex.weeklyAverage.toFixed(1)} {ex.exerciseUnit}
+                                        </span>
+                                      </>
+                                    )}
+                                  </div>
+                                  {ex.daysSinceLastWorkout !== null && (
+                                    <span className={ex.daysSinceLastWorkout >= 7 ? "text-orange-500 font-medium" : ""}>
+                                      {ex.daysSinceLastWorkout === 0 ? "今天" : `${ex.daysSinceLastWorkout}天前`}
+                                    </span>
+                                  )}
+                                </div>
+                                {ex.currentWeekKm !== null && (
+                                  <div className="flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
+                                    <span>
+                                      本周: {ex.currentWeekKm.toFixed(1)} km
+                                    </span>
+                                    {ex.weeklyAverageKm !== null && ex.weeklyAverageKm > 0 && (
+                                      <>
+                                        <span>|</span>
+                                        <span>平均: {ex.weeklyAverageKm.toFixed(1)} km</span>
+                                      </>
+                                    )}
+                                    {ex.bestWeekKm !== null && ex.bestWeekKm > 0 && (
+                                      <>
+                                        <span>|</span>
+                                        <span className="text-primary/80">冠: {ex.bestWeekKm.toFixed(1)} km</span>
+                                      </>
+                                    )}
+                                  </div>
+                                )}
+                                {ex.weeklyAverage !== null && ex.weeklyAverage > 0 && (
+                                  <div className="pt-4">
+                                    <ScaleProgressBar
+                                      currentValue={ex.currentWeekValue}
+                                      maxValue={Math.max(ex.currentWeekValue, ex.weeklyAverage)}
+                                      markers={[
+                                        { value: ex.weeklyAverage, label: '均', colorClass: 'bg-primary', textColorClass: 'text-primary' }
+                                      ]}
+                                      barColorClass={isAbove ? 'bg-chart-3' : 'bg-destructive'}
+                                      height="h-2"
+                                      showLabels={false}
+                                    />
+                                  </div>
+                                )}
                               </div>
-                            </div>
-                          );
-                        })}
+                            );
+                          })}
                       </div>
-                    </div>
-                  )}
-                </div>
-              )}
+                    </CardContent>
+                  </Card>
+                )}
 
-              <div className="flex items-center justify-between gap-2 pt-2 border-t flex-wrap">
-                <div className="flex gap-2">
-                  <Button
-                    variant={selectedPlanMode === 'recovery' ? 'default' : 'outline'}
-                    size="sm"
-                    onClick={() => { setSelectedPlanMode('recovery'); setModeManuallyChanged(true); }}
-                    data-testid="button-replan-mode-recovery"
-                  >
-                    恢復周
-                  </Button>
-                  <Button
-                    variant={selectedPlanMode === 'normal' ? 'default' : 'outline'}
-                    size="sm"
-                    onClick={() => { setSelectedPlanMode('normal'); setModeManuallyChanged(true); }}
-                    data-testid="button-replan-mode-normal"
-                  >
-                    正常周
-                  </Button>
-                </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => generatePlanMutation.mutate(selectedPlanMode)}
-                  disabled={generatePlanMutation.isPending}
-                  data-testid="button-replan-generate"
-                >
-                  {generatePlanMutation.isPending ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <RefreshCw className="h-4 w-4" />
-                  )}
-                  <span className="ml-1">重新生成</span>
-                </Button>
-              </div>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* 本周训练进度 */}
-      {!weeklyProgressLoading && weeklyProgress && weeklyProgress.exercises.length > 0 && (
-        <Card data-testid="card-weekly-progress">
-          <CardHeader className="pb-3">
-            <CardTitle className="flex items-center gap-2">
-              <Activity className="h-5 w-5" />
-              本周训练进度
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-              {/* 推荐训练项目 - 放在最前面 */}
-              {weeklyProgress.recommendations && weeklyProgress.recommendations.length > 0 && (
-                <>
-                  {weeklyProgress.recommendations.map((rec) => {
-                    const exerciseInfo = exercises?.find(e => e.id === rec.exerciseId);
+                {/* 独立推荐卡片 - 当本周训练进度卡片不显示时显示 */}
+                {(!weeklyProgress || weeklyProgress.exercises.length === 0) && 
+                  exercises && exercises.length > 0 && (() => {
                     const muscleFieldMap: { field: keyof Exercise; name: string }[] = [
                       { field: 'muscleChest', name: '胸' },
                       { field: 'muscleBack', name: '背' },
@@ -1779,328 +1901,250 @@ export default function Dashboard() {
                       { field: 'muscleGlutes', name: '臀' },
                       { field: 'muscleFullBody', name: '三头肌' },
                     ];
-                    const targetMuscles = exerciseInfo ? muscleFieldMap
-                      .filter(m => {
-                        const value = exerciseInfo[m.field] as number | null;
-                        return value && value > 0;
-                      })
-                      .map(m => m.name)
-                    : [];
-                    
-                    return (
-                      <div
-                        key={`rec-${rec.exerciseId}`}
-                        className="space-y-2 p-3 rounded-lg border-2 border-dashed border-primary/30 bg-primary/5 hover-elevate cursor-pointer group"
-                        data-testid={`recommendation-${rec.exerciseId}`}
-                        onClick={() => handleAddEntry(rec.exerciseId)}
-                      >
-                        <div className="flex items-center justify-between text-sm">
-                          <span className="font-medium truncate">{rec.exerciseName}</span>
-                          <div className="flex items-center gap-1 shrink-0 ml-2">
-                            <Plus className="h-4 w-4 text-primary" />
-                          </div>
-                        </div>
-                        {targetMuscles.length > 0 && (
-                          <div className="text-xs text-primary/80">
-                            {targetMuscles.join(' / ')}
-                          </div>
-                        )}
-                        <div className="flex items-center justify-between text-xs text-muted-foreground">
-                          <span className="truncate">{rec.reason}</span>
-                          <span className="text-primary font-medium shrink-0 ml-2">建议</span>
-                        </div>
-                        <div className="h-1.5 w-full overflow-hidden rounded-full bg-secondary">
-                          <div
-                            className="h-full bg-primary/50"
-                            style={{ width: '0%' }}
-                          />
-                        </div>
-                      </div>
+          
+                    const trainedMuscles = new Set(
+                      muscleGroupStats?.muscleGroups?.map(g => g.muscleGroup) || []
                     );
-                  })}
-                </>
-              )}
-              {/* 运动项目列表 - 按距离锻炼时间排序 */}
-              {weeklyProgress.exercises
-                .sort((a, b) => {
-                  // 按距上次锻炼天数降序排列，null值排最后
-                  const daysA = a.daysSinceLastWorkout ?? -1;
-                  const daysB = b.daysSinceLastWorkout ?? -1;
-                  return daysB - daysA;
-                })
-                .map((ex) => {
-                  const percentage = ex.differencePercentage || 0;
-                  const isAbove = percentage >= 0;
-                  const displayPercentage = Math.abs(percentage);
-                  const progressValue = Math.min(displayPercentage, 100);
-                  
-                  // 获取运动的主要锻炼肌群
-                  const exerciseInfo = exercises?.find(e => e.id === ex.exerciseId);
-                  const muscleFieldMap: { field: keyof Exercise; name: string }[] = [
-                    { field: 'muscleChest', name: '胸' },
-                    { field: 'muscleBack', name: '背' },
-                    { field: 'muscleLegs', name: '腿' },
-                    { field: 'muscleShoulders', name: '肩' },
-                    { field: 'muscleArms', name: '二头肌' },
-                    { field: 'muscleCore', name: '核心' },
-                    { field: 'muscleGlutes', name: '臀' },
-                    { field: 'muscleFullBody', name: '三头肌' },
-                  ];
-                  const primaryMuscles = exerciseInfo ? muscleFieldMap
-                    .filter(m => {
-                      const value = exerciseInfo[m.field] as number | null;
-                      return value && value > 0;
-                    })
-                    .sort((a, b) => {
-                      const valueA = (exerciseInfo[a.field] as number) || 0;
-                      const valueB = (exerciseInfo[b.field] as number) || 0;
-                      return valueB - valueA;
-                    })
-                    .slice(0, 3)
-                    .map(m => m.name)
-                  : [];
-
-                  return (
-                    <div
-                      key={ex.exerciseId}
-                      className="space-y-2 p-3 rounded-lg bg-muted/50 hover-elevate cursor-pointer group"
-                      data-testid={`progress-${ex.exerciseId}`}
-                      onClick={() => handleAddEntry(ex.exerciseId)}
-                    >
-                      <div className="flex items-center justify-between text-sm">
-                        <span className="font-medium truncate">{ex.exerciseName}</span>
-                        <div className="flex items-center gap-1 shrink-0 ml-2">
-                          <Plus className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
-                          {ex.weeklyAverage !== null && ex.weeklyAverage > 0 ? (
-                            <>
-                              {isAbove ? (
-                                <TrendingUp className="h-4 w-4 text-green-500" />
-                              ) : (
-                                <TrendingDown className="h-4 w-4 text-orange-500" />
-                              )}
-                              <span
-                                className={
-                                  isAbove ? "text-green-600 dark:text-green-400 font-semibold" : "text-orange-600 dark:text-orange-400 font-semibold"
-                                }
+                    const untrainedMuscles = muscleFieldMap.filter(m => !trainedMuscles.has(m.name));
+          
+                    if (untrainedMuscles.length === 0) return null;
+          
+                    const recommendedExercises = exercises
+                      .filter(ex => {
+                        return untrainedMuscles.some(um => {
+                          const value = ex[um.field] as number | null;
+                          return value && value > 0;
+                        });
+                      })
+                      .map(ex => {
+                        const targetMuscles = untrainedMuscles
+                          .filter(um => {
+                            const value = ex[um.field] as number | null;
+                            return value && value > 0;
+                          })
+                          .map(um => um.name);
+                        return { exercise: ex, targetMuscles };
+                      })
+                      .slice(0, 5);
+          
+                    if (recommendedExercises.length === 0) return null;
+          
+                    return (
+                      <Card data-testid="card-muscle-recommendations">
+                        <CardHeader className="pb-3">
+                          <CardTitle className="flex items-center gap-2">
+                            <Dumbbell className="h-5 w-5" />
+                            建议训练
+                          </CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                          <p className="text-sm text-muted-foreground mb-3">
+                            未锻炼肌群: {untrainedMuscles.map(m => m.name).join('、')}
+                          </p>
+                          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                            {recommendedExercises.map(({ exercise, targetMuscles }) => (
+                              <div
+                                key={`rec-${exercise.id}`}
+                                className="space-y-2 p-3 rounded-lg border-2 border-dashed border-primary/30 bg-primary/5 hover-elevate cursor-pointer group"
+                                data-testid={`recommendation-${exercise.id}`}
+                                onClick={() => handleAddEntry(exercise.id)}
                               >
-                                {isAbove ? "+" : ""}
-                                {percentage.toFixed(0)}%
-                              </span>
-                            </>
-                          ) : (
-                            <span className="text-muted-foreground text-xs">新</span>
-                          )}
-                        </div>
-                      </div>
-                      {primaryMuscles.length > 0 && (
-                        <div className="text-xs text-primary/80">
-                          {primaryMuscles.join(' / ')}
-                        </div>
-                      )}
-                      <div className="flex items-center justify-between text-xs text-muted-foreground">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span>
-                            本周: {ex.currentWeekValue.toFixed(1)} {ex.exerciseUnit}
-                          </span>
-                          {ex.weeklyAverage !== null && ex.weeklyAverage > 0 && (
-                            <>
-                              <span>|</span>
-                              <span>
-                                平均: {ex.weeklyAverage.toFixed(1)} {ex.exerciseUnit}
-                              </span>
-                            </>
-                          )}
-                        </div>
-                        {ex.daysSinceLastWorkout !== null && (
-                          <span className={ex.daysSinceLastWorkout >= 7 ? "text-orange-500 font-medium" : ""}>
-                            {ex.daysSinceLastWorkout === 0 ? "今天" : `${ex.daysSinceLastWorkout}天前`}
-                          </span>
-                        )}
-                      </div>
-                      {ex.currentWeekKm !== null && (
-                        <div className="flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
-                          <span>
-                            本周: {ex.currentWeekKm.toFixed(1)} km
-                          </span>
-                          {ex.weeklyAverageKm !== null && ex.weeklyAverageKm > 0 && (
-                            <>
-                              <span>|</span>
-                              <span>平均: {ex.weeklyAverageKm.toFixed(1)} km</span>
-                            </>
-                          )}
-                          {ex.bestWeekKm !== null && ex.bestWeekKm > 0 && (
-                            <>
-                              <span>|</span>
-                              <span className="text-primary/80">冠: {ex.bestWeekKm.toFixed(1)} km</span>
-                            </>
-                          )}
-                        </div>
-                      )}
-                      {ex.weeklyAverage !== null && ex.weeklyAverage > 0 && (
-                        <div className="pt-4">
-                          <ScaleProgressBar
-                            currentValue={ex.currentWeekValue}
-                            maxValue={Math.max(ex.currentWeekValue, ex.weeklyAverage)}
-                            markers={[
-                              { value: ex.weeklyAverage, label: '均', colorClass: 'bg-primary', textColorClass: 'text-primary' }
-                            ]}
-                            barColorClass={isAbove ? 'bg-chart-3' : 'bg-destructive'}
-                            height="h-2"
-                            showLabels={false}
-                          />
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-            </div>
-          </CardContent>
-        </Card>
-      )}
+                                <div className="flex items-center justify-between text-sm">
+                                  <span className="font-medium truncate">{exercise.name}</span>
+                                  <Plus className="h-4 w-4 text-primary shrink-0 ml-2" />
+                                </div>
+                                <div className="text-xs text-muted-foreground truncate">
+                                  锻炼: {targetMuscles.join('、')}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </CardContent>
+                      </Card>
+                    );
+                  })()
+                }
+        </TabsContent>
 
-      {/* 独立推荐卡片 - 当本周训练进度卡片不显示时显示 */}
-      {(!weeklyProgress || weeklyProgress.exercises.length === 0) && 
-        exercises && exercises.length > 0 && (() => {
-          const muscleFieldMap: { field: keyof Exercise; name: string }[] = [
-            { field: 'muscleChest', name: '胸' },
-            { field: 'muscleBack', name: '背' },
-            { field: 'muscleLegs', name: '腿' },
-            { field: 'muscleShoulders', name: '肩' },
-            { field: 'muscleArms', name: '二头肌' },
-            { field: 'muscleCore', name: '核心' },
-            { field: 'muscleGlutes', name: '臀' },
-            { field: 'muscleFullBody', name: '三头肌' },
-          ];
-          
-          const trainedMuscles = new Set(
-            muscleGroupStats?.muscleGroups?.map(g => g.muscleGroup) || []
-          );
-          const untrainedMuscles = muscleFieldMap.filter(m => !trainedMuscles.has(m.name));
-          
-          if (untrainedMuscles.length === 0) return null;
-          
-          const recommendedExercises = exercises
-            .filter(ex => {
-              return untrainedMuscles.some(um => {
-                const value = ex[um.field] as number | null;
-                return value && value > 0;
-              });
-            })
-            .map(ex => {
-              const targetMuscles = untrainedMuscles
-                .filter(um => {
-                  const value = ex[um.field] as number | null;
-                  return value && value > 0;
-                })
-                .map(um => um.name);
-              return { exercise: ex, targetMuscles };
-            })
-            .slice(0, 5);
-          
-          if (recommendedExercises.length === 0) return null;
-          
-          return (
-            <Card data-testid="card-muscle-recommendations">
-              <CardHeader className="pb-3">
-                <CardTitle className="flex items-center gap-2">
-                  <Dumbbell className="h-5 w-5" />
-                  建议训练
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm text-muted-foreground mb-3">
-                  未锻炼肌群: {untrainedMuscles.map(m => m.name).join('、')}
-                </p>
-                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                  {recommendedExercises.map(({ exercise, targetMuscles }) => (
-                    <div
-                      key={`rec-${exercise.id}`}
-                      className="space-y-2 p-3 rounded-lg border-2 border-dashed border-primary/30 bg-primary/5 hover-elevate cursor-pointer group"
-                      data-testid={`recommendation-${exercise.id}`}
-                      onClick={() => handleAddEntry(exercise.id)}
-                    >
-                      <div className="flex items-center justify-between text-sm">
-                        <span className="font-medium truncate">{exercise.name}</span>
-                        <Plus className="h-4 w-4 text-primary shrink-0 ml-2" />
-                      </div>
-                      <div className="text-xs text-muted-foreground truncate">
-                        锻炼: {targetMuscles.join('、')}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          );
-        })()
-      }
-
-      <Collapsible open={rankingOpen} onOpenChange={setRankingOpen}>
-        <div className="flex items-center gap-2">
-          <CollapsibleTrigger asChild>
-            <Button variant="ghost" size="sm" className="gap-1" data-testid="button-toggle-ranking">
-              <ChevronDown className={`h-4 w-4 transition-transform ${rankingOpen ? 'rotate-180' : ''}`} />
-              排名詳情
-            </Button>
-          </CollapsibleTrigger>
-        </div>
-        <CollapsibleContent>
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mt-3">
-        {rankingData && rankingData.totalWeeks > 0 && (
-          <>
-            <RankingMetricCard
-              title="总分排名"
-              icon={Award}
-              rank={rankingData.rank}
-              totalWeeks={rankingData.totalWeeks}
-              currentValue={rankingData.currentWeek.totalBaselineValue}
-              averageValue={rankingData.averageWeeklyValue}
-              topValue={rankingData.topWeekTotalValue}
-              onClick={() => setRankingDetailMetric('total')}
-              onMouseEnter={() => prefetchRankingDetail('total')}
-              testId="card-total-rank"
-            />
-            <RankingMetricCard
-              title="力量排名"
-              icon={Dumbbell}
-              rank={rankingData.strengthRank}
-              totalWeeks={rankingData.totalWeeks}
-              currentValue={rankingData.currentWeek.strengthValue}
-              averageValue={rankingData.averageStrengthValue}
-              topValue={rankingData.topWeekStrengthValue}
-              onClick={() => setRankingDetailMetric('strength')}
-              onMouseEnter={() => prefetchRankingDetail('strength')}
-              testId="card-strength-rank"
-            />
-            <RankingMetricCard
-              title="有氧排名"
-              icon={Heart}
-              rank={rankingData.cardioRank}
-              totalWeeks={rankingData.totalWeeks}
-              currentValue={rankingData.currentWeek.cardioValue}
-              averageValue={rankingData.averageCardioValue}
-              topValue={rankingData.topWeekCardioValue}
-              onClick={() => setRankingDetailMetric('cardio')}
-              onMouseEnter={() => prefetchRankingDetail('cardio')}
-              testId="card-cardio-rank"
-            />
-            <RankingMetricCard
-              title="活动量排名"
-              icon={Footprints}
-              rank={rankingData.activityRank}
-              totalWeeks={rankingData.totalWeeks}
-              currentValue={rankingData.currentWeek.activityValue}
-              averageValue={rankingData.averageActivityValue}
-              topValue={rankingData.topWeekActivityValue}
-              onClick={() => setRankingDetailMetric('activity')}
-              onMouseEnter={() => prefetchRankingDetail('activity')}
-              testId="card-activity-rank"
-            />
-          </>
-        )}
+        <TabsContent value="ranking" className="mt-0">
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4" data-testid="grid-rankings">
+                  {rankingData && rankingData.totalWeeks > 0 && (
+                    <>
+                      <RankingMetricCard
+                        title="总分排名"
+                        icon={Award}
+                        rank={rankingData.rank}
+                        totalWeeks={rankingData.totalWeeks}
+                        currentValue={rankingData.currentWeek.totalBaselineValue}
+                        averageValue={rankingData.averageWeeklyValue}
+                        topValue={rankingData.topWeekTotalValue}
+                        onClick={() => setRankingDetailMetric('total')}
+                        onMouseEnter={() => prefetchRankingDetail('total')}
+                        testId="card-total-rank"
+                      />
+                      <RankingMetricCard
+                        title="力量排名"
+                        icon={Dumbbell}
+                        rank={rankingData.strengthRank}
+                        totalWeeks={rankingData.totalWeeks}
+                        currentValue={rankingData.currentWeek.strengthValue}
+                        averageValue={rankingData.averageStrengthValue}
+                        topValue={rankingData.topWeekStrengthValue}
+                        onClick={() => setRankingDetailMetric('strength')}
+                        onMouseEnter={() => prefetchRankingDetail('strength')}
+                        testId="card-strength-rank"
+                      />
+                      <RankingMetricCard
+                        title="有氧排名"
+                        icon={Heart}
+                        rank={rankingData.cardioRank}
+                        totalWeeks={rankingData.totalWeeks}
+                        currentValue={rankingData.currentWeek.cardioValue}
+                        averageValue={rankingData.averageCardioValue}
+                        topValue={rankingData.topWeekCardioValue}
+                        onClick={() => setRankingDetailMetric('cardio')}
+                        onMouseEnter={() => prefetchRankingDetail('cardio')}
+                        testId="card-cardio-rank"
+                      />
+                      <RankingMetricCard
+                        title="活动量排名"
+                        icon={Footprints}
+                        rank={rankingData.activityRank}
+                        totalWeeks={rankingData.totalWeeks}
+                        currentValue={rankingData.currentWeek.activityValue}
+                        averageValue={rankingData.averageActivityValue}
+                        topValue={rankingData.topWeekActivityValue}
+                        onClick={() => setRankingDetailMetric('activity')}
+                        onMouseEnter={() => prefetchRankingDetail('activity')}
+                        testId="card-activity-rank"
+                      />
+                    </>
+                  )}
           </div>
-        </CollapsibleContent>
-      </Collapsible>
+        </TabsContent>
+
+        <TabsContent value="history" className="mt-0 space-y-4">
+                {/* 歷史雷達圖快照 */}
+                <Card data-testid="card-radar-history">
+                  <CardHeader className="pb-2">
+                    <CardTitle
+                      className="flex items-center gap-2 text-base cursor-pointer"
+                      onClick={() => setShowSnapshotHistory(v => !v)}
+                    >
+                      <History className="h-5 w-5" />
+                      歷史週雷達圖快照
+                      {showSnapshotHistory
+                        ? <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                        : <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                      }
+                    </CardTitle>
+                  </CardHeader>
+                  {showSnapshotHistory && (
+                    <CardContent>
+                      {!radarSnapshotHistory ? (
+                        <div className="flex justify-center py-6"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
+                      ) : radarSnapshotHistory.length === 0 ? (
+                        <p className="text-sm text-muted-foreground text-center py-6">尚無儲存的快照。每周日晚間 GitHub Actions 會自動儲存，或點雷達圖右上角「儲存快照」手動儲存。</p>
+                      ) : (
+                        <div className="space-y-4">
+                          {radarSnapshotHistory.map(snap => {
+                            const scores: Record<string, number> = JSON.parse(snap.scoresJson);
+                            const recs: string[] = JSON.parse(snap.recommendationsJson);
+                            const muscleNames = ['胸', '背', '腿', '肩', '二头肌', '核心', '臀', '三头肌', '有氧'];
+                            const radarData = muscleNames.map(name => ({
+                              name,
+                              // 有氧軸是後來加的，backfill 之前存的舊快照沒有這個 key，
+                              // 缺值一律當 0%（見 /api/admin/backfill-aerobic-radar-snapshots）
+                              pct: scores[name] ?? 0,
+                              baseline: 100,
+                            }));
+                            // 快照只存了最終複合分，沒存當時哪些肌群有歷史容量資料可比對，
+                            // 所以均衡度這裡把全部 9 軸都當作可比對——多數情況下跟即時
+                            // 版一致，只有極少數「當週某肌群剛好還沒有比對基準」的情況會有
+                            // 微小落差，可接受的近似值。覆蓋分數則本來就用全部軸，沒有這個問題。
+                            // 這裡沒有套用活動量加成——舊快照沒存當週的活動量數字，且
+                            // 「歷史每一週的活動量達成率」需要額外跨表比對日期，複雜度/風險
+                            // 不成比例，範圍先限定在即時版（見下方 histCoverageScore）。
+                            const histBalanceScore = computeBalanceScore(
+                              radarData.map(d => ({ name: d.name, composite: d.pct, hasVolumeHistory: true }))
+                            );
+                            const histCoverageScore = computeCoverageScore(radarData.map(d => d.pct));
+                            return (
+                              <div key={snap.weekStart} className="rounded-lg border p-3 space-y-2">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-sm font-semibold">{snap.weekStart} 當週</span>
+                                  <span className="text-xs text-muted-foreground">
+                                    儲存於 {new Date(snap.createdAt).toLocaleDateString('zh-TW')}
+                                  </span>
+                                </div>
+                                {(histBalanceScore !== null || histCoverageScore !== null) && (
+                                  <div className="flex flex-wrap gap-1.5">
+                                    {histBalanceScore !== null && (
+                                      <Badge
+                                        variant="outline"
+                                        className={
+                                          histBalanceScore >= 80
+                                            ? "text-green-600 border-green-600/40 bg-green-500/10 text-[11px]"
+                                            : histBalanceScore >= 50
+                                            ? "text-amber-600 border-amber-600/40 bg-amber-500/10 text-[11px]"
+                                            : "text-red-600 border-red-600/40 bg-red-500/10 text-[11px]"
+                                        }
+                                      >
+                                        均衡度 {histBalanceScore}%
+                                      </Badge>
+                                    )}
+                                    {histCoverageScore !== null && (
+                                      <Badge
+                                        variant="outline"
+                                        className={
+                                          histCoverageScore >= 100
+                                            ? "text-green-600 border-green-600/40 bg-green-500/10 text-[11px]"
+                                            : histCoverageScore >= 60
+                                            ? "text-amber-600 border-amber-600/40 bg-amber-500/10 text-[11px]"
+                                            : "text-red-600 border-red-600/40 bg-red-500/10 text-[11px]"
+                                        }
+                                      >
+                                        覆蓋 {histCoverageScore}%
+                                      </Badge>
+                                    )}
+                                  </div>
+                                )}
+                                <ResponsiveContainer width="100%" height={220}>
+                                  <RadarChart data={radarData} outerRadius="72%">
+                                    <PolarGrid stroke="hsl(var(--muted-foreground) / 0.2)" />
+                                    <PolarAngleAxis dataKey="name" tick={{ fontSize: 11, fill: 'hsl(var(--foreground) / 0.7)' }} />
+                                    <PolarRadiusAxis domain={[0, 150]} ticks={[0, 50, 100, 150] as any} tickFormatter={(v: number) => v === 100 ? '維持' : `${v}%`} tick={{ fontSize: 9, fill: 'hsl(var(--muted-foreground))' }} axisLine={false} angle={90} />
+                                    <Radar name="維持量" dataKey="baseline" stroke="#d4a900" strokeDasharray="4 3" strokeWidth={1.5} fill="transparent" dot={false} />
+                                    <Radar name="複合分" dataKey="pct" stroke="hsl(var(--primary))" strokeWidth={2} fill="hsl(var(--primary))" fillOpacity={0.22} dot={false} />
+                                  </RadarChart>
+                                </ResponsiveContainer>
+                                <div className="flex flex-wrap gap-1.5 pt-1">
+                                  {muscleNames.map(name => {
+                                    const val = scores[name] ?? 0;
+                                    const color = val >= 100 ? 'text-green-600 dark:text-green-400' : val >= 80 ? 'text-yellow-600 dark:text-yellow-400' : 'text-red-500';
+                                    return (
+                                      <span key={name} className="text-[11px] flex items-center gap-0.5">
+                                        <span className="text-muted-foreground">{name}</span>
+                                        <span className={`font-semibold ${color}`}>{val}%</span>
+                                      </span>
+                                    );
+                                  })}
+                                </div>
+                                {recs.length > 0 && (
+                                  <p className="text-xs text-muted-foreground">
+                                    當週最需加強：{recs.join('、')}
+                                  </p>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </CardContent>
+                  )}
+                </Card>
+        </TabsContent>
+      </Tabs>
 
       <Dialog open={showStepsDialog} onOpenChange={setShowStepsDialog}>
         <DialogContent className="sm:max-w-[360px]">
