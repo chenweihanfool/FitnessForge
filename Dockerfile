@@ -16,11 +16,12 @@ RUN npm ci
 
 COPY . .
 
-# Baked into the built static assets at build time -- must match BASE_PATH
+# Baked into the built static assets at build time (empty = domain root, matching
+# the VPS deployment; docker-compose.yml passes the real value) -- must match BASE_PATH
 # (runtime, server-side path stripping) and PUBLIC_BASE_URL (OAuth callback
 # construction) used by the app service in docker-compose.yml. See
 # client/src/lib/basePath.ts.
-ARG VITE_BASE_PATH=/fitness
+ARG VITE_BASE_PATH=
 ENV VITE_BASE_PATH=${VITE_BASE_PATH}
 RUN npm run build
 
