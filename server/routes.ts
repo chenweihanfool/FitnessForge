@@ -6,6 +6,7 @@ import { computeMuscleCompositeScore } from "@shared/muscleGroupStats";
 import multer from "multer";
 import Papa from "papaparse";
 import { requireAuth, requireAdmin } from "./auth";
+import { summaryKeyGuard } from "./summaryKey";
 
 const upload = multer({ storage: multer.memoryStorage() });
 
@@ -1547,7 +1548,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ── Public summary endpoint (no auth) ─────────────────────────────────────
   // Compact weekly score / trend / muscle-group breakdown for external
   // dashboards (Aiportal's system-overview cards).
-  app.get('/api/public/summary', async (_req, res) => {
+  app.get('/api/public/summary', summaryKeyGuard, async (_req, res) => {
     try {
       const summary = await storage.getPublicSummary();
       res.json({ ...summary, updatedAt: new Date().toISOString() });
