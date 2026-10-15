@@ -16,6 +16,9 @@ services:
       # host.docker.internal, not localhost/127.0.0.1 -- from inside the app
       # container, localhost means the container itself.
       DATABASE_URL: ${DATABASE_URL}
+      # /api/public/summary 的存取金鑰（Aiportal 以 x-summary-key 帶同一把）。
+      # 空值 = 不檢查（過渡期）；設定後沒帶或不符一律 401。
+      SUMMARY_API_KEY: ${SUMMARY_API_KEY:-}
       SESSION_SECRET: ${SESSION_SECRET}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
