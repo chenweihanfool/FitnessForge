@@ -55,3 +55,24 @@ export const queryClient = new QueryClient({
     },
   },
 });
+
+// 這些 query 都是由「運動記錄」算出來的衍生資料。staleTime 設成 Infinity，所以
+// 任何會改動記錄的操作（新增/修改/刪除/匯入/重算基準值/調整權重…）之後都要主動
+// 讓它們失效——集中在這一個函式，不要在各頁面各自列一份清單（先前各頁的清單
+// 長短不一，漏列的頁面會顯示舊資料）。
+const WORKOUT_DERIVED_PREFIXES = ["/api/entries", "/api/stats", "/api/training"];
+
+export function invalidateWorkoutData() {
+  return queryClient.invalidateQueries({
+    predicate: (query) => {
+      const key = query.queryKey[0];
+      return typeof key === "string" && WORKOUT_DERIVED_PREFIXES.some((prefix) => key.startsWith(prefix));
+    },
+  });
+}
+
+/** 運動項目的參數（肌群比例、係數…）變動也會影響所有衍生統計 */
+export function invalidateExerciseData() {
+  invalidateWorkoutData();
+  return queryClient.invalidateQueries({ queryKey: ["/api/exercises"] });
+}

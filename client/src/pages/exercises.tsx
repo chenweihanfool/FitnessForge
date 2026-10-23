@@ -21,11 +21,12 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import { Plus, Dumbbell, Trash2, Pencil, Filter } from "lucide-react";
+import { Plus, Dumbbell, Trash2, Pencil, Filter, LineChart } from "lucide-react";
+import { ExerciseHistoryDialog } from "@/components/training/exercise-history-dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient, invalidateExerciseData } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import {
   AlertDialog,
@@ -56,6 +57,7 @@ export default function Exercises() {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [editingExercise, setEditingExercise] = useState<Exercise | null>(null);
   const [deletingExercise, setDeletingExercise] = useState<Exercise | null>(null);
+  const [historyExercise, setHistoryExercise] = useState<Exercise | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const { toast } = useToast();
 
@@ -73,8 +75,7 @@ export default function Exercises() {
   const createMutation = useMutation({
     mutationFn: (data: InsertExercise) => apiRequest("POST", "/api/exercises", data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/exercises"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/stats/muscle-group-weekly"] });
+      invalidateExerciseData();
       setIsCreateOpen(false);
       toast({
         title: "成功",
@@ -87,8 +88,7 @@ export default function Exercises() {
     mutationFn: ({ id, data }: { id: string; data: InsertExercise }) =>
       apiRequest("PATCH", `/api/exercises/${id}`, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/exercises"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/stats/muscle-group-weekly"] });
+      invalidateExerciseData();
       setEditingExercise(null);
       toast({
         title: "成功",
@@ -100,10 +100,7 @@ export default function Exercises() {
   const deleteMutation = useMutation({
     mutationFn: (id: string) => apiRequest("DELETE", `/api/exercises/${id}`, undefined),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/exercises"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/stats/ranking"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/stats/trends"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/stats/muscle-group-weekly"] });
+      invalidateExerciseData();
       setDeletingExercise(null);
       toast({
         title: "成功",
@@ -532,6 +529,15 @@ export default function Exercises() {
                     <Button
                       variant="ghost"
                       size="icon"
+                      onClick={() => setHistoryExercise(exercise)}
+                      aria-label="歷史軌跡"
+                      data-testid={`button-history-${exercise.id}`}
+                    >
+                      <LineChart className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
                       onClick={() => handleEdit(exercise)}
                       data-testid={`button-edit-${exercise.id}`}
                     >
@@ -892,6 +898,7 @@ export default function Exercises() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      <ExerciseHistoryDialog exercise={historyExercise} onClose={() => setHistoryExercise(null)} />
     </div>
   );
 }

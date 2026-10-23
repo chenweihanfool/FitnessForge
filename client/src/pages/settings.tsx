@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient, invalidateWorkoutData } from "@/lib/queryClient";
 import { Loader2 } from "lucide-react";
 
 type Settings = {
@@ -38,8 +38,8 @@ export default function SettingsPage() {
       return res.json();
     },
     onSuccess: () => {
+      invalidateWorkoutData();
       queryClient.invalidateQueries({ queryKey: ["/api/settings"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/stats"] });
       toast({ title: "設置已保存", description: "權重比例已更新" });
     },
     onError: (error: Error) => {

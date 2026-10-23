@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { queryClient, apiRequest, invalidateWorkoutData, invalidateExerciseData } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
 import { useLocation } from "wouter";
 import { Shield, Trash2, UserPlus, Users, Download, Upload, RefreshCw, Dumbbell } from "lucide-react";
@@ -74,7 +74,7 @@ export default function AdminPage() {
       return res.json() as Promise<{ created: number; updated: number; errors: string[] }>;
     },
     onSuccess: (result) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/exercises"] });
+      invalidateExerciseData();
       toast({
         title: "匯入完成",
         description: `新建 ${result.created} 個、更新 ${result.updated} 個${
@@ -110,14 +110,7 @@ export default function AdminPage() {
       return res.json() as Promise<{ updatedEntries: number; updatedWeeks: number }>;
     },
     onSuccess: (result) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/entries"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/stats/ranking"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/stats/trends"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/stats/weekly-progress"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/stats/current-week-details"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/stats/category-breakdown"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/stats/muscle-group-weekly"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/plan/progress"] });
+      invalidateWorkoutData();
       toast({
         title: "重新計算完成",
         description: `已更新 ${result.updatedEntries} 筆記錄、${result.updatedWeeks} 個週的肌群統計`,

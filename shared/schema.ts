@@ -57,6 +57,7 @@ export const workoutEntries = pgTable("workout_entries", {
   value: real("value").notNull(), // 运动数据值
   sets: real("sets"), // 组数（可选）
   weightFactor: real("weight_factor"), // 本次记录使用的权重因子（可能与运动默认权重不同）
+  loadKg: real("load_kg"), // 本次負重（公斤）。力量項目留空即可（負重 = weightFactor，見 shared/training/load.ts）；其他類別選填，只用於追蹤
   baselineValue: real("baseline_value"), // 基准值（创建时计算并固定：value × sets × weightFactor）
   date: timestamp("date").notNull().defaultNow(), // 记录日期时间
   notes: text("notes"), // 可选备注
@@ -69,6 +70,7 @@ export const insertWorkoutEntrySchema = z.object({
   value: z.number(),
   sets: z.number().optional(), // 组数（可选）
   weightFactor: z.number().optional(), // 动态权重（可选，覆盖运动类型的默认权重）
+  loadKg: z.number().min(0).max(1000).nullable().optional(), // 負重（公斤，可選）
   date: z.string().optional(), // 允许从前端传递ISO日期字符串
   notes: z.string().optional(),
   source: z.enum(["manual", "auto"]).optional(), // 預設 'manual'
@@ -155,72 +157,6 @@ export const userSettings = pgTable("user_settings", {
 });
 
 export type UserSetting = typeof userSettings.$inferSelect;
-
-// 每周训练计划表
-export const weeklyPlans = pgTable("weekly_plans", {
-  weekStart: varchar("week_start").primaryKey(),
-  mode: text("mode").notNull(), // 'recovery' | 'normal'
-  planJson: text("plan_json").notNull(), // JSON array of daily plan items
-  generatedAt: timestamp("generated_at").notNull().defaultNow(),
-});
-
-export const insertWeeklyPlanSchema = z.object({
-  weekStart: z.string(),
-  mode: z.enum(['recovery', 'normal']),
-  planJson: z.string(),
-});
-
-export type InsertWeeklyPlan = z.infer<typeof insertWeeklyPlanSchema>;
-export type WeeklyPlan = typeof weeklyPlans.$inferSelect;
-
-export type PlanDayItem = {
-  day: number;
-  dayName: string;
-  exercises: Array<{
-    exerciseId: string;
-    exerciseName: string;
-    targetValue: number;
-    targetSets: number;
-    unit: string;
-    category: string | null;
-    weeklyContrib?: number;
-    reason?: string;
-    historyRef?: string;
-  }>;
-};
-
-export type PlanItemStatus = 'met' | 'partial' | 'not_met';
-
-export type PlanProgress = {
-  weekStart: string;
-  mode: string;
-  generatedAt: string;
-  days: Array<PlanDayItem & {
-    exercises: Array<{
-      exerciseId: string;
-      exerciseName: string;
-      targetValue: number;
-      targetSets: number;
-      unit: string;
-      category: string | null;
-      weeklyContrib?: number;
-      reason?: string;
-      historyRef?: string;
-      targetItemBaseline?: number;
-      weightFactor?: number;
-      actualValue: number;
-      actualSets: number;
-      actualBaselineValue?: number;
-      status: PlanItemStatus;
-    }>;
-  }>;
-  totalPlanned: number;
-  totalMet: number;
-  completionPercentage: number;
-  targetBaseline: number;
-  actualBaseline: number;
-  baselinePercentage: number;
-};
 
 // ==================== 用戶認證表 ====================
 
