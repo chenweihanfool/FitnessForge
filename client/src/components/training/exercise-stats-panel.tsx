@@ -1,4 +1,6 @@
 import { Area, AreaChart, ReferenceDot, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { makeChartTooltip } from "./chart-tooltip";
+import { formatDateWithYear } from "@/lib/format-date";
 import { ArrowDownRight, ArrowRight, ArrowUpRight, Flame, Trophy } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { Exercise } from "@shared/schema";
@@ -13,18 +15,23 @@ export interface DraftSet {
   load?: number | null;
 }
 
-const METRIC_LABEL = { e1rm: "預估 1RM", load: "負重", value: "單次" } as const;
+// 力量項目的「負重」是動作強度指標（不是純公斤數），其他項目才是 kg
+const metricLabel = (stats: ExerciseStats) =>
+  stats.metric === "e1rm" ? "預估 1RM" : stats.metric === "load" ? (stats.loadIsIndex ? "強度" : "負重") : "單次";
+const loadUnit = (stats: ExerciseStats) => (stats.loadIsIndex ? "" : "kg");
 
 const fmt = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(1));
-const shortDate = (iso: string) => {
-  const d = new Date(new Date(iso).getTime() + 8 * 3600e3);
-  return `${d.getUTCMonth() + 1}/${d.getUTCDate()}`;
-};
 const daysAgoText = (days: number) => (days === 0 ? "今天" : days === 1 ? "昨天" : `${days} 天前`);
 
-function describeSet(s: { value: number; sets: number; load: number | null }, unit: string, usesLoad: boolean) {
-  const reps = `${s.sets > 1 ? `${fmt(s.sets)} 組 × ` : ""}${fmt(s.value)} ${unit}`;
-  return usesLoad && s.load ? `${reps} @ ${fmt(s.load)} kg` : reps;
+function describeLast(stats: ExerciseStats) {
+  const last = stats.last!;
+  const reps = `${last.sets > 1 ? `${fmt(last.sets)} 組 × ` : ""}${fmt(last.value)} ${stats.unit}`;
+  if (!stats.hasLoad || !last.load) return reps;
+  // 力量：「強度 30（外加 10 kg）」；其他：「@ 5 kg」
+  if (stats.loadIsIndex) {
+    return `${reps}・強度 ${fmt(last.load)}${last.externalLoad ? `（外加 ${fmt(last.externalLoad)} kg）` : ""}`;
+  }
+  return `${reps} @ ${fmt(last.load)} kg`;
 }
 
 function RecordTile({ title, record, suffix, highlight }: { title: string; record: ExerciseRecord | null; suffix: string; highlight?: boolean }) {
@@ -42,7 +49,7 @@ function RecordTile({ title, record, suffix, highlight }: { title: string; recor
         {fmt(record.amount)}
         <span className="ml-0.5 text-xs font-normal text-muted-foreground">{suffix}</span>
       </div>
-      <div className="text-[11px] text-muted-foreground">{shortDate(record.date)}</div>
+      <div className="text-[11px] text-muted-foreground">{formatDateWithYear(record.date)}</div>
     </div>
   );
 }
@@ -54,21 +61,32 @@ function TrendIcon({ trend }: { trend: ExerciseStats["trend"] }) {
   return null;
 }
 
+type ChartPoint = ExerciseStats["history"][number] & { label: string };
+
 function HistoryChart({ stats, height }: { stats: ExerciseStats; height: number }) {
-  const data = stats.history.map((h) => ({ ...h, label: shortDate(h.date) }));
-  const unit = stats.metric === "value" ? stats.unit : "kg";
+  const label = metricLabel(stats);
+  const suffix = stats.metric === "value" ? stats.unit : loadUnit(stats);
+  // 跨年才在座標軸標年份，其餘用月/日；提示框一律帶完整年月日
+  const years = new Set(stats.history.map((h) => h.date.slice(0, 4)));
+  const data: ChartPoint[] = stats.history.map((h) => ({
+    ...h,
+    label: years.size > 1 ? formatDateWithYear(h.date).slice(2) : formatDateWithYear(h.date).slice(5),
+  }));
+  const Tip = makeChartTooltip<ChartPoint>((p) => ({
+    title: formatDateWithYear(p.date),
+    rows: [
+      { label, value: `${p.metricValue}${suffix ? ` ${suffix}` : ""}` },
+      ...(p.isPr ? [{ label: "", value: "★ 新紀錄" }] : []),
+    ],
+  }));
   return (
     <div style={{ height }} data-testid="exercise-history-chart">
       <ResponsiveContainer width="100%" height="100%">
         <AreaChart data={data} margin={{ top: 8, right: 8, bottom: 0, left: height > 100 ? -16 : 0 }}>
           {/* compact 版也要保留（隱藏的）座標軸，新紀錄的圓點才有座標可以定位 */}
-          <XAxis dataKey="label" hide={height <= 100} tick={{ fontSize: 10 }} interval="preserveStartEnd" minTickGap={24} />
+          <XAxis dataKey="label" hide={height <= 100} tick={{ fontSize: 10 }} interval="preserveStartEnd" minTickGap={28} />
           <YAxis hide={height <= 100} tick={{ fontSize: 10 }} domain={["dataMin - 2", "dataMax + 2"]} />
-          <Tooltip
-            contentStyle={{ fontSize: 12 }}
-            formatter={(v) => [`${v} ${unit}`, METRIC_LABEL[stats.metric]]}
-            labelFormatter={(_, payload) => (payload?.[0]?.payload?.date as string | undefined) ?? ""}
-          />
+          <Tooltip content={<Tip />} />
           <Area type="monotone" dataKey="metricValue" className="fill-primary/20 stroke-primary" strokeWidth={2} dot={false} />
           {data.map((p, i) =>
             p.isPr ? (
@@ -123,7 +141,7 @@ export function ExerciseStatsPanel({
   const lastLoad = stats.last?.load ?? null;
   const loadDelta = draftLoad != null && lastLoad != null ? Math.round((draftLoad - lastLoad) * 100) / 100 : null;
 
-  const metricSuffix = stats.metric === "value" ? unit : "kg";
+  const metricSuffix = stats.metric === "value" ? unit : loadUnit(stats);
   const recentRows = size === "full" ? stats.history.slice(-8).reverse() : [];
 
   return (
@@ -133,7 +151,7 @@ export function ExerciseStatsPanel({
           <div>
             <div className="text-[11px] text-muted-foreground">上次・{daysAgoText(stats.last.daysAgo)}</div>
             <div className="text-sm font-semibold" data-testid="text-last-session">
-              {describeSet(stats.last, unit, usesLoad)}
+              {describeLast(stats)}
             </div>
           </div>
           <div className="flex items-center gap-1 text-xs text-muted-foreground">
@@ -147,11 +165,11 @@ export function ExerciseStatsPanel({
         <div className="space-y-1" data-testid="draft-vs-record">
           <div className="flex items-center justify-between text-xs">
             <span className="text-muted-foreground">
-              本次 {METRIC_LABEL[stats.metric]} {fmt(Math.round(draftMetric * 10) / 10)} {metricSuffix}
+              本次 {metricLabel(stats)} {fmt(Math.round(draftMetric * 10) / 10)} {metricSuffix}
               {loadDelta !== null && loadDelta !== 0 && (
                 <span className={loadDelta > 0 ? "ml-1.5 text-green-600 dark:text-green-400" : "ml-1.5 text-amber-600 dark:text-amber-400"}>
                   較上次 {loadDelta > 0 ? "+" : ""}
-                  {loadDelta} kg
+                  {loadDelta}{stats.loadIsIndex ? "" : " kg"}
                 </span>
               )}
             </span>
@@ -175,9 +193,9 @@ export function ExerciseStatsPanel({
       <div className={`grid gap-2 ${usesLoad ? "grid-cols-3" : "grid-cols-2"}`}>
         {usesLoad ? (
           <>
-            <RecordTile title="最高負重" record={stats.records.maxLoad} suffix="kg" highlight={stats.metric === "load"} />
-            <RecordTile title="預估 1RM" record={stats.records.bestE1rm} suffix="kg" highlight={stats.metric === "e1rm"} />
-            <RecordTile title="單日最大容量" record={stats.records.bestVolume} suffix="kg·次" />
+            <RecordTile title={stats.loadIsIndex ? "最高強度" : "最高負重"} record={stats.records.maxLoad} suffix={loadUnit(stats)} highlight={stats.metric === "load"} />
+            <RecordTile title="預估 1RM" record={stats.records.bestE1rm} suffix={loadUnit(stats)} highlight={stats.metric === "e1rm"} />
+            <RecordTile title="單日最大容量" record={stats.records.bestVolume} suffix={stats.loadIsIndex ? "強度·次" : "kg·次"} />
           </>
         ) : (
           <>
@@ -190,7 +208,7 @@ export function ExerciseStatsPanel({
       {stats.history.length > 1 && (
         <div>
           <div className="mb-1 flex items-center justify-between text-[11px] text-muted-foreground">
-            <span>{METRIC_LABEL[stats.metric]}軌跡（近 {stats.history.length} 次訓練日）</span>
+            <span>{metricLabel(stats)}軌跡（近 {stats.history.length} 次訓練日）</span>
             <span className="flex items-center gap-1"><span className="inline-block h-2 w-2 rounded-full bg-amber-500" />新紀錄</span>
           </div>
           <HistoryChart stats={stats} height={size === "full" ? 180 : 72} />
@@ -202,7 +220,7 @@ export function ExerciseStatsPanel({
           <thead>
             <tr className="text-left text-muted-foreground">
               <th className="py-1 font-normal">日期</th>
-              {usesLoad && <th className="py-1 font-normal">最高負重</th>}
+              {usesLoad && <th className="py-1 font-normal">{stats.loadIsIndex ? "最高強度" : "最高負重"}</th>}
               <th className="py-1 font-normal">單組最高</th>
               <th className="py-1 text-right font-normal">{usesLoad ? "容量" : "訓練分"}</th>
             </tr>
@@ -210,8 +228,8 @@ export function ExerciseStatsPanel({
           <tbody>
             {recentRows.map((r) => (
               <tr key={r.date} className="border-t">
-                <td className="py-1">{r.date.slice(5)}{r.isPr && <Flame className="ml-1 inline h-3 w-3 text-amber-500" />}</td>
-                {usesLoad && <td className="py-1 tabular-nums">{r.load != null ? `${fmt(r.load)} kg` : "—"}</td>}
+                <td className="py-1">{formatDateWithYear(r.date)}{r.isPr && <Flame className="ml-1 inline h-3 w-3 text-amber-500" />}</td>
+                {usesLoad && <td className="py-1 tabular-nums">{r.load != null ? `${fmt(r.load)}${stats.loadIsIndex ? "" : " kg"}` : "—"}</td>}
                 <td className="py-1 tabular-nums">{fmt(r.value)} {unit}</td>
                 <td className="py-1 text-right tabular-nums">{fmt(r.volume)}</td>
               </tr>

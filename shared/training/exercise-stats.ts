@@ -1,5 +1,5 @@
 import { dayIndexToKey, taipeiDayIndex } from "./time";
-import { effectiveLoad, estimateOneRepMax, isRepUnit, type LoadExerciseFields } from "./load";
+import { effectiveLoad, estimateOneRepMax, externalLoad, isRepUnit, isStrengthExercise, type LoadExerciseFields } from "./load";
 
 export interface StatsEntryInput {
   id: string;
@@ -8,7 +8,25 @@ export interface StatsEntryInput {
   sets: number | null;
   weightFactor: number | null;
   loadKg?: number | null;
+  setDetails?: string | null; // JSON：[{weight, reps}]
   baselineValue: number | null;
+}
+
+export interface SetDetail {
+  weight: number;
+  reps: number;
+}
+
+function parseSetDetails(raw: string | null | undefined): SetDetail[] | null {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return null;
+    const rows = parsed.filter((r) => r && typeof r.weight === "number" && typeof r.reps === "number");
+    return rows.length ? rows : null;
+  } catch {
+    return null;
+  }
 }
 
 export interface StatsExerciseInput extends LoadExerciseFields {
@@ -46,9 +64,22 @@ export interface ExerciseStats {
   unit: string;
   sessionCount: number;
   hasLoad: boolean;
+  /** true = 負重欄位是「動作強度」指標（力量項目），false = 真正的公斤數 */
+  loadIsIndex: boolean;
   metric: StatsMetric;
   /** 上一次記錄；新增記錄時用來預填 */
-  last: (ExerciseSetSummary & { date: string; daysAgo: number; loggedSets: number | null }) | null;
+  last:
+    | (ExerciseSetSummary & {
+        date: string;
+        daysAgo: number;
+        /** 原始記錄的組數欄位（沒填 = null；跑步是公里數），預填用 */
+        loggedSets: number | null;
+        /** 力量項目外加負重（kg）；舊記錄與逐組樣板沒有 */
+        externalLoad: number | null;
+        /** 逐組樣板的每組明細（遞增/自訂），沒有就是一般記錄 */
+        setDetails: SetDetail[] | null;
+      })
+    | null;
   records: {
     maxLoad: ExerciseRecord | null;
     bestE1rm: ExerciseRecord | null;
@@ -77,6 +108,8 @@ export function computeExerciseStats(
       return {
         time: new Date(e.date).getTime(),
         loggedSets: e.sets,
+        externalLoad: externalLoad(e, exercise),
+        setDetails: parseSetDetails(e.setDetails),
         day: taipeiDayIndex(e.date),
         date: new Date(e.date).toISOString(),
         value: e.value,
@@ -99,6 +132,8 @@ export function computeExerciseStats(
         sets: lastRow.sets,
         load: lastRow.load,
         loggedSets: lastRow.loggedSets,
+        externalLoad: lastRow.externalLoad,
+        setDetails: lastRow.setDetails,
         date: lastRow.date,
         daysAgo: Math.max(0, todayIdx - lastRow.day),
       }
@@ -171,6 +206,7 @@ export function computeExerciseStats(
     unit: exercise.unit,
     sessionCount: days.length,
     hasLoad,
+    loadIsIndex: isStrengthExercise(exercise),
     metric,
     last,
     records: {
