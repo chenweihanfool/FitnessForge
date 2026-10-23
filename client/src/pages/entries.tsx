@@ -1,6 +1,6 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { useLocation, useSearch, useRoute } from "wouter";
+import { useLocation, useSearch } from "wouter";
 import { Exercise, WorkoutEntryWithExercise, InsertWorkoutEntry, insertWorkoutEntrySchema } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -41,7 +41,7 @@ import {
 import { Plus, Activity, Trash2, Calendar, Edit, ChevronDown, ChevronUp } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient, invalidateWorkoutData } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import {
   AlertDialog,
@@ -65,6 +65,12 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { getTaipeiTime, toTaipeiTime } from "@/lib/timezone";
+import { calculateBaseline } from "@shared/baseline";
+import { toEntryPayload } from "@/lib/entry-payload";
+import { effectiveLoad } from "@shared/training/load";
+import { ExerciseStatsPanel } from "@/components/training/exercise-stats-panel";
+import { LoadKgField } from "@/components/training/load-kg-field";
+import { useExerciseStats } from "@/hooks/use-training";
 
 interface WeeklyProgress {
   weekStart: string;
@@ -85,6 +91,15 @@ interface WeeklyProgress {
     exerciseUnit: string;
     reason: string;
   }>;
+}
+
+// 這些項目才顯示「組數」欄位（跑步類的「組數」欄位實際記的是公里數）
+function exerciseUsesSets(exercise: Exercise): boolean {
+  const hasMuscleGroup =
+    (exercise.muscleChest ?? 0) > 0 || (exercise.muscleBack ?? 0) > 0 || (exercise.muscleLegs ?? 0) > 0 ||
+    (exercise.muscleShoulders ?? 0) > 0 || (exercise.muscleArms ?? 0) > 0 || (exercise.muscleCore ?? 0) > 0 ||
+    (exercise.muscleGlutes ?? 0) > 0 || (exercise.muscleFullBody ?? 0) > 0;
+  return hasMuscleGroup || exercise.category === '力量' || exercise.category === '有氧';
 }
 
 export default function Entries() {
@@ -144,15 +159,7 @@ export default function Entries() {
   const createMutation = useMutation({
     mutationFn: (data: InsertWorkoutEntry) => apiRequest("POST", "/api/entries", data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/entries"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/stats/ranking"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/stats/trends"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/stats/weekly-progress"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/stats/current-week-details"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/stats/category-breakdown"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/stats/career-overview"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/stats/muscle-group-weekly"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/plan/progress"] });
+      invalidateWorkoutData();
       setIsCreateOpen(false);
       form.reset();
       setSetsTemplate(null);
@@ -175,14 +182,7 @@ export default function Entries() {
   const deleteMutation = useMutation({
     mutationFn: (id: string) => apiRequest("DELETE", `/api/entries/${id}`, undefined),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/entries"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/stats/ranking"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/stats/trends"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/stats/weekly-progress"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/stats/current-week-details"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/stats/category-breakdown"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/stats/muscle-group-weekly"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/plan/progress"] });
+      invalidateWorkoutData();
       setDeletingEntry(null);
       toast({
         title: "成功",
@@ -195,14 +195,7 @@ export default function Entries() {
     mutationFn: (data: { id: string; entry: InsertWorkoutEntry }) => 
       apiRequest("PATCH", `/api/entries/${data.id}`, data.entry),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/entries"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/stats/ranking"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/stats/trends"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/stats/weekly-progress"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/stats/current-week-details"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/stats/category-breakdown"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/stats/muscle-group-weekly"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/plan/progress"] });
+      invalidateWorkoutData();
       setIsEditOpen(false);
       setEditingEntry(null);
       editForm.reset();
@@ -355,51 +348,43 @@ export default function Entries() {
     form.setValue('weightFactor', base + added);
   }, [setsTemplate, baseWeightFactor, addedLoad]);
 
+  // ── 預填上次的記錄 ──────────────────────────────────────────────
+  // 選定運動後，把「上次做的」（次數/組數/負重）帶進表單，使用者只要改有變的部分。
+  // 每次選運動只預填一次（prefilledForRef），之後使用者自己改的值不會被覆蓋。
+  const { data: exerciseStats } = useExerciseStats(selectedExerciseId || undefined);
+  const prefilledForRef = useRef<string | null>(null);
+  useEffect(() => {
+    prefilledForRef.current = null;
+  }, [selectedExerciseId, isCreateOpen]);
+  useEffect(() => {
+    const exercise = exercises?.find((e) => e.id === selectedExerciseId);
+    const last = exerciseStats?.last;
+    if (!isCreateOpen || !exercise || !last || exerciseStats?.exerciseId !== exercise.id) return;
+    if (prefilledForRef.current === exercise.id) return;
+    prefilledForRef.current = exercise.id;
+
+    const isWeeklySteps = exercise.name === '每周平均步数'; // 記錄的是週總步數，輸入欄是每日平均
+    form.setValue('value', isWeeklySteps ? Math.round(last.value / 7) : last.value);
+    if (exerciseUsesSets(exercise) && last.loggedSets != null) form.setValue('sets', last.loggedSets);
+    if (exercise.category === '力量' && last.load != null) {
+      // 重量 = 基礎重量（預設係數）+ 附加負重；上次比預設輕就整個當基礎重量
+      const base = Math.min(exercise.weightFactor, last.load);
+      setBaseWeightFactor(base);
+      setAddedLoad(Math.round((last.load - base) * 100) / 100);
+    } else if (exercise.category !== '力量' && last.load != null) {
+      form.setValue('loadKg', last.load);
+    }
+  }, [exerciseStats, selectedExerciseId, exercises, isCreateOpen]);
+
   const onSubmit = (data: InsertWorkoutEntry) => {
-    // 用户输入的时间是台北时间（UTC+8）
-    // 需要转换为UTC时间发送给后端
-    const submissionData = { ...data };
-    
-    // 检查是否是"每周平均步数"，如果是则自动乘以7
     const selectedExercise = exercises?.find((e) => e.id === data.exerciseId);
-    if (selectedExercise?.name === '每周平均步数') {
-      // 用户输入的是平均步数，需要乘以7得到每周总步数
-      submissionData.value = data.value * 7;
-    }
-    
-    if (submissionData.date) {
-      // datetime-local返回的是不带时区的字符串，如"2025-10-26T18:00"
-      // 我们将其视为UTC+8时间，需要转换为UTC
-      // 方法：将字符串解析为UTC时间（通过添加Z），然后减去8小时
-      const dateStr = submissionData.date + ':00.000Z'; // 添加秒和UTC标记
-      const taipeiAsUtc = new Date(dateStr); // 现在这个时间会被当作UTC解析
-      // 减去8小时得到真正的UTC时间
-      const realUtc = new Date(taipeiAsUtc.getTime() - (8 * 60 * 60 * 1000));
-      submissionData.date = realUtc.toISOString();
-    }
-    
-    createMutation.mutate(submissionData);
+    createMutation.mutate(toEntryPayload(data, selectedExercise));
   };
 
   const onEditSubmit = (data: InsertWorkoutEntry) => {
     if (!editingEntry) return;
-    
-    const submissionData = { ...data };
-    
-    // 检查是否是"每周平均步数"，如果是则自动乘以7
     const selectedExercise = exercises?.find((e) => e.id === data.exerciseId);
-    if (selectedExercise?.name === '每周平均步数') {
-      submissionData.value = data.value * 7;
-    }
-    
-    if (submissionData.date) {
-      const dateStr = submissionData.date + ':00.000Z';
-      const taipeiAsUtc = new Date(dateStr);
-      const realUtc = new Date(taipeiAsUtc.getTime() - (8 * 60 * 60 * 1000));
-      submissionData.date = realUtc.toISOString();
-    }
-    
-    updateMutation.mutate({ id: editingEntry.id, entry: submissionData });
+    updateMutation.mutate({ id: editingEntry.id, entry: toEntryPayload(data, selectedExercise) });
   };
 
   const handleEditEntry = (entry: WorkoutEntryWithExercise) => {
@@ -413,42 +398,24 @@ export default function Entries() {
       notes: entry.notes || "",
       sets: entry.sets ?? undefined,
       weightFactor: entry.weightFactor ?? entry.exercise.weightFactor,
+      loadKg: entry.loadKg ?? null,
     });
     setIsEditOpen(true);
   };
 
+  // 即時預覽用同一份公式（@shared/baseline），並照伺服器寫入時的做法：沒填組數 = 1。
   const calculateBaselineValue = (value: number, exerciseId: string, customWeightFactor?: number, sets?: number) => {
     const exercise = exercises?.find((e) => e.id === exerciseId);
     if (!exercise) return 0;
-    const weightFactor = customWeightFactor ?? exercise.weightFactor;
-    const s = sets || 1;
-
-    if (exercise.name === '每周平均步数' || exercise.category === '活动量') {
-      if (value <= 0) return 0;
-      const dailySteps = exercise.name === '每周平均步数' ? value / 7 : value;
-      return (dailySteps / 500) * (1 - 0.00002 * dailySteps) * 7 * 2.4;
-    }
-    if (exercise.category === '有氧') {
-      if (exercise.name === '開合跳') {
-        return (value * s * 2 * (exercise.intensityFactor ?? 1)) / 10 * 2.2;
-      }
-      if (exercise.name === '跑步' || exercise.name === '跑步機負重') {
-        const minutes = value;
-        let km: number;
-        if (sets && sets > 0) {
-          km = sets;
-        } else {
-          const defaultPace = exercise.name === '跑步' ? 12 : 20;
-          km = minutes / defaultPace;
-        }
-        return (minutes + km * 10) * (exercise.intensityFactor ?? 1) * 1.83;
-      }
-      return value * s * (exercise.intensityFactor ?? 1) * 2.2;
-    }
-    if (exercise.category === '力量') {
-      return weightFactor * value * s * (exercise.movementCoefficient ?? 1) / 10;
-    }
-    return value * s * weightFactor;
+    return calculateBaseline(
+      value,
+      sets ?? 1,
+      customWeightFactor ?? exercise.weightFactor,
+      exercise.category,
+      exercise.movementCoefficient ?? 1,
+      exercise.intensityFactor ?? 1,
+      exercise.name,
+    );
   };
 
   return (
@@ -500,6 +467,10 @@ export default function Entries() {
                         <FormLabel>运动类型</FormLabel>
                         <Select onValueChange={(value) => {
                           field.onChange(value);
+                          // 換運動就清掉上一個運動帶進來的數字（新運動有歷史的話會再自動預填）
+                          form.setValue("value", "" as any);
+                          form.setValue("sets", undefined);
+                          form.setValue("loadKg", null);
                           const exercise = exercises?.find((e) => e.id === value);
                           if (exercise) {
                             form.setValue("weightFactor", exercise.weightFactor);
@@ -541,6 +512,16 @@ export default function Entries() {
                               </FormDescription>
                             )}
                           </div>
+                        )}
+                        {selectedExercise && selectedExercise.category !== '活动量' && (
+                          <ExerciseStatsPanel
+                            exercise={selectedExercise}
+                            draft={{
+                              value: Number(form.watch("value")) || undefined,
+                              sets: form.watch("sets") ?? undefined,
+                              load: selectedExercise.category === '力量' ? form.watch("weightFactor") ?? null : form.watch("loadKg") ?? null,
+                            }}
+                          />
                         )}
                         <FormMessage />
                       </FormItem>
@@ -640,6 +621,11 @@ export default function Entries() {
                       }}
                     />
                   );
+                })()}
+                {(() => {
+                  const selectedExercise = exercises?.find((e) => e.id === form.watch("exerciseId"));
+                  if (!selectedExercise || selectedExercise.category === '力量' || selectedExercise.category === '活动量') return null;
+                  return <LoadKgField control={form.control} testId="input-entry-load-kg" />;
                 })()}
                 <FormField
                   control={form.control}
@@ -967,19 +953,9 @@ export default function Entries() {
                 />
                 {(() => {
                   const selectedExercise = exercises?.find((e) => e.id === form.watch("exerciseId"));
-                  const hasMuscleGroup = selectedExercise && (
-                    (selectedExercise.muscleChest ?? 0) > 0 ||
-                    (selectedExercise.muscleBack ?? 0) > 0 ||
-                    (selectedExercise.muscleLegs ?? 0) > 0 ||
-                    (selectedExercise.muscleShoulders ?? 0) > 0 ||
-                    (selectedExercise.muscleArms ?? 0) > 0 ||
-                    (selectedExercise.muscleCore ?? 0) > 0 ||
-                    (selectedExercise.muscleGlutes ?? 0) > 0 ||
-                    (selectedExercise.muscleFullBody ?? 0) > 0
-                  );
                   const isRunning = selectedExercise?.name === '跑步' || selectedExercise?.name === '跑步機負重';
                   const isStrengthExercise = selectedExercise?.category === "力量";
-                  const showSets = hasMuscleGroup || isStrengthExercise || selectedExercise?.category === "有氧";
+                  const showSets = !!selectedExercise && exerciseUsesSets(selectedExercise);
                   return showSets ? (
                     <FormField
                       control={form.control}
@@ -1097,6 +1073,7 @@ export default function Entries() {
                   <TableHead>运动</TableHead>
                   <TableHead>数据值</TableHead>
                   <TableHead>组数</TableHead>
+                  <TableHead>负重</TableHead>
                   <TableHead>基准值</TableHead>
                   <TableHead>日期</TableHead>
                   <TableHead>备注</TableHead>
@@ -1122,6 +1099,12 @@ export default function Entries() {
                             ? `${entry.sets} 公里`
                             : `${entry.sets} 组`
                           : "-"}
+                      </TableCell>
+                      <TableCell data-testid={`load-${entry.id}`}>
+                        {(() => {
+                          const load = effectiveLoad(entry, entry.exercise);
+                          return load ? `${load} kg` : "-";
+                        })()}
                       </TableCell>
                       <TableCell>
                         <Badge variant="secondary" data-testid={`badge-baseline-${entry.id}`}>
@@ -1251,6 +1234,11 @@ export default function Entries() {
                     )}
                   />
                 );
+              })()}
+              {(() => {
+                const selectedExercise = exercises?.find((e) => e.id === editForm.watch("exerciseId"));
+                if (!selectedExercise || selectedExercise.category === '力量' || selectedExercise.category === '活动量') return null;
+                return <LoadKgField control={editForm.control} testId="input-edit-load-kg" />;
               })()}
               <FormField
                 control={editForm.control}

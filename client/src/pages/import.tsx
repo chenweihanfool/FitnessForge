@@ -3,7 +3,7 @@ import { useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { FileUp, Upload, CheckCircle, AlertCircle } from "lucide-react";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient, invalidateExerciseData } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
@@ -25,10 +25,7 @@ export default function ImportPage() {
       return response.json();
     },
     onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/entries"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/exercises"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/stats/ranking"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/stats/trends"] });
+      invalidateExerciseData();
       setFile(null);
       toast({
         title: "导入成功",

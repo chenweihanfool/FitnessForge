@@ -12,6 +12,8 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Search, Dumbbell, Heart, Footprints, Activity } from "lucide-react";
+import { useTrainingOverview } from "@/hooks/use-training";
+import { AcwrAlert } from "@/components/training/acwr-alert";
 
 type QuickLogDialogProps = {
   open: boolean;
@@ -52,10 +54,16 @@ export function QuickLogDialog({ open, onOpenChange, onSelectExercise }: QuickLo
     enabled: open,
   });
 
-  // 本週訓練進度 = 本週值 ÷ 歷史週平均，用來當預設排序的依據——還沒練到的、
-  // 練得比平常少的排前面，方便使用者快速找到「今天該練什麼」。沒有歷史週
-  // 平均可比（全新運動、或這項運動從沒練過）視為跟「完全沒練」同一優先級
-  // （progressPct = 0），一樣排在前面，不會因為缺資料而被排到後面去。
+  const { data: overview } = useTrainingOverview({ enabled: open });
+  // 預設排序：比平常更久沒練的排前面（逾期倍數 = 距上次天數 ÷ 平常的練習間隔），
+  // 方便使用者快速找到「最近比較少練的項目」。沒練過或停練很久（沒有間隔資料）的
+  // 排在有資料的後面，同樣照名稱排。
+  const recencyByExerciseId = useMemo(
+    () => new Map((overview?.recovery.exerciseRecency ?? []).map((r) => [r.exerciseId, r])),
+    [overview],
+  );
+
+  // 本週訓練進度 = 本週值 ÷ 歷史週平均，只用來顯示每個項目旁邊的百分比 badge。
   const progressByExerciseId = useMemo(() => {
     const map = new Map<string, { progressPct: number; hasHistory: boolean; currentWeekValue: number; unit: string }>();
     weeklyProgress?.exercises.forEach((e) => {
@@ -79,12 +87,12 @@ export function QuickLogDialog({ open, onOpenChange, onSelectExercise }: QuickLo
       ? exercises.filter((e) => e.name.toLowerCase().includes(keyword))
       : exercises;
     return [...filtered].sort((a, b) => {
-      const pa = progressByExerciseId.get(a.id)?.progressPct ?? 0;
-      const pb = progressByExerciseId.get(b.id)?.progressPct ?? 0;
-      if (pa !== pb) return pa - pb;
+      const ra = recencyByExerciseId.get(a.id)?.overdueRatio ?? -1;
+      const rb = recencyByExerciseId.get(b.id)?.overdueRatio ?? -1;
+      if (ra !== rb) return rb - ra;
       return a.name.localeCompare(b.name, 'zh-Hant');
     });
-  }, [exercises, search, progressByExerciseId]);
+  }, [exercises, search, recencyByExerciseId]);
 
   const handleSelect = (exerciseId: string) => {
     onOpenChange(false);
@@ -103,8 +111,9 @@ export function QuickLogDialog({ open, onOpenChange, onSelectExercise }: QuickLo
       <DialogContent data-testid="dialog-quick-log">
         <DialogHeader>
           <DialogTitle>快速記錄</DialogTitle>
-          <DialogDescription>選擇運動項目，直接跳轉新增記錄並預填該動作</DialogDescription>
+          <DialogDescription>選擇運動項目，直接跳轉新增記錄並預填上次的內容</DialogDescription>
         </DialogHeader>
+        <AcwrAlert />
         <div className="relative">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
@@ -126,6 +135,7 @@ export function QuickLogDialog({ open, onOpenChange, onSelectExercise }: QuickLo
           <div className="space-y-1.5 py-1">
             {sortedExercises.map((exercise) => {
               const progress = progressByExerciseId.get(exercise.id);
+              const recency = recencyByExerciseId.get(exercise.id);
               const Icon = (exercise.category && CATEGORY_ICON[exercise.category]) || Activity;
               return (
                 <button
@@ -138,13 +148,16 @@ export function QuickLogDialog({ open, onOpenChange, onSelectExercise }: QuickLo
                   <Icon className="h-4 w-4 text-primary shrink-0" />
                   <div className="flex-1 min-w-0">
                     <p className="font-medium truncate">{exercise.name}</p>
-                    {progress && progress.currentWeekValue > 0 ? (
-                      <p className="text-xs text-muted-foreground">
-                        本週已練 {progress.currentWeekValue.toFixed(1)} {progress.unit}
-                      </p>
-                    ) : (
-                      <p className="text-xs text-muted-foreground">本週尚未記錄</p>
-                    )}
+                    <p className="text-xs text-muted-foreground">
+                      {progress && progress.currentWeekValue > 0
+                        ? `本週已練 ${progress.currentWeekValue.toFixed(1)} ${progress.unit}`
+                        : "本週尚未記錄"}
+                      {recency && (
+                        <span className={recency.overdueRatio >= 1 ? "ml-2 text-primary" : "ml-2"} data-testid={`quick-log-recency-${exercise.id}`}>
+                          ・{recency.daysSince === 0 ? "今天練過" : `${recency.daysSince} 天沒練`}
+                        </span>
+                      )}
+                    </p>
                   </div>
                   {progress?.hasHistory ? (
                     <Badge
