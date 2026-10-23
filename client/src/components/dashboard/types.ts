@@ -145,8 +145,16 @@ export type DayEntriesData = {
   dailyStepsBaseline: number;
 };
 
+// 週區間帶年份：「2026/10/19 – 10/25」；跨年時結束日也帶年份
 export const formatWeekRange = (startIso: string, endIso: string) => {
-  const fmt = (iso: string) =>
-    new Date(iso).toLocaleDateString("zh-TW", { month: "numeric", day: "numeric", timeZone: "Asia/Taipei" });
-  return `${fmt(startIso)} – ${fmt(endIso)}`;
+  const parts = (iso: string) => {
+    const [y, m, d] = new Date(iso)
+      .toLocaleDateString("en-CA", { timeZone: "Asia/Taipei" })
+      .split("-")
+      .map(Number);
+    return { y, md: `${m}/${d}` };
+  };
+  const s = parts(startIso);
+  const e = parts(endIso);
+  return `${s.y}/${s.md} – ${e.y !== s.y ? `${e.y}/` : ""}${e.md}`;
 };

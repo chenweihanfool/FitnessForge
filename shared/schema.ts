@@ -57,6 +57,7 @@ export const workoutEntries = pgTable("workout_entries", {
   value: real("value").notNull(), // 运动数据值
   sets: real("sets"), // 组数（可选）
   weightFactor: real("weight_factor"), // 本次记录使用的权重因子（可能与运动默认权重不同）
+  setDetails: text("set_details"), // 逐組樣板（遞增/自訂）的每組明細 JSON：[{weight, reps}]。sets/value/weightFactor 只存平均值，明細留著才能下次還原成同樣的遞增方式
   loadKg: real("load_kg"), // 本次負重（公斤）。力量項目留空即可（負重 = weightFactor，見 shared/training/load.ts）；其他類別選填，只用於追蹤
   baselineValue: real("baseline_value"), // 基准值（创建时计算并固定：value × sets × weightFactor）
   date: timestamp("date").notNull().defaultNow(), // 记录日期时间
@@ -70,7 +71,8 @@ export const insertWorkoutEntrySchema = z.object({
   value: z.number(),
   sets: z.number().optional(), // 组数（可选）
   weightFactor: z.number().optional(), // 动态权重（可选，覆盖运动类型的默认权重）
-  loadKg: z.number().min(0).max(1000).nullable().optional(), // 負重（公斤，可選）
+  loadKg: z.number().min(0).max(1000).nullable().optional(), // 外加負重（公斤，可選）
+  setDetails: z.array(z.object({ weight: z.number().min(0), reps: z.number().min(0) })).max(30).nullable().optional(), // 逐組明細（可選）
   date: z.string().optional(), // 允许从前端传递ISO日期字符串
   notes: z.string().optional(),
   source: z.enum(["manual", "auto"]).optional(), // 預設 'manual'

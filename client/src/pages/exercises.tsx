@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Plus, Dumbbell, Trash2, Pencil, Filter, LineChart } from "lucide-react";
+import { IntensityOverview } from "@/components/training/intensity-overview";
 import { ExerciseHistoryDialog } from "@/components/training/exercise-history-dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useForm } from "react-hook-form";
@@ -270,7 +271,7 @@ export default function Exercises() {
                   name="weightFactor"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>重量系数</FormLabel>
+                      <FormLabel>動作強度（重量系数）</FormLabel>
                       <FormControl>
                         <Input
                           type="number"
@@ -282,7 +283,7 @@ export default function Exercises() {
                         />
                       </FormControl>
                       <FormDescription>
-                        用于计算基准值（数据 × 系数）。默认为 1.0
+                        計分用的強度指標（數据 × 強度）。力量項目：徒手動作 = 體重當量，不是公斤數，只要動作之間相對高低合理即可。默认为 1.0
                       </FormDescription>
                       <FormMessage />
                     </FormItem>
@@ -497,6 +498,8 @@ export default function Exercises() {
         </div>
       </div>
 
+      <IntensityOverview exercises={exercises} />
+
       {isLoading ? (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {[1, 2, 3].map((i) => (
@@ -557,9 +560,9 @@ export default function Exercises() {
               <CardContent>
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
-                    <span className="text-sm text-muted-foreground">重量系数</span>
+                    <span className="text-sm text-muted-foreground">{exercise.category === '力量' ? '動作強度' : '重量系数'}</span>
                     <Badge variant="secondary" data-testid={`badge-weight-${exercise.id}`}>
-                      × {exercise.weightFactor}
+                      {exercise.category === '力量' ? exercise.weightFactor : `× ${exercise.weightFactor}`}
                     </Badge>
                   </div>
                   {exercise.category && (
@@ -634,7 +637,7 @@ export default function Exercises() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>编辑运动类型</DialogTitle>
-            <DialogDescription>修改运动的名称、单位或重量系数</DialogDescription>
+            <DialogDescription>修改运动的名称、单位或動作強度</DialogDescription>
           </DialogHeader>
           <Form {...editForm}>
             <form onSubmit={editForm.handleSubmit(onUpdateSubmit)} className="space-y-4">
@@ -669,7 +672,7 @@ export default function Exercises() {
                 name="weightFactor"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>重量系数</FormLabel>
+                    <FormLabel>動作強度（重量系数）</FormLabel>
                     <FormControl>
                       <Input
                         type="number"

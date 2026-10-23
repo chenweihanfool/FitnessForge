@@ -5,6 +5,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { ACWR_DANGER, ACWR_SWEET_HIGH, ACWR_SWEET_LOW, type AcwrResult } from "@shared/training/acwr";
 import { useTrainingOverview } from "@/hooks/use-training";
+import { formatDateWithYear } from "@/lib/format-date";
+import { makeChartTooltip } from "./chart-tooltip";
 import { ACWR_ZONE_META } from "./acwr-meta";
 
 // 儀表條的刻度範圍 0 ~ 2.0（超過 2.0 一律貼右邊）
@@ -46,7 +48,16 @@ function ZoneGauge({ ratio }: { ratio: number | null }) {
 }
 
 function TrendChart({ series }: { series: AcwrResult["series"] }) {
-  const data = series.map((p) => ({ ...p, label: p.date.slice(5) }));
+  const years = new Set(series.map((p) => p.date.slice(0, 4)));
+  const data = series.map((p) => ({ ...p, label: formatDateWithYear(p.date).slice(years.size > 1 ? 2 : 5) }));
+  const Tip = makeChartTooltip<(typeof data)[number]>((p) => ({
+    title: formatDateWithYear(p.date),
+    rows: [
+      { label: "ACWR", value: p.ratio === null ? "—" : String(p.ratio) },
+      { label: "近 7 天負荷", value: String(Math.round(p.acute)) },
+      { label: "四週週均", value: String(Math.round(p.chronic)) },
+    ],
+  }));
   return (
     <div className="h-40" data-testid="acwr-trend-chart">
       <ResponsiveContainer width="100%" height="100%">
@@ -56,11 +67,7 @@ function TrendChart({ series }: { series: AcwrResult["series"] }) {
           <ReferenceArea y1={ACWR_DANGER} y2={GAUGE_MAX} fill="#ef4444" fillOpacity={0.12} ifOverflow="hidden" />
           <XAxis dataKey="label" tick={{ fontSize: 10 }} interval="preserveStartEnd" minTickGap={24} />
           <YAxis domain={[0, GAUGE_MAX]} ticks={[0, 0.8, 1.3, 1.5, 2]} tick={{ fontSize: 10 }} allowDataOverflow />
-          <Tooltip
-            contentStyle={{ fontSize: 12 }}
-            formatter={(value) => [value ?? "—", "ACWR"]}
-            labelFormatter={(label) => `${label}`}
-          />
+          <Tooltip content={<Tip />} />
           <Area type="monotone" dataKey="ratio" fillOpacity={0.15} className="fill-primary stroke-none" connectNulls={false} />
           <Line type="monotone" dataKey="ratio" className="stroke-primary" stroke="currentColor" dot={false} strokeWidth={2} connectNulls={false} />
         </ComposedChart>
