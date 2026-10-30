@@ -20,7 +20,7 @@ import {
   type RadarSnapshot,
 } from "@shared/schema";
 import { drizzle } from "drizzle-orm/node-postgres";
-import { eq, and, gte, lte, lt, desc, sql, sum, count, isNull } from "drizzle-orm";
+import { eq, and, gte, lte, lt, ne, desc, sql, sum, count, isNull } from "drizzle-orm";
 import { Pool } from "pg";
 import { calculateBaseline } from "@shared/baseline";
 import { computeMuscleCompositeScore, computeBalanceScore, computeCoverageScore, applyActivityBonus } from "@shared/muscleGroupStats";
@@ -306,6 +306,7 @@ export interface IStorage {
     balanceScore: number | null;
     coverageScore: number | null;
     activityBonusPoints: number;
+    workoutDays: Array<{ date: string; entries: number; exercises: string[] }>;
   }>;
 }
 
@@ -2455,6 +2456,30 @@ export class DbStorage implements IStorage {
     };
   }
 
+  // 近 400 天每天練了什麼（台北日期，只列有練的日子），給 Aiportal 的每日評分。
+  // 只算手動記錄：步數是一週一筆的自動同步（source='auto'，手動補的「每周平均步数」也一樣是週資料），算進來會把那天誤當成有運動。
+  private async getWorkoutDays(now: Date): Promise<Array<{ date: string; entries: number; exercises: string[] }>> {
+    const rows = await this.db
+      .select({ date: workoutEntries.date, name: exercises.name })
+      .from(workoutEntries)
+      .innerJoin(exercises, eq(workoutEntries.exerciseId, exercises.id))
+      .where(and(
+        gte(workoutEntries.date, new Date(now.getTime() - 400 * 24 * 60 * 60 * 1000)),
+        eq(workoutEntries.source, 'manual'),
+        ne(exercises.name, '每周平均步数'),
+      ));
+    const days = new Map<string, { entries: number; exercises: Set<string> }>();
+    for (const r of rows) {
+      const key = this.formatTaipeiDate(r.date);
+      const day = days.get(key) ?? { entries: 0, exercises: new Set<string>() };
+      day.entries += 1;
+      day.exercises.add(r.name);
+      days.set(key, day);
+    }
+    return Array.from(days, ([date, d]) => ({ date, entries: d.entries, exercises: Array.from(d.exercises) }))
+      .sort((a, b) => a.date.localeCompare(b.date));
+  }
+
   async getPublicSummary() {
     const now = new Date();
     const weekStart = this.getWeekStart(now);
@@ -2674,6 +2699,7 @@ export class DbStorage implements IStorage {
       // 「覆蓋 X%（含活動量 +Y%）」badge 同一份資訊，Aiportal 顯示時也要
       // 標出來，不是只送調整後的 coverageScore 讓人以為那是純肌群數字。
       activityBonusPoints,
+      workoutDays: await this.getWorkoutDays(now),
     };
   }
 }
