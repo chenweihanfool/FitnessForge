@@ -6,6 +6,15 @@ export interface ChangelogEntry {
 }
 export const changelog: ChangelogEntry[] = [
   {
+    version: "v3.36",
+    date: "2026-10-30",
+    title: "入口網摘要加上每天練了什麼，讓運動算進每日評分",
+    items: [
+      "/api/public/summary 多一欄 workoutDays：近 400 天每天的手動記錄筆數與動作名稱（台北日期，只列有練的日子），Aiportal 的每日評分用它判斷當天有沒有運動",
+      "步數不算：自動同步與「每周平均步数」都是週資料，掛在某一天會誤判成那天有運動",
+    ],
+  },
+  {
     version: "v3.35",
     date: "2026-10-24",
     title: "新增記錄可還原上次的遞增方式；力量的「基礎重量」改成「動作強度」；日期帶年份；圖表提示框與版本歷程改版",
