@@ -8,12 +8,13 @@ import { ScaleProgressBar } from "@/components/scale-progress-bar";
 import { AcwrCard } from "@/components/training/acwr-card";
 import { RecoveryCard } from "@/components/training/recovery-card";
 import { AcwrAlert } from "@/components/training/acwr-alert";
+import { useWeekMilestones } from "@/hooks/use-week-milestones";
 import { ProgressTab } from "@/components/dashboard/progress-tab";
 import { RadarHistoryCard } from "@/components/dashboard/radar-history-card";
 import { BestWeekDialog } from "@/components/dashboard/best-week-dialog";
 import { DayEntriesDialog } from "@/components/dashboard/day-entries-dialog";
 import type {
-  WeekDetails, CategoryBreakdown, MuscleGroupWeeklyStats, DailyContributions,
+  WeekDetails, CategoryBreakdown, MuscleGroupWeeklyStats,
   MuscleGroupAverages, MuscleGroupHistoryRecord,
 } from "@/components/dashboard/types";
 import { formatWeekRange } from "@/components/dashboard/types";
@@ -87,9 +88,7 @@ export default function Dashboard() {
     queryKey: ["/api/exercises"],
   });
 
-  const { data: dailyContributions, isLoading: dailyContributionsLoading } = useQuery<DailyContributions>({
-    queryKey: ["/api/stats/daily-contributions"],
-  });
+  const milestones = useWeekMilestones();
 
   const { data: muscleGroupAverages } = useQuery<MuscleGroupAverages>({
     queryKey: ["/api/stats/muscle-group-averages"],
@@ -218,86 +217,6 @@ export default function Dashboard() {
       result[name] = { avg, peak };
     }
     return result;
-  })();
-
-  const milestones = (() => {
-    if (!rankingData) return null;
-
-    const currentTotal = rankingData.currentWeek?.totalBaselineValue || 0;
-    const avgTotal = rankingData.averageWeeklyValue || 0;
-
-    const totalWeeks = rankingData.totalWeeks || 1;
-    const rank = rankingData.rank || totalWeeks;
-    const percentile = (rank / totalWeeks) * 100;
-    const inTop10 = percentile <= 10;
-
-    const trainingDays = dailyContributions?.dailyData.filter(d => d.entryCount > 0).length || 0;
-    const hasEntry = trainingDays >= 1;
-    const hasDiscipline = trainingDays >= 3;
-    const totalAbove = currentTotal >= avgTotal && avgTotal > 0;
-
-    const muscleGroupsWithTraining = muscleGroupStats?.muscleGroups.filter(g => g.totalSets > 0) || [];
-    const muscleStatsLoaded = muscleGroupStats !== undefined;
-    const hasVolumeData = muscleGroupAverages !== undefined && muscleGroupAverages.weekCount > 0;
-
-    const muscleIntensityDetails = muscleGroupsWithTraining.map(g => {
-      const setsOk = g.totalSets >= 4;
-      const volData = muscleVolumeMap[g.muscleGroup];
-      const volumeOk = !hasVolumeData || (volData && volData.avg > 0 ? g.totalVolume >= volData.avg : true);
-      return { name: g.muscleGroup, setsOk, volumeOk, bothOk: setsOk && volumeOk };
-    });
-
-    const musclesMetCount = muscleIntensityDetails.filter(m => m.bothOk).length;
-    const muscleMetRatio = muscleGroupsWithTraining.length > 0 ? musclesMetCount / muscleGroupsWithTraining.length : 0;
-    const allMusclesAtMaintenance = muscleStatsLoaded && muscleGroupsWithTraining.length > 0 &&
-      muscleMetRatio >= 0.5;
-
-    const isFourWeekHigh = (() => {
-      if (!trendData || trendData.length < 2) return false;
-      const previousWeeks = trendData.slice(-5, -1);
-      if (previousWeeks.length === 0) return false;
-      const maxPrevious = Math.max(...previousWeeks.map(w => w.totalBaselineValue));
-      return currentTotal > 0 && currentTotal > maxPrevious;
-    })();
-
-    const breakthrough = inTop10 || isFourWeekHigh;
-
-    let achievedCount = 0;
-    if (hasEntry) {
-      achievedCount++;
-      if (hasDiscipline) {
-        achievedCount++;
-        if (totalAbove) {
-          achievedCount++;
-          if (allMusclesAtMaintenance) {
-            achievedCount++;
-            if (breakthrough) {
-              achievedCount++;
-            }
-          }
-        }
-      }
-    }
-
-    return {
-      hasEntry,
-      hasDiscipline,
-      trainingDays,
-      totalAbove,
-      allMusclesAtMaintenance,
-      muscleIntensityDetails,
-      musclesFullyMetCount: muscleIntensityDetails.filter(m => m.bothOk).length,
-      musclesSetsOnlyCount: muscleIntensityDetails.filter(m => m.setsOk).length,
-      musclesVolumeOnlyCount: muscleIntensityDetails.filter(m => m.volumeOk).length,
-      musclesTotalCount: muscleGroupsWithTraining.length,
-      inTop10,
-      isFourWeekHigh,
-      breakthrough,
-      percentile,
-      currentTotal,
-      avgTotal,
-      achievedCount,
-    };
   })();
 
   return (
@@ -574,7 +493,7 @@ export default function Dashboard() {
                             // Map Chinese muscle group names → exercise muscle field keys
                             const muscleFieldMap: Record<string, keyof Exercise> = {
                               '胸': 'muscleChest', '背': 'muscleBack', '腿': 'muscleLegs',
-                              '肩': 'muscleShoulders', '二头肌': 'muscleArms', '三头肌': 'muscleArms',
+                              '肩': 'muscleShoulders', '二头肌': 'muscleArms', '三头肌': 'muscleFullBody',
                               '核心': 'muscleCore', '臀': 'muscleGlutes',
                             };
                             return (
@@ -659,9 +578,9 @@ export default function Dashboard() {
                             (muscleGroupStats?.muscleGroups || []).map(g => [g.muscleGroup, g])
                           );
 
-                          const getSetStatus = (sets: number) => {
+                          const getSetStatus = (sets: number, maintenance: number) => {
                             if (sets === 0) return { color: 'bg-muted-foreground/20', textColor: 'text-muted-foreground', label: '未訓練' };
-                            if (sets < 4) return { color: 'bg-red-500', textColor: 'text-red-600 dark:text-red-400', label: '低于维持量' };
+                            if (sets < maintenance) return { color: 'bg-red-500', textColor: 'text-red-600 dark:text-red-400', label: '低于维持量' };
                             if (sets <= 8) return { color: 'bg-yellow-500', textColor: 'text-yellow-600 dark:text-yellow-400', label: '维持中' };
                             if (sets <= 15) return { color: 'bg-green-500', textColor: 'text-green-600 dark:text-green-400', label: '最佳区间' };
                             if (sets <= 20) return { color: 'bg-green-500', textColor: 'text-green-600 dark:text-green-400', label: '高强度' };
@@ -685,7 +604,7 @@ export default function Dashboard() {
                             const avg = vd?.avg || 0;
                             const hasHist = avg > 0;
                             if (sets === 0) return hasHist ? 2 : 4;
-                            const sok = sets >= 4;
+                            const sok = sets >= getMuscleSetsMaintenance(name);
                             const vok = hasHist && vol >= avg;
                             if (!sok && !vok) return 0;
                             if (!sok || !vok) return 1;
@@ -697,12 +616,13 @@ export default function Dashboard() {
                             const group = weekMap.get(muscleName);
                             const totalSets = group?.totalSets || 0;
                             const totalVolume = group?.totalVolume || 0;
-                            const status = getSetStatus(totalSets);
+                            const maintenance = getMuscleSetsMaintenance(muscleName);
+                            const status = getSetStatus(totalSets, maintenance);
                             const maxSets = 20;
                             const volData = muscleVolumeMap[muscleName];
                             const volAvg = volData?.avg || 0;
                             const hasVolHistory = volAvg > 0;
-                            const setsOk = totalSets >= 4;
+                            const setsOk = totalSets >= maintenance;
                             const volumeOk = hasVolHistory && totalVolume >= volAvg;
 
                             const combined = getCombinedStatus(totalSets, setsOk, volumeOk, hasVolHistory);
@@ -740,7 +660,7 @@ export default function Dashboard() {
                                     currentValue={totalSets}
                                     maxValue={Math.max(totalSets, maxSets)}
                                     markers={[
-                                      { value: 4, label: '维', colorClass: 'bg-yellow-500', textColorClass: 'text-yellow-600 dark:text-yellow-400' },
+                                      { value: maintenance, label: '维', colorClass: 'bg-yellow-500', textColorClass: 'text-yellow-600 dark:text-yellow-400' },
                                       { value: 15, label: '优', colorClass: 'bg-chart-3', textColorClass: 'text-chart-3' }
                                     ]}
                                     barColorClass={status.color}
@@ -919,7 +839,7 @@ export default function Dashboard() {
                             { stage: 1, name: '参与', achieved: milestones.hasEntry, detail: '至少1次训练记录', status: milestones.hasEntry ? '已达成' : '未达成' },
                             { stage: 2, name: '纪律', achieved: milestones.hasDiscipline, detail: `训练天数 ≥ 3（目前 ${milestones.trainingDays} 天）`, status: milestones.hasDiscipline ? '已达成' : `${milestones.trainingDays}/3 天` },
                             { stage: 3, name: '容量', achieved: milestones.totalAbove, detail: `总分超过生涯均值（均 ${milestones.avgTotal.toFixed(0)}）`, status: milestones.totalAbove ? '已达成' : `${milestones.currentTotal.toFixed(0)} / ${milestones.avgTotal.toFixed(0)}` },
-                            { stage: 4, name: '强度', achieved: milestones.allMusclesAtMaintenance, detail: `≥50% 肌群达维持量+容量（${milestones.musclesFullyMetCount}/${milestones.musclesTotalCount}）`, status: milestones.allMusclesAtMaintenance ? '已达成' : `${milestones.musclesFullyMetCount}/${milestones.musclesTotalCount} 肌群` },
+                            { stage: 4, name: '强度', achieved: milestones.allMusclesAtMaintenance, detail: `≥50% 肌群达维持量+容量（${milestones.musclesMetCount}/${milestones.musclesTotalCount}）`, status: milestones.allMusclesAtMaintenance ? '已达成' : `${milestones.musclesMetCount}/${milestones.musclesTotalCount} 肌群` },
                             { stage: 5, name: '突破', achieved: milestones.breakthrough, detail: '前10% 或 4周新高', status: milestones.breakthrough ? '已达成' : milestones.inTop10 ? '前10%' : milestones.isFourWeekHigh ? '4周新高' : '未达成' },
                           ].map((m) => (
                             <Popover key={m.stage}>

@@ -1,8 +1,9 @@
-import { Home, Dumbbell, BarChart3, FileUp, FileDown, Settings, Trophy, Star, Shield, User } from "lucide-react";
+import { Home, Dumbbell, BarChart3, FileUp, FileDown, FileText, Settings, Trophy, Star, Shield, User } from "lucide-react";
 import { useLocation, Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { RankingData } from "@shared/schema";
 import { useAuth } from "@/hooks/use-auth";
+import { useWeekMilestones } from "@/hooks/use-week-milestones";
 import {
   Sidebar,
   SidebarContent,
@@ -21,6 +22,7 @@ const menuItems = [
   { title: "仪表板", url: "/", icon: Home },
   { title: "运动管理", url: "/exercises", icon: Dumbbell },
   { title: "数据记录", url: "/entries", icon: BarChart3 },
+  { title: "週報告", url: "/report", icon: FileText },
   { title: "生涯全览", url: "/career", icon: Trophy },
   { title: "数据导入", url: "/import", icon: FileUp },
   { title: "数据导出", url: "/export", icon: FileDown },
@@ -35,21 +37,7 @@ export function AppSidebar() {
     queryKey: ["/api/stats/ranking"],
   });
 
-  const achievedCount = (() => {
-    if (!rankingData) return 0;
-    const currentTotal = rankingData.currentWeek?.totalBaselineValue || 0;
-    const avgTotal = rankingData.averageWeeklyValue || 0;
-    const entryCount = rankingData.currentWeek?.entryCount || 0;
-    if (entryCount < 1) return 0;
-    let count = 1;
-    if (entryCount >= 3) count++;
-    if (currentTotal >= avgTotal && avgTotal > 0) count++;
-    const totalWeeks = rankingData.totalWeeks || 1;
-    const percentile = (rankingData.rank / totalWeeks) * 100;
-    if (count >= 3 && percentile <= 25) count++;
-    if (count >= 4 && percentile <= 10) count++;
-    return Math.min(count, 5);
-  })();
+  const achievedCount = useWeekMilestones()?.achievedCount ?? 0;
 
   const compositeScore = rankingData?.currentWeek?.totalBaselineValue || 0;
   const avgScore = rankingData?.averageWeeklyValue || 0;

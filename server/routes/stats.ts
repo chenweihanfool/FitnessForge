@@ -156,6 +156,21 @@ export function registerStatsRoutes(app: Express) {
     }
   });
 
+  // 週報告；沒帶 weekStart 就給最近一個已結束的週
+  app.get("/api/stats/weekly-report", async (req, res) => {
+    try {
+      const { weekStart } = req.query;
+      if (weekStart !== undefined && (typeof weekStart !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(weekStart))) {
+        return res.status(400).json({ error: "weekStart 必須是 YYYY-MM-DD" });
+      }
+      const report = await storage.getWeeklyReport(weekStart as string | undefined);
+      res.json(report);
+    } catch (error) {
+      console.error("產生週報告失敗:", error);
+      res.status(500).json({ error: "產生週報告失敗" });
+    }
+  });
+
   // 获取生涯全览数据
   app.get("/api/stats/career-overview", async (req, res) => {
     try {

@@ -75,6 +75,8 @@
   --chart-3: 145 63% 49%;
   --chart-4: 4 90% 58%;
   --chart-5: 210 12% 45%;
+  --report-strength: 17 82% 56%;
+  --report-cardio: 213 67% 50%;
 
   --font-sans: Inter, Roboto, sans-serif;
   --font-serif: Georgia, serif;
@@ -193,6 +195,8 @@
   --chart-3: 145 63% 60%;
   --chart-4: 4 90% 65%;
   --chart-5: 210 15% 75%;
+  --report-strength: 17 70% 50%;
+  --report-cardio: 213 76% 56%;
 
   --shadow-2xs: 0px 1px 2px 0px hsl(0 0% 0% / 0.20);
   --shadow-xs: 0px 1px 3px 0px hsl(0 0% 0% / 0.25);

@@ -19,6 +19,7 @@ import Dashboard from "@/pages/dashboard";
 import Exercises from "@/pages/exercises";
 import Entries from "@/pages/entries";
 import Career from "@/pages/career";
+import WeeklyReportPage from "@/pages/weekly-report";
 import ImportPage from "@/pages/import";
 import ExportPage from "@/pages/export";
 import SettingsPage from "@/pages/settings";
@@ -32,6 +33,7 @@ function Router() {
       <Route path="/" component={Dashboard} />
       <Route path="/exercises" component={Exercises} />
       <Route path="/entries" component={Entries} />
+      <Route path="/report" component={WeeklyReportPage} />
       <Route path="/career" component={Career} />
       <Route path="/import" component={ImportPage} />
       <Route path="/export" component={ExportPage} />

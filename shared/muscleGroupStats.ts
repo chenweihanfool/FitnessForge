@@ -1,3 +1,5 @@
+import { MUSCLE_FIELDS } from "./training/recovery";
+
 // 各肌群「週維持組數」基準 — 取代原本所有肌群統一套用的 SETS_MAINTENANCE = 4。
 // 大肌群（胸/背/腿）在多關節複合動作裡本身就承受較大訓練量，直接組數基準較高；
 // 小肌群（二頭/三頭）在推/拉類複合動作中已經有相當程度的間接刺激，直接組數
@@ -30,8 +32,78 @@ export const RADAR_AXIS_STAT_KEYS: Record<string, string> = {
   '有氧': 'aerobicValue',
 };
 
+// getMuscleGroupAverages() 回傳的欄位名稱。
+export const RADAR_AXIS_AVG_KEYS: Record<string, string> = {
+  '胸': 'chestAvg', '背': 'backAvg', '腿': 'legsAvg', '肩': 'shouldersAvg',
+  '二头肌': 'armsAvg', '核心': 'coreAvg', '臀': 'glutesAvg', '三头肌': 'fullBodyAvg',
+  '有氧': 'aerobicAvg',
+};
+
 export function getMuscleSetsMaintenance(muscleName: string): number {
   return MUSCLE_SETS_MAINTENANCE[muscleName] ?? 4;
+}
+
+export interface MuscleTotalsEntry {
+  value: number;
+  sets: number | null;
+  baselineValue: number | null;
+  weightFactor: number;
+  unit: string;
+  category: string | null;
+  splitCategory: string | null;
+  splitRatio: number | null;
+  muscleChest: number | null;
+  muscleBack: number | null;
+  muscleLegs: number | null;
+  muscleShoulders: number | null;
+  muscleArms: number | null;
+  muscleCore: number | null;
+  muscleGlutes: number | null;
+  muscleFullBody: number | null;
+}
+
+// 把一段期間的記錄加總成各軸的組數與容量（雷達圖與週報告共用）。
+// 有氧沒有「肌群佔比」欄位，用 category/splitCategory 判斷，volume 沿用跟其他
+// 8 項一樣的 baseline 邏輯；「組數」對應項改用分鐘數（只算單位是「分鐘」的有氧
+// 運動，例如跑步——開合跳這類用「下」計的有氧運動不計入分鐘數，但一樣計入 volume）。
+export function accumulateMuscleTotals(entries: MuscleTotalsEntry[]): Map<string, { totalSets: number; totalVolume: number }> {
+  const totals = new Map<string, { totalSets: number; totalVolume: number }>();
+
+  for (const entry of entries) {
+    const baseSets = entry.sets || 1;
+    const baseVolume = entry.baselineValue ?? (entry.value * baseSets * entry.weightFactor);
+
+    for (const { field, name } of MUSCLE_FIELDS) {
+      const percentage = entry[field] || 0;
+      if (percentage <= 0) continue;
+      const existing = totals.get(name) || { totalSets: 0, totalVolume: 0 };
+      existing.totalSets += baseSets * (percentage / 100);
+      existing.totalVolume += baseVolume * (percentage / 100);
+      totals.set(name, existing);
+    }
+
+    const hasSplit = !!(entry.splitCategory && entry.splitRatio && entry.splitRatio > 0);
+    const primaryRatio = hasSplit ? 1 - (entry.splitRatio || 0) : 1;
+    const secondaryRatio = hasSplit ? (entry.splitRatio || 0) : 0;
+    let aerobicVolume = 0;
+    let aerobicMinutes = 0;
+    if (entry.category === '有氧') {
+      aerobicVolume += baseVolume * primaryRatio;
+      if (entry.unit === '分鐘') aerobicMinutes += entry.value * primaryRatio;
+    }
+    if (hasSplit && entry.splitCategory === '有氧') {
+      aerobicVolume += baseVolume * secondaryRatio;
+      if (entry.unit === '分鐘') aerobicMinutes += entry.value * secondaryRatio;
+    }
+    if (aerobicVolume > 0 || aerobicMinutes > 0) {
+      const existing = totals.get('有氧') || { totalSets: 0, totalVolume: 0 };
+      existing.totalSets += aerobicMinutes;
+      existing.totalVolume += aerobicVolume;
+      totals.set('有氧', existing);
+    }
+  }
+
+  return totals;
 }
 
 export interface MuscleCompositeScore {

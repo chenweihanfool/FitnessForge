@@ -22,8 +22,10 @@ import {
 import { drizzle } from "drizzle-orm/node-postgres";
 import { eq, and, gte, lte, lt, ne, desc, sql, sum, count, isNull } from "drizzle-orm";
 import { Pool } from "pg";
-import { calculateBaseline } from "@shared/baseline";
-import { computeMuscleCompositeScore, computeBalanceScore, computeCoverageScore, applyActivityBonus } from "@shared/muscleGroupStats";
+import { calculateBaseline, splitBaselineByCategory } from "@shared/baseline";
+import { accumulateMuscleTotals, computeMuscleCompositeScore, computeBalanceScore, computeCoverageScore, applyActivityBonus } from "@shared/muscleGroupStats";
+import { computeMilestones } from "@shared/training/milestones";
+import { buildWeeklyReport, type WeeklyReport } from "@shared/training/weekly-report";
 
 
 // importExercises 的實作邏輯跟用哪個 storage 實作無關——只透過
@@ -191,6 +193,7 @@ export interface IStorage {
       differencePercentage: number | null;
     }>;
   }>;
+  getWeeklyReport(weekStart?: string): Promise<WeeklyReport>;
   getCareerOverview(): Promise<{
     weeks: Array<{
       weekStart: string;
@@ -659,30 +662,11 @@ export class DbStorage implements IStorage {
 
     for (const entry of entries) {
       if (entry.exercise) {
-        const baseline = entry.baselineValue ?? 0;
+        const shares = splitBaselineByCategory(entry.exercise, entry.baselineValue ?? 0);
+        strengthValue += shares.strength;
+        cardioValue += shares.cardio;
+        activityValue += shares.activity;
         entryCount++;
-
-        const hasSplit = entry.exercise.splitCategory && entry.exercise.splitRatio && entry.exercise.splitRatio > 0;
-        const primaryRatio = hasSplit ? 1 - (entry.exercise.splitRatio || 0) : 1;
-        const secondaryRatio = hasSplit ? (entry.exercise.splitRatio || 0) : 0;
-
-        if (entry.exercise.category === '力量') {
-          strengthValue += baseline * primaryRatio;
-        } else if (entry.exercise.category === '有氧') {
-          cardioValue += baseline * primaryRatio;
-        } else if (entry.exercise.category === '活动量') {
-          activityValue += baseline * primaryRatio;
-        }
-
-        if (hasSplit) {
-          if (entry.exercise.splitCategory === '力量') {
-            strengthValue += baseline * secondaryRatio;
-          } else if (entry.exercise.splitCategory === '有氧') {
-            cardioValue += baseline * secondaryRatio;
-          } else if (entry.exercise.splitCategory === '活动量') {
-            activityValue += baseline * secondaryRatio;
-          }
-        }
       }
     }
 
@@ -1359,7 +1343,6 @@ export class DbStorage implements IStorage {
     const dailyTotals: { date: Date; baselineValue: number; entryCount: number }[] = [];
     
     // DbStorage: 先计算本周"每周平均步数"的总基准值，用于平均分配到每天
-    const weekEndTime = new Date(weekEnd.getTime() + 24 * 60 * 60 * 1000);
     const weeklyStepsEntries = await this.db
       .select({
         value: workoutEntries.value,
@@ -1372,7 +1355,7 @@ export class DbStorage implements IStorage {
       .where(
         and(
           gte(workoutEntries.date, weekStart),
-          lt(workoutEntries.date, weekEndTime),
+          lte(workoutEntries.date, weekEnd),
           eq(exercises.name, '每周平均步数')
         )
       );
@@ -1419,7 +1402,8 @@ export class DbStorage implements IStorage {
       dailyTotals.push({
         date: dayStart,
         baselineValue: dayBaselineValue,
-        entryCount: dayEntries.length,
+        // 步數是週資料，不算當天有訓練
+        entryCount: dayEntries.filter(entry => entry.exerciseName !== '每周平均步数').length,
       });
       
       weekTotal += dayBaselineValue;
@@ -1456,7 +1440,6 @@ export class DbStorage implements IStorage {
     // 计算本周每周平均步数的分配基准值
     const weekStart = this.getWeekStart(dayStart);
     const weekEnd = this.getWeekEnd(weekStart);
-    const weekEndTime = new Date(weekEnd.getTime() + 24 * 60 * 60 * 1000);
     
     const weeklyStepsEntries = await this.db
       .select({
@@ -1470,7 +1453,7 @@ export class DbStorage implements IStorage {
       .where(
         and(
           gte(workoutEntries.date, weekStart),
-          lt(workoutEntries.date, weekEndTime),
+          lte(workoutEntries.date, weekEnd),
           eq(exercises.name, '每周平均步数')
         )
       );
@@ -1682,6 +1665,24 @@ export class DbStorage implements IStorage {
     return tempDate.getUTCFullYear();
   }
 
+  async getWeeklyReport(weekStart?: string) {
+    const [entries, exerciseList, settings] = await Promise.all([
+      this.getWorkoutEntries(),
+      this.getExercises(),
+      this.getAllUserSettings(),
+    ]);
+    return buildWeeklyReport({
+      entries,
+      exercises: exerciseList,
+      weights: {
+        strength: parseFloat(settings['strengthWeight'] ?? '50'),
+        cardio: parseFloat(settings['cardioWeight'] ?? '30'),
+        activity: parseFloat(settings['activityWeight'] ?? '20'),
+      },
+      weekStart,
+    });
+  }
+
   async getCareerOverview() {
     const allWeeklyStats = await this.getAllWeeklyStats();
     if (allWeeklyStats.length === 0) return { weeks: [], totalStars: 0, averageStars: 0, yearlyStats: [] };
@@ -1752,34 +1753,23 @@ export class DbStorage implements IStorage {
       const rank = sortedByTotal.findIndex(w => w.weekStart === week.weekStart) + 1;
       const percentile = (rank / allWeeklyStats.length) * 100;
 
-      // 里程碑1：参与（有训练记录）
-      const hasEntry = trainingDays >= 1;
-      // 里程碑2：纪律（训练天数 ≥ 3）
-      const hasDiscipline = trainingDays >= 3;
-      // 里程碑3：容量（总基准值超过生涯均值）
-      const totalAbove = week.totalBaselineValue >= avgTotal && avgTotal > 0;
-      // 里程碑4：强度（≥50% 已训练肌群达到 组数≥4 AND 训练量≥均值）
       const weekDateKey = this.formatTaipeiDate(weekStartDate);
       const wms = muscleStatsByKey.get(weekDateKey);
-      const trainedMuscles = MUSCLE_NAMES.filter(n => (wd.mSetMap[n] || 0) > 0);
-      let musclesMetCount = 0;
-      for (const n of trainedMuscles) {
-        const setsOk = (wd.mSetMap[n] || 0) >= 4;
-        const weekVol = wms ? ((wms as any)[MUSCLE_STAT_KEYS[n]] || 0) : 0;
-        const avgVol = muscleAvgVol[n] || 0;
-        if (setsOk && (avgVol === 0 || weekVol >= avgVol)) musclesMetCount++;
-      }
-      const allMusclesAtMaintenance = trainedMuscles.length > 0 && musclesMetCount / trainedMuscles.length >= 0.5;
-      // 里程碑5：突破（前10% OR 近4周新高）
-      const inTop10 = percentile <= 10;
       const weekIndex = sortedByTime.findIndex(w => w.weekStart === week.weekStart);
-      const prev4 = sortedByTime.slice(Math.max(0, weekIndex - 4), weekIndex);
-      const maxPrev = prev4.length > 0 ? Math.max(...prev4.map(w => w.totalBaselineValue)) : 0;
-      const breakthrough = inTop10 || (week.totalBaselineValue > 0 && (prev4.length === 0 || week.totalBaselineValue > maxPrev));
-
-      // 顺序计算（必须完成第N级才能计入第N+1级）
-      let stars = 0;
-      if (hasEntry) { stars++; if (hasDiscipline) { stars++; if (totalAbove) { stars++; if (allMusclesAtMaintenance) { stars++; if (breakthrough) stars++; } } } }
+      const { achievedCount: stars } = computeMilestones({
+        trainingDays,
+        totalScore: week.totalBaselineValue,
+        careerAvgTotal: avgTotal,
+        rank,
+        totalWeeks: allWeeklyStats.length,
+        prevFourTotals: sortedByTime.slice(Math.max(0, weekIndex - 4), weekIndex).map(w => w.totalBaselineValue),
+        muscles: MUSCLE_NAMES.map(name => ({
+          name,
+          sets: wd.mSetMap[name] || 0,
+          volume: wms ? ((wms as any)[MUSCLE_STAT_KEYS[name]] || 0) : 0,
+          avgVolume: muscleAvgVol[name] || 0,
+        })),
+      });
 
       return { weekStart: week.weekStart, weekEnd: week.weekEnd, year, weekNumber, totalScore: week.totalBaselineValue, strengthScore: week.strengthValue, cardioScore: week.cardioValue, activityScore: week.activityValue, stars, percentile };
     });
@@ -1859,57 +1849,7 @@ export class DbStorage implements IStorage {
         )
       );
 
-    const muscleGroupMap = new Map<string, { totalSets: number; totalVolume: number }>();
-    const muscleFields = [
-      { field: 'muscleChest', name: '胸' },
-      { field: 'muscleBack', name: '背' },
-      { field: 'muscleLegs', name: '腿' },
-      { field: 'muscleShoulders', name: '肩' },
-      { field: 'muscleArms', name: '二头肌' },
-      { field: 'muscleCore', name: '核心' },
-      { field: 'muscleGlutes', name: '臀' },
-      { field: 'muscleFullBody', name: '三头肌' },
-    ] as const;
-
-    for (const entry of entries) {
-      // 直接使用已保存的基准值
-      const baseSets = entry.sets || 1;
-      const baseVolume = entry.baselineValue ?? (entry.value * baseSets * entry.weightFactor);
-
-      for (const { field, name } of muscleFields) {
-        const percentage = (entry[field] as number) || 0;
-        if (percentage <= 0) continue;
-
-        const existing = muscleGroupMap.get(name) || { totalSets: 0, totalVolume: 0 };
-        existing.totalSets += baseSets * (percentage / 100);
-        existing.totalVolume += baseVolume * (percentage / 100);
-        muscleGroupMap.set(name, existing);
-      }
-
-      // 有氧沒有「肌群佔比」欄位，用 category/splitCategory 判斷，volume 沿用
-      // 跟其他 8 項一樣的 baseline 邏輯；「組數」對應項改用分鐘數（只算單位是
-      // 「分鐘」的有氧運動，例如跑步——開合跳這類用「下」計的有氧運動不計入
-      // 分鐘數，但一樣計入 volume，見 @shared/muscleGroupStats 的說明）。
-      const hasSplit = !!(entry.splitCategory && entry.splitRatio && entry.splitRatio > 0);
-      const primaryRatio = hasSplit ? 1 - (entry.splitRatio || 0) : 1;
-      const secondaryRatio = hasSplit ? (entry.splitRatio || 0) : 0;
-      let aerobicVolume = 0;
-      let aerobicMinutes = 0;
-      if (entry.category === '有氧') {
-        aerobicVolume += baseVolume * primaryRatio;
-        if (entry.unit === '分鐘') aerobicMinutes += entry.value * primaryRatio;
-      }
-      if (hasSplit && entry.splitCategory === '有氧') {
-        aerobicVolume += baseVolume * secondaryRatio;
-        if (entry.unit === '分鐘') aerobicMinutes += entry.value * secondaryRatio;
-      }
-      if (aerobicVolume > 0 || aerobicMinutes > 0) {
-        const existing = muscleGroupMap.get('有氧') || { totalSets: 0, totalVolume: 0 };
-        existing.totalSets += aerobicMinutes;
-        existing.totalVolume += aerobicVolume;
-        muscleGroupMap.set('有氧', existing);
-      }
-    }
+    const muscleGroupMap = accumulateMuscleTotals(entries);
 
     const muscleGroups = Array.from(muscleGroupMap.entries())
       .map(([muscleGroup, stats]) => ({
@@ -1928,9 +1868,10 @@ export class DbStorage implements IStorage {
   }
 
   async updateWeeklyMuscleStats(weekStartStr: string): Promise<void> {
-    const weekStart = new Date(weekStartStr);
+    // weekStartStr 是台北日期字串，new Date() 會解析成 UTC 午夜（= 台北週一 08:00），
+    // 這裡先換回台北週一 00:00，窗口才是完整的「週一到週日」。
+    const weekStart = this.getWeekStart(new Date(weekStartStr));
     const weekEnd = this.getWeekEnd(weekStart);
-    const weekEndTime = new Date(weekEnd.getTime() + 24 * 60 * 60 * 1000);
 
     const entries = await this.db
       .select({
@@ -1955,7 +1896,7 @@ export class DbStorage implements IStorage {
       .where(
         and(
           gte(workoutEntries.date, weekStart),
-          lt(workoutEntries.date, weekEndTime)
+          lte(workoutEntries.date, weekEnd)
         )
       );
 
