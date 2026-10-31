@@ -42,7 +42,7 @@ export function RadarHistoryCard() {
           <p className="text-sm text-muted-foreground text-center py-6">尚無儲存的快照。每周日晚間 GitHub Actions 會自動儲存，或點雷達圖右上角「儲存快照」手動儲存。</p>
         ) : (
           <div className="space-y-4">
-            {radarSnapshotHistory.map(snap => {
+            {[...radarSnapshotHistory].reverse().map(snap => {
               const scores: Record<string, number> = JSON.parse(snap.scoresJson);
               const recs: string[] = JSON.parse(snap.recommendationsJson);
               const muscleNames = ['胸', '背', '腿', '肩', '二头肌', '核心', '臀', '三头肌', '有氧'];

@@ -2,6 +2,26 @@
 // 前端新增/編輯表單的「基准值」即時預覽也走同一份，避免兩邊公式各改各的而
 // 對不上（先前前端內嵌一份舊係數，預覽值跟實際入庫值差了 4 倍）。
 
+export interface CategorySplitFields {
+  category: string | null;
+  splitCategory: string | null;
+  splitRatio: number | null;
+}
+
+// 一筆記錄的基準值分給力量／有氧／活動量各多少（混合運動依 splitRatio 拆分）。
+export function splitBaselineByCategory(exercise: CategorySplitFields, baseline: number) {
+  const shares = { strength: 0, cardio: 0, activity: 0 };
+  const add = (category: string | null, amount: number) => {
+    if (category === '力量') shares.strength += amount;
+    else if (category === '有氧') shares.cardio += amount;
+    else if (category === '活动量') shares.activity += amount;
+  };
+  const secondary = exercise.splitCategory && exercise.splitRatio && exercise.splitRatio > 0 ? exercise.splitRatio : 0;
+  add(exercise.category, baseline * (1 - secondary));
+  if (secondary > 0) add(exercise.splitCategory, baseline * secondary);
+  return shares;
+}
+
 export function calculateBaseline(
   value: number,
   sets: number,
