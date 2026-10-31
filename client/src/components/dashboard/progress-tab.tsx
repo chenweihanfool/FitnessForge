@@ -235,7 +235,7 @@ export function ProgressTab() {
                         const value = ex[um.field] as number | null;
                         return value && value > 0;
                       })
-                      .map(um => um.name);
+                      .map(um => displayLabel(um.name));
                     return { exercise: ex, targetMuscles };
                   })
                   .slice(0, 5);

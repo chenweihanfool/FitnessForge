@@ -215,7 +215,7 @@ export default function Exercises() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold">運動管理</h1>
-            <p className="text-muted-foreground mt-2">管理您的運動類型和轉換系數</p>
+            <p className="text-muted-foreground mt-2">管理您的運動類型和轉換係數</p>
           </div>
           <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
           <DialogTrigger asChild>
@@ -228,7 +228,7 @@ export default function Exercises() {
             <DialogHeader>
               <DialogTitle>建立運動類型</DialogTitle>
               <DialogDescription>
-                新增新的運動類型，設定單位和重量轉換系數
+                新增新的運動類型，設定單位和重量轉換係數
               </DialogDescription>
             </DialogHeader>
             <Form {...form}>
@@ -889,7 +889,7 @@ export default function Exercises() {
               data-testid="button-confirm-delete"
               className="bg-destructive text-destructive-foreground"
             >
-              {deleteMutation.isPending ? "刪除中..." : deletingEntryCount > 0 ? `刪除及 ${deletingEntryCount} 條記錄` : "刪除"}
+              {deleteMutation.isPending ? "刪除中..." : deletingEntryCount > 0 ? `刪除及 ${deletingEntryCount} 筆記錄` : "刪除"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

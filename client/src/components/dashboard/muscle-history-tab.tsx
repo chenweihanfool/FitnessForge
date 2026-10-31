@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowDown, ArrowUp, Minus, type LucideIcon } from "lucide-react";
 import { Legend, PolarAngleAxis, PolarGrid, PolarRadiusAxis, Radar, RadarChart, ResponsiveContainer, Tooltip } from "recharts";
@@ -59,8 +59,14 @@ function Heatmap({ history, weeks, selected, onSelect }: {
   selected: string;
   onSelect: (weekStart: string) => void;
 }) {
+  // 最新的週在最右邊，手機寬度放不下時預設捲到那裡
+  const scroller = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (scroller.current) scroller.current.scrollLeft = scroller.current.scrollWidth;
+  }, [weeks.length]);
+
   return (
-    <div className="overflow-x-auto" data-testid="muscle-heatmap">
+    <div ref={scroller} className="overflow-x-auto" data-testid="muscle-heatmap">
       <table className="border-separate border-spacing-[2px] text-xs">
         <thead>
           <tr>
@@ -124,7 +130,7 @@ function ProgressTable({ rows }: { rows: MuscleProgress[] }) {
         <thead>
           <tr className="border-b text-xs text-muted-foreground">
             {["肌群", "狀態", "近 4 週", "前 4 週", "近 12 週"].map((h, i) => (
-              <th key={h} className={`whitespace-nowrap px-2 py-2 font-medium ${i < 2 ? "text-left" : "text-right"}`}>{h}</th>
+              <th key={h} className={`whitespace-nowrap px-2 py-2 font-medium ${i < 2 ? "text-left" : "text-right"} ${i === 3 ? "hidden sm:table-cell" : ""}`}>{h}</th>
             ))}
           </tr>
         </thead>
@@ -141,7 +147,7 @@ function ProgressTable({ rows }: { rows: MuscleProgress[] }) {
                   </span>
                 </td>
                 <td className="px-2 py-2 text-right">{p.recentAvg}%</td>
-                <td className="px-2 py-2 text-right text-muted-foreground">{p.prevAvg === null ? "—" : `${p.prevAvg}%`}</td>
+                <td className="hidden px-2 py-2 text-right text-muted-foreground sm:table-cell">{p.prevAvg === null ? "—" : `${p.prevAvg}%`}</td>
                 <td className="px-2 py-2"><div className="flex justify-end"><Sparkline values={p.spark} /></div></td>
               </tr>
             );

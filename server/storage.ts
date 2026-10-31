@@ -21,6 +21,7 @@ import { drizzle } from "drizzle-orm/node-postgres";
 import { eq, and, gte, lte, lt, ne, desc, sql, sum, count, isNull } from "drizzle-orm";
 import { Pool } from "pg";
 import { calculateBaseline, splitBaselineByCategory } from "@shared/baseline";
+import { displayLabel } from "@shared/labels";
 import { accumulateMuscleTotals, computeMuscleCompositeScore, computeBalanceScore, computeCoverageScore, applyActivityBonus } from "@shared/muscleGroupStats";
 import { computeMilestones } from "@shared/training/milestones";
 import { buildMuscleHistory, type MuscleHistory } from "@shared/training/muscle-history";
@@ -1256,12 +1257,12 @@ export class DbStorage implements IStorage {
           
           const bestExercise = sortedExercises[0];
           if (bestExercise && !recommendations.find(r => r.exerciseId === bestExercise.id)) {
-            const setsText = laggingMuscle.sets === 0 ? '未训练' : `仅${laggingMuscle.sets.toFixed(0)}组`;
+            const setsText = laggingMuscle.sets === 0 ? '未訓練' : `僅${laggingMuscle.sets.toFixed(0)}組`;
             recommendations.push({
               exerciseId: bestExercise.id,
               exerciseName: bestExercise.name,
               exerciseUnit: bestExercise.unit,
-              reason: `${laggingMuscle.name}肌群${setsText}，建議加強`,
+              reason: `${displayLabel(laggingMuscle.name)}肌群${setsText}，建議加強`,
             });
             
             // 最多推荐3个基于肌群落后的运动

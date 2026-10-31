@@ -129,7 +129,7 @@ export default function Entries() {
   // 從兩顆按鈕變成一顆按鈕 + 選單，行為跟原本一致。
   const [setsTemplate, setSetsTemplate] = useState<'progressive' | 'custom' | null>(null);
 
-  // 逐組遞增樣板引數：重量每組遞增 progIncrement，次數每組遞減
+  // 逐組遞增樣板參數：重量每組遞增 progIncrement，次數每組遞減
   // progRepsDecrement（遞減 0 代表每組次數都一樣，等同原本「逐組遞增」的
   // 行為，只是多開放次數也能跟著遞減）。
   const [progRepsPerSet, setProgRepsPerSet] = useState<number | "">(5);
@@ -260,7 +260,7 @@ export default function Entries() {
       if (exerciseExists) {
         form.setValue('exerciseId', addExerciseId);
         setIsCreateOpen(true);
-        // 清除URL引數，避免重新整理頁面時重複觸發
+        // 清除URL參數，避免重新整理頁面時重複觸發
         setLocation('/entries', { replace: true });
       }
     }
@@ -284,7 +284,7 @@ export default function Entries() {
     setCustomSets([{ weight: "", reps: "" }]);
     // 基礎重量預設回新選定運動的重量係數，附加負重歸零——這裡是唯一一處統一
     // 處理，不管是使用者手動在下拉選單選運動、還是從快速記錄／課表點選直接
-    // 帶 ?addExercise= 網址引數進來（那個路徑是 form.setValue 直接改
+    // 帶 ?addExercise= 網址參數進來（那個路徑是 form.setValue 直接改
     // exerciseId，不會經過 Select 的 onValueChange），都會觸發這個 effect。
     const selectedExercise = exercises?.find((e) => e.id === selectedExerciseId);
     setBaseWeightFactor(selectedExercise?.weightFactor ?? "");
@@ -1051,7 +1051,7 @@ export default function Entries() {
         <Card>
           <CardHeader>
             <CardTitle>運動記錄列表</CardTitle>
-            <CardDescription>共 {entries.length} 條記錄</CardDescription>
+            <CardDescription>共 {entries.length} 筆記錄</CardDescription>
           </CardHeader>
           <CardContent>
             <Table>

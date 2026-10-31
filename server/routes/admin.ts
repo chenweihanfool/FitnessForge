@@ -43,7 +43,7 @@ export function registerAdminRoutes(app: Express) {
       const result = await storage.migrateHistoricalMuscleStats();
       res.json({ success: true, ...result });
     } catch (error) {
-      console.error("迁移肌群统计失败:", error);
+      console.error("遷移肌群統計失敗:", error);
       res.status(500).json({ error: "遷移肌群統計失敗" });
     }
   });
@@ -53,7 +53,7 @@ export function registerAdminRoutes(app: Express) {
       const result = await storage.recalculateAllBaselines();
       res.json({ success: true, ...result });
     } catch (error) {
-      console.error("重新计算基线值失败:", error);
+      console.error("重新計算基線值失敗:", error);
       res.status(500).json({ error: "重新計算基線值失敗" });
     }
   });
@@ -85,7 +85,7 @@ export function registerAdminRoutes(app: Express) {
       const result = await storage.convertExerciseUnit(exerciseName, newUnit, valueMultiplier);
       res.json({ success: true, ...result });
     } catch (error) {
-      console.error("转换运动单位失败:", error);
+      console.error("轉換運動單位失敗:", error);
       res.status(500).json({ error: "轉換運動單位失敗" });
     }
   });

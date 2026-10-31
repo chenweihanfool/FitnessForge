@@ -11,7 +11,7 @@ export function registerExerciseRoutes(app: Express) {
       const exercises = await storage.getExercises();
       res.json(exercises);
     } catch (error) {
-      res.status(500).json({ error: "獲取運動列表失敗" });
+      res.status(500).json({ error: "取得運動列表失敗" });
     }
   });
 
@@ -24,7 +24,7 @@ export function registerExerciseRoutes(app: Express) {
       }
       res.json(exercise);
     } catch (error) {
-      res.status(500).json({ error: "獲取運動失敗" });
+      res.status(500).json({ error: "取得運動失敗" });
     }
   });
 
@@ -35,7 +35,7 @@ export function registerExerciseRoutes(app: Express) {
       const exercise = await storage.createExercise(validatedData);
       res.status(201).json(exercise);
     } catch (error) {
-      console.error("创建运动失败:", error);
+      console.error("建立運動失敗:", error);
       res.status(400).json({ error: "建立運動失敗，請檢查輸入資料", details: error instanceof Error ? error.message : String(error) });
     }
   });
@@ -61,7 +61,7 @@ export function registerExerciseRoutes(app: Express) {
       const count = entries.filter(e => e.exerciseId === req.params.id).length;
       res.json({ count });
     } catch (error) {
-      res.status(500).json({ error: "獲取記錄數量失敗" });
+      res.status(500).json({ error: "取得記錄數量失敗" });
     }
   });
 

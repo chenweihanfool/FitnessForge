@@ -31,9 +31,16 @@ const METRIC_LABELS = {
   activity: '活動量',
 } as const;
 
+export const fetchRankingDetail = (metric: string) => async (): Promise<RankingDetailResponse> => {
+  const response = await fetch(`/api/stats/ranking-detail?metric=${metric}`, { credentials: 'include' });
+  if (!response.ok) throw new Error('Failed to fetch ranking detail');
+  return response.json();
+};
+
 export function RankingDetailDialog({ open, onOpenChange, metric }: RankingDetailDialogProps) {
   const { data, isLoading } = useQuery<RankingDetailResponse>({
     queryKey: ['/api/stats/ranking-detail', metric],
+    queryFn: fetchRankingDetail(metric),
     enabled: open,
   });
 

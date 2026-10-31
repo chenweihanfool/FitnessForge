@@ -27,7 +27,7 @@ export function DayEntriesDialog({ date, dayName, onClose }: { date: string | nu
           <DialogHeader>
             <DialogTitle>{dayName}鍛鍊記錄</DialogTitle>
             <DialogDescription>
-              當日共 {dayEntriesData?.entries.length || 0} 條記錄
+              當日共 {dayEntriesData?.entries.filter((e) => e.exerciseName !== "每周平均步数").length || 0} 筆訓練記錄
             </DialogDescription>
           </DialogHeader>
           
@@ -46,7 +46,7 @@ export function DayEntriesDialog({ date, dayName, onClose }: { date: string | nu
                   <div className="flex flex-col gap-0.5">
                     <span className="font-medium">{displayLabel(entry.exerciseName)}</span>
                     <span className="text-xs text-muted-foreground">
-                      {entry.exerciseCategory || "未分類"}
+                      {entry.exerciseCategory ? displayLabel(entry.exerciseCategory) : "未分類"}
                     </span>
                   </div>
                   <div className="flex flex-col items-end gap-0.5">

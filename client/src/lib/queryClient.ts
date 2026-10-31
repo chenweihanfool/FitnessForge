@@ -71,7 +71,7 @@ export function invalidateWorkoutData() {
   });
 }
 
-/** 運動項目的引數（肌群比例、係數…）變動也會影響所有衍生統計 */
+/** 運動項目的參數（肌群比例、係數…）變動也會影響所有衍生統計 */
 export function invalidateExerciseData() {
   invalidateWorkoutData();
   return queryClient.invalidateQueries({ queryKey: ["/api/exercises"] });

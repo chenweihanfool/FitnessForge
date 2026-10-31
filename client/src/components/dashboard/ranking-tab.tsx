@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Award, Dumbbell, Footprints, Heart } from "lucide-react";
-import type { RankingData, RankingDetailResponse } from "@shared/schema";
-import { RankingDetailDialog } from "@/components/ranking-detail-dialog";
+import type { RankingData } from "@shared/schema";
+import { RankingDetailDialog, fetchRankingDetail } from "@/components/ranking-detail-dialog";
 import { RankingMetricCard } from "@/components/ranking-metric-card";
 import { queryClient } from "@/lib/queryClient";
 
@@ -9,14 +9,7 @@ export function RankingTab({ rankingData }: { rankingData?: RankingData }) {
   const [rankingDetailMetric, setRankingDetailMetric] = useState<'total' | 'strength' | 'cardio' | 'activity' | null>(null);
 
   const prefetchRankingDetail = (metric: 'total' | 'strength' | 'cardio' | 'activity') => {
-    queryClient.prefetchQuery({
-      queryKey: ['/api/stats/ranking-detail', metric],
-      queryFn: async () => {
-        const response = await fetch(`/api/stats/ranking-detail?metric=${metric}`);
-        if (!response.ok) throw new Error('Failed to fetch ranking detail');
-        return response.json() as Promise<RankingDetailResponse>;
-      },
-    });
+    queryClient.prefetchQuery({ queryKey: ['/api/stats/ranking-detail', metric], queryFn: fetchRankingDetail(metric) });
   };
 
   return (

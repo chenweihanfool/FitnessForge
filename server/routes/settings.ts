@@ -13,8 +13,8 @@ export function registerSettingsRoutes(app: Express) {
         activityWeight: parseFloat(settings['activityWeight'] ?? '20'),
       });
     } catch (error) {
-      console.error("获取设置失败:", error);
-      res.status(500).json({ error: "獲取設定失敗" });
+      console.error("取得設定失敗:", error);
+      res.status(500).json({ error: "取得設定失敗" });
     }
   });
 
@@ -36,7 +36,7 @@ export function registerSettingsRoutes(app: Express) {
       await storage.setUserSetting('activityWeight', String(a));
       res.json({ success: true, strengthWeight: s, cardioWeight: c, activityWeight: a });
     } catch (error) {
-      console.error("保存设置失败:", error);
+      console.error("儲存設定失敗:", error);
       res.status(500).json({ error: "儲存設定失敗" });
     }
   });

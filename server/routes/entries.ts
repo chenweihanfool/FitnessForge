@@ -11,7 +11,7 @@ export function registerEntryRoutes(app: Express) {
       const entries = await storage.getWorkoutEntries();
       res.json(entries);
     } catch (error) {
-      res.status(500).json({ error: "獲取記錄列表失敗" });
+      res.status(500).json({ error: "取得記錄列表失敗" });
     }
   });
 
@@ -63,8 +63,8 @@ export function registerEntryRoutes(app: Express) {
         sourceDays: mostRecent.sourceDays ?? null,
       });
     } catch (error) {
-      console.error("获取本周步数失败:", error);
-      res.status(500).json({ error: "獲取本週步數失敗" });
+      console.error("取得本週步數失敗:", error);
+      res.status(500).json({ error: "取得本週步數失敗" });
     }
   });
 
@@ -77,7 +77,7 @@ export function registerEntryRoutes(app: Express) {
       }
       res.json(entry);
     } catch (error) {
-      res.status(500).json({ error: "獲取記錄失敗" });
+      res.status(500).json({ error: "取得記錄失敗" });
     }
   });
 
@@ -88,7 +88,7 @@ export function registerEntryRoutes(app: Express) {
       const entry = await storage.createWorkoutEntry(validatedData);
       res.status(201).json(entry);
     } catch (error) {
-      console.error("创建记录失败:", error);
+      console.error("建立記錄失敗:", error);
       res.status(400).json({ error: "建立記錄失敗，請檢查輸入資料", details: error instanceof Error ? error.message : String(error) });
     }
   });
@@ -103,7 +103,7 @@ export function registerEntryRoutes(app: Express) {
       }
       res.json(entry);
     } catch (error) {
-      console.error("更新记录失败:", error);
+      console.error("更新記錄失敗:", error);
       res.status(400).json({ error: "更新記錄失敗，請檢查輸入資料", details: error instanceof Error ? error.message : String(error) });
     }
   };

@@ -6,6 +6,7 @@ import { Download, FileDown, CheckCircle } from "lucide-react";
 import { WorkoutEntryWithExercise } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
+import { CSV_HEADERS } from "@shared/csvFormat";
 
 export default function ExportPage() {
   const [isExporting, setIsExporting] = useState(false);
@@ -29,12 +30,12 @@ export default function ExportPage() {
 
     try {
       const csvHeaders = [
-        "運動名稱",
-        "單位",
-        "重量係數",
-        "資料值",
-        "日期",
-        "備註",
+        CSV_HEADERS.name,
+        CSV_HEADERS.unit,
+        CSV_HEADERS.weightFactor,
+        CSV_HEADERS.value,
+        CSV_HEADERS.date,
+        CSV_HEADERS.notes,
       ];
 
       const csvRows = entries.map((entry) => [
@@ -70,7 +71,7 @@ export default function ExportPage() {
 
       toast({
         title: "匯出成功",
-        description: `已匯出 ${entries.length} 條記錄`,
+        description: `已匯出 ${entries.length} 筆記錄`,
       });
     } catch (error) {
       toast({
@@ -106,7 +107,7 @@ export default function ExportPage() {
               <div>
                 <p className="font-medium">準備匯出</p>
                 <p className="text-sm text-muted-foreground">
-                  {entries ? `共 ${entries.length} 條記錄` : "載入中..."}
+                  {entries ? `共 ${entries.length} 筆記錄` : "載入中..."}
                 </p>
               </div>
             </div>
@@ -130,7 +131,7 @@ export default function ExportPage() {
               </li>
               <li className="flex items-center gap-2 text-sm text-muted-foreground">
                 <CheckCircle className="h-4 w-4 text-chart-3" />
-                重量轉換系數
+                重量轉換係數
               </li>
               <li className="flex items-center gap-2 text-sm text-muted-foreground">
                 <CheckCircle className="h-4 w-4 text-chart-3" />

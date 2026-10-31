@@ -29,7 +29,7 @@ export default function ImportPage() {
       setFile(null);
       toast({
         title: "匯入成功",
-        description: `已匯入 ${data.exercisesCount} 個運動類型和 ${data.entriesCount} 條記錄`,
+        description: `已匯入 ${data.exercisesCount} 個運動類型和 ${data.entriesCount} 筆記錄`,
       });
     },
     onError: (error: Error) => {
@@ -87,7 +87,7 @@ export default function ImportPage() {
         <AlertCircle className="h-4 w-4" />
         <AlertTitle>CSV格式說明</AlertTitle>
         <AlertDescription>
-          CSV檔案應包含以下列：運動名稱、單位、重量係數、資料值、日期（YYYY-MM-DD HH:mm）、備註
+          CSV檔案應包含以下欄位：運動名稱、單位、重量係數、資料值、日期（YYYY-MM-DD HH:mm）、備註
         </AlertDescription>
       </Alert>
 
