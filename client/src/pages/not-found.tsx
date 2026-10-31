@@ -11,10 +11,10 @@ export default function NotFound() {
           <AlertCircle className="h-16 w-16 text-muted-foreground mb-6" />
           <h1 className="text-3xl font-bold mb-2">404</h1>
           <p className="text-muted-foreground mb-6">
-            抱歉，找不到您访问的页面
+            抱歉，找不到您訪問的頁面
           </p>
           <Link href="/">
-            <Button data-testid="button-back-home">返回首页</Button>
+            <Button data-testid="button-back-home">返回首頁</Button>
           </Link>
         </CardContent>
       </Card>

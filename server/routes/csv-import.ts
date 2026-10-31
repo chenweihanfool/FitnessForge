@@ -2,6 +2,7 @@ import type { Express } from "express";
 import { storage } from "../storage";
 import multer from "multer";
 import Papa from "papaparse";
+import { parseCsvRow } from "@shared/csvFormat";
 
 const upload = multer({ storage: multer.memoryStorage() });
 
@@ -12,7 +13,7 @@ export function registerCsvImportRoutes(app: Express) {
   app.post("/api/import", upload.single("file"), async (req, res) => {
     try {
       if (!req.file) {
-        return res.status(400).send("未上传文件");
+        return res.status(400).send("未上傳檔案");
       }
 
       const csvData = req.file.buffer.toString("utf-8");
@@ -22,7 +23,7 @@ export function registerCsvImportRoutes(app: Express) {
       });
 
       if (parsed.errors.length > 0) {
-        return res.status(400).send("CSV文件格式错误");
+        return res.status(400).send("CSV檔案格式錯誤");
       }
 
       const exerciseMap = new Map<string, string>(); // name -> id
@@ -31,16 +32,11 @@ export function registerCsvImportRoutes(app: Express) {
 
       // 处理每一行数据
       for (const row of parsed.data as any[]) {
-        const exerciseName = row["运动名称"] || row["name"];
-        const unit = row["单位"] || row["unit"];
-        const weightFactor = parseFloat(row["重量系数"] || row["weightFactor"] || "1");
-        const value = parseFloat(row["数据值"] || row["value"]);
-        const dateStr = row["日期"] || row["date"];
-        const notes = row["备注"] || row["notes"] || "";
-
-        if (!exerciseName || !unit || isNaN(value) || !dateStr) {
+        const parsedRow = parseCsvRow(row);
+        if (!parsedRow) {
           continue; // 跳过无效行
         }
+        const { name: exerciseName, unit, weightFactor, value, date: dateStr, notes } = parsedRow;
 
         // 创建或获取运动类型
         let exerciseId = exerciseMap.get(exerciseName);
@@ -54,7 +50,7 @@ export function registerCsvImportRoutes(app: Express) {
             const newExercise = await storage.createExercise({
               name: exerciseName,
               unit,
-              weightFactor: isNaN(weightFactor) ? 1 : weightFactor,
+              weightFactor,
               splitRatio: 0,
               muscleChest: 0,
               muscleBack: 0,
@@ -86,8 +82,8 @@ export function registerCsvImportRoutes(app: Express) {
 
       res.json({ exercisesCount, entriesCount });
     } catch (error) {
-      console.error("导入错误:", error);
-      res.status(500).send("导入失败");
+      console.error("匯入錯誤:", error);
+      res.status(500).send("匯入失敗");
     }
   });
 }

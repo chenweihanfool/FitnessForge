@@ -24,7 +24,7 @@ export function registerPublicRoutes(app: Express) {
       const allExercises = await storage.getExercises();
       const stepsExercise = allExercises.find(e => e.name === "每周平均步数");
       if (!stepsExercise) {
-        return res.status(404).json({ error: "找不到「每周平均步数」運動類型，請先在運動管理建立" });
+        return res.status(404).json({ error: "找不到「每週平均步數」運動類型，請先在運動管理建立" });
       }
 
       const TAIPEI_OFFSET = 8 * 60 * 60 * 1000;

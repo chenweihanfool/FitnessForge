@@ -6,6 +6,7 @@ import { Download, FileDown, CheckCircle } from "lucide-react";
 import { WorkoutEntryWithExercise } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
+import { CSV_HEADERS } from "@shared/csvFormat";
 
 export default function ExportPage() {
   const [isExporting, setIsExporting] = useState(false);
@@ -18,8 +19,8 @@ export default function ExportPage() {
   const handleExport = async () => {
     if (!entries || entries.length === 0) {
       toast({
-        title: "无数据可导出",
-        description: "请先添加运动记录",
+        title: "無資料可匯出",
+        description: "請先新增運動記錄",
         variant: "destructive",
       });
       return;
@@ -29,12 +30,12 @@ export default function ExportPage() {
 
     try {
       const csvHeaders = [
-        "运动名称",
-        "单位",
-        "重量系数",
-        "数据值",
-        "日期",
-        "备注",
+        CSV_HEADERS.name,
+        CSV_HEADERS.unit,
+        CSV_HEADERS.weightFactor,
+        CSV_HEADERS.value,
+        CSV_HEADERS.date,
+        CSV_HEADERS.notes,
       ];
 
       const csvRows = entries.map((entry) => [
@@ -69,13 +70,13 @@ export default function ExportPage() {
       document.body.removeChild(link);
 
       toast({
-        title: "导出成功",
-        description: `已导出 ${entries.length} 条记录`,
+        title: "匯出成功",
+        description: `已匯出 ${entries.length} 筆記錄`,
       });
     } catch (error) {
       toast({
-        title: "导出失败",
-        description: "导出过程中发生错误",
+        title: "匯出失敗",
+        description: "匯出過程中發生錯誤",
         variant: "destructive",
       });
     } finally {
@@ -86,15 +87,15 @@ export default function ExportPage() {
   return (
     <div className="space-y-6" data-testid="page-export">
       <div>
-        <h1 className="text-3xl font-bold">数据导出</h1>
-        <p className="text-muted-foreground mt-2">导出您的运动数据为CSV文件</p>
+        <h1 className="text-3xl font-bold">資料匯出</h1>
+        <p className="text-muted-foreground mt-2">匯出您的運動資料為CSV檔案</p>
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle>导出运动数据</CardTitle>
+          <CardTitle>匯出運動資料</CardTitle>
           <CardDescription>
-            将所有运动记录导出为CSV文件，便于备份和跨平台使用
+            將所有運動記錄匯出為CSV檔案，便於備份和跨平臺使用
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
@@ -104,9 +105,9 @@ export default function ExportPage() {
                 <FileDown className="h-6 w-6 text-primary" />
               </div>
               <div>
-                <p className="font-medium">准备导出</p>
+                <p className="font-medium">準備匯出</p>
                 <p className="text-sm text-muted-foreground">
-                  {entries ? `共 ${entries.length} 条记录` : "加载中..."}
+                  {entries ? `共 ${entries.length} 筆記錄` : "載入中..."}
                 </p>
               </div>
             </div>
@@ -117,28 +118,28 @@ export default function ExportPage() {
               data-testid="button-export"
             >
               <Download className="mr-2 h-4 w-4" />
-              {isExporting ? "导出中..." : "导出CSV"}
+              {isExporting ? "匯出中..." : "匯出CSV"}
             </Button>
           </div>
 
           <div className="space-y-3">
-            <h3 className="font-medium">导出内容包括：</h3>
+            <h3 className="font-medium">匯出內容包括：</h3>
             <ul className="space-y-2">
               <li className="flex items-center gap-2 text-sm text-muted-foreground">
                 <CheckCircle className="h-4 w-4 text-chart-3" />
-                运动名称和单位信息
+                運動名稱和單位資訊
               </li>
               <li className="flex items-center gap-2 text-sm text-muted-foreground">
                 <CheckCircle className="h-4 w-4 text-chart-3" />
-                重量转换系数
+                重量轉換係數
               </li>
               <li className="flex items-center gap-2 text-sm text-muted-foreground">
                 <CheckCircle className="h-4 w-4 text-chart-3" />
-                所有运动数据值和日期
+                所有運動資料值和日期
               </li>
               <li className="flex items-center gap-2 text-sm text-muted-foreground">
                 <CheckCircle className="h-4 w-4 text-chart-3" />
-                备注信息
+                備註資訊
               </li>
             </ul>
           </div>
@@ -147,14 +148,14 @@ export default function ExportPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>使用说明</CardTitle>
+          <CardTitle>使用說明</CardTitle>
         </CardHeader>
         <CardContent className="space-y-2 text-sm text-muted-foreground">
-          <p>1. 点击"导出CSV"按钮下载数据文件</p>
-          <p>2. 导出的文件包含所有运动记录和相关信息</p>
-          <p>3. CSV文件可以在Excel、Google Sheets等软件中打开</p>
-          <p>4. 您可以使用此文件在其他设备上导入数据</p>
-          <p>5. 建议定期导出数据以备份您的健身记录</p>
+          <p>1. 點選"匯出CSV"按鈕下載資料檔案</p>
+          <p>2. 匯出的檔案包含所有運動記錄和相關資訊</p>
+          <p>3. CSV檔案可以在Excel、Google Sheets等軟體中開啟</p>
+          <p>4. 您可以使用此檔案在其他裝置上匯入資料</p>
+          <p>5. 建議定期匯出資料以備份您的健身記錄</p>
         </CardContent>
       </Card>
     </div>

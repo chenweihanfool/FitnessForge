@@ -28,13 +28,13 @@ export default function ImportPage() {
       invalidateExerciseData();
       setFile(null);
       toast({
-        title: "导入成功",
-        description: `已导入 ${data.exercisesCount} 个运动类型和 ${data.entriesCount} 条记录`,
+        title: "匯入成功",
+        description: `已匯入 ${data.exercisesCount} 個運動類型和 ${data.entriesCount} 筆記錄`,
       });
     },
     onError: (error: Error) => {
       toast({
-        title: "导入失败",
+        title: "匯入失敗",
         description: error.message,
         variant: "destructive",
       });
@@ -79,22 +79,22 @@ export default function ImportPage() {
   return (
     <div className="space-y-6" data-testid="page-import">
       <div>
-        <h1 className="text-3xl font-bold">数据导入</h1>
-        <p className="text-muted-foreground mt-2">从CSV文件导入运动数据</p>
+        <h1 className="text-3xl font-bold">資料匯入</h1>
+        <p className="text-muted-foreground mt-2">從CSV檔案匯入運動資料</p>
       </div>
 
       <Alert>
         <AlertCircle className="h-4 w-4" />
-        <AlertTitle>CSV格式说明</AlertTitle>
+        <AlertTitle>CSV格式說明</AlertTitle>
         <AlertDescription>
-          CSV文件应包含以下列：运动名称、单位、重量系数、数据值、日期（YYYY-MM-DD HH:mm）、备注
+          CSV檔案應包含以下欄位：運動名稱、單位、重量係數、資料值、日期（YYYY-MM-DD HH:mm）、備註
         </AlertDescription>
       </Alert>
 
       <Card>
         <CardHeader>
-          <CardTitle>上传CSV文件</CardTitle>
-          <CardDescription>支持拖放或点击选择文件</CardDescription>
+          <CardTitle>上傳CSV檔案</CardTitle>
+          <CardDescription>支援拖放或點選選擇檔案</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div
@@ -122,10 +122,10 @@ export default function ImportPage() {
             >
               <FileUp className="h-12 w-12 text-muted-foreground" />
               <p className="text-sm font-medium">
-                {file ? file.name : "拖放CSV文件到这里，或点击选择"}
+                {file ? file.name : "拖放CSV檔案到這裡，或點選選擇"}
               </p>
               <p className="text-xs text-muted-foreground">
-                支持 .csv 文件格式
+                支援 .csv 檔案格式
               </p>
             </label>
           </div>
@@ -159,7 +159,7 @@ export default function ImportPage() {
               data-testid="button-import"
             >
               <Upload className="mr-2 h-4 w-4" />
-              {importMutation.isPending ? "导入中..." : "开始导入"}
+              {importMutation.isPending ? "匯入中..." : "開始匯入"}
             </Button>
           </div>
         </CardContent>
@@ -167,14 +167,14 @@ export default function ImportPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>导入说明</CardTitle>
+          <CardTitle>匯入說明</CardTitle>
         </CardHeader>
         <CardContent className="space-y-2 text-sm text-muted-foreground">
-          <p>1. CSV文件第一行应为列标题</p>
-          <p>2. 运动名称和单位将自动创建（如果不存在）</p>
-          <p>3. 重量系数必须是数字，默认为1.0</p>
+          <p>1. CSV檔案第一行應為列標題</p>
+          <p>2. 運動名稱和單位將自動建立（如果不存在）</p>
+          <p>3. 重量係數必須是數字，預設為1.0</p>
           <p>4. 日期格式：YYYY-MM-DD HH:mm（例如：2024-01-15 14:30）</p>
-          <p>5. 备注列可以为空</p>
+          <p>5. 備註列可以為空</p>
         </CardContent>
       </Card>
     </div>

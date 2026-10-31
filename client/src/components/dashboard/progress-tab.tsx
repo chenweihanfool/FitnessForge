@@ -5,6 +5,8 @@ import type { Exercise } from "@shared/schema";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScaleProgressBar } from "@/components/scale-progress-bar";
 import type { MuscleGroupWeeklyStats, WeeklyProgress } from "./types";
+import { MUSCLE_FIELDS } from "@shared/training/recovery";
+import { displayLabel } from "@shared/labels";
 
 // 「訓練進度」分頁：本週各項目進度 vs 歷史週平均，沒有進度時改推薦該練的項目。
 // 資料自己用 useQuery 取（跟首頁其他卡片共用同一份快取，不會多打 API）。
@@ -24,38 +26,28 @@ export function ProgressTab() {
 
   return (
     <>
-            {/* 本周训练进度 */}
+            {/* 本週訓練進度 */}
             {!weeklyProgressLoading && weeklyProgress && weeklyProgress.exercises.length > 0 && (
               <Card data-testid="card-weekly-progress">
                 <CardHeader className="pb-3">
                   <CardTitle className="flex items-center gap-2">
                     <Activity className="h-5 w-5" />
-                    本周训练进度
+                    本週訓練進度
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                    {/* 推荐训练项目 - 放在最前面 */}
+                    {/* 推薦訓練項目 - 放在最前面 */}
                     {weeklyProgress.recommendations && weeklyProgress.recommendations.length > 0 && (
                       <>
                         {weeklyProgress.recommendations.map((rec) => {
                           const exerciseInfo = exercises?.find(e => e.id === rec.exerciseId);
-                          const muscleFieldMap: { field: keyof Exercise; name: string }[] = [
-                            { field: 'muscleChest', name: '胸' },
-                            { field: 'muscleBack', name: '背' },
-                            { field: 'muscleLegs', name: '腿' },
-                            { field: 'muscleShoulders', name: '肩' },
-                            { field: 'muscleArms', name: '二头肌' },
-                            { field: 'muscleCore', name: '核心' },
-                            { field: 'muscleGlutes', name: '臀' },
-                            { field: 'muscleFullBody', name: '三头肌' },
-                          ];
-                          const targetMuscles = exerciseInfo ? muscleFieldMap
+                          const targetMuscles = exerciseInfo ? MUSCLE_FIELDS
                             .filter(m => {
                               const value = exerciseInfo[m.field] as number | null;
                               return value && value > 0;
                             })
-                            .map(m => m.name)
+                            .map(m => displayLabel(m.name))
                           : [];
                 
                           return (
@@ -66,7 +58,7 @@ export function ProgressTab() {
                               onClick={() => handleAddEntry(rec.exerciseId)}
                             >
                               <div className="flex items-center justify-between text-sm">
-                                <span className="font-medium truncate">{rec.exerciseName}</span>
+                                <span className="font-medium truncate">{displayLabel(rec.exerciseName)}</span>
                                 <div className="flex items-center gap-1 shrink-0 ml-2">
                                   <Plus className="h-4 w-4 text-primary" />
                                 </div>
@@ -78,7 +70,7 @@ export function ProgressTab() {
                               )}
                               <div className="flex items-center justify-between text-xs text-muted-foreground">
                                 <span className="truncate">{rec.reason}</span>
-                                <span className="text-primary font-medium shrink-0 ml-2">建议</span>
+                                <span className="text-primary font-medium shrink-0 ml-2">建議</span>
                               </div>
                               <div className="h-1.5 w-full overflow-hidden rounded-full bg-secondary">
                                 <div
@@ -91,10 +83,10 @@ export function ProgressTab() {
                         })}
                       </>
                     )}
-                    {/* 运动项目列表 - 按距离锻炼时间排序 */}
+                    {/* 運動項目列表 - 按距離鍛鍊時間排序 */}
                     {weeklyProgress.exercises
                       .sort((a, b) => {
-                        // 按距上次锻炼天数降序排列，null值排最后
+                        // 按距上次鍛鍊天數降序排列，null值排最後
                         const daysA = a.daysSinceLastWorkout ?? -1;
                         const daysB = b.daysSinceLastWorkout ?? -1;
                         return daysB - daysA;
@@ -105,19 +97,9 @@ export function ProgressTab() {
                         const displayPercentage = Math.abs(percentage);
                         const progressValue = Math.min(displayPercentage, 100);
               
-                        // 获取运动的主要锻炼肌群
+                        // 獲取運動的主要鍛鍊肌群
                         const exerciseInfo = exercises?.find(e => e.id === ex.exerciseId);
-                        const muscleFieldMap: { field: keyof Exercise; name: string }[] = [
-                          { field: 'muscleChest', name: '胸' },
-                          { field: 'muscleBack', name: '背' },
-                          { field: 'muscleLegs', name: '腿' },
-                          { field: 'muscleShoulders', name: '肩' },
-                          { field: 'muscleArms', name: '二头肌' },
-                          { field: 'muscleCore', name: '核心' },
-                          { field: 'muscleGlutes', name: '臀' },
-                          { field: 'muscleFullBody', name: '三头肌' },
-                        ];
-                        const primaryMuscles = exerciseInfo ? muscleFieldMap
+                        const primaryMuscles = exerciseInfo ? MUSCLE_FIELDS
                           .filter(m => {
                             const value = exerciseInfo[m.field] as number | null;
                             return value && value > 0;
@@ -128,7 +110,7 @@ export function ProgressTab() {
                             return valueB - valueA;
                           })
                           .slice(0, 3)
-                          .map(m => m.name)
+                          .map(m => displayLabel(m.name))
                         : [];
 
                         return (
@@ -139,7 +121,7 @@ export function ProgressTab() {
                             onClick={() => handleAddEntry(ex.exerciseId)}
                           >
                             <div className="flex items-center justify-between text-sm">
-                              <span className="font-medium truncate">{ex.exerciseName}</span>
+                              <span className="font-medium truncate">{displayLabel(ex.exerciseName)}</span>
                               <div className="flex items-center gap-1 shrink-0 ml-2">
                                 <Plus className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
                                 {ex.weeklyAverage !== null && ex.weeklyAverage > 0 ? (
@@ -171,7 +153,7 @@ export function ProgressTab() {
                             <div className="flex items-center justify-between text-xs text-muted-foreground">
                               <div className="flex items-center gap-2 flex-wrap">
                                 <span>
-                                  本周: {ex.currentWeekValue.toFixed(1)} {ex.exerciseUnit}
+                                  本週: {ex.currentWeekValue.toFixed(1)} {ex.exerciseUnit}
                                 </span>
                                 {ex.weeklyAverage !== null && ex.weeklyAverage > 0 && (
                                   <>
@@ -191,7 +173,7 @@ export function ProgressTab() {
                             {ex.currentWeekKm !== null && (
                               <div className="flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
                                 <span>
-                                  本周: {ex.currentWeekKm.toFixed(1)} km
+                                  本週: {ex.currentWeekKm.toFixed(1)} km
                                 </span>
                                 {ex.weeklyAverageKm !== null && ex.weeklyAverageKm > 0 && (
                                   <>
@@ -229,24 +211,14 @@ export function ProgressTab() {
               </Card>
             )}
 
-            {/* 独立推荐卡片 - 当本周训练进度卡片不显示时显示 */}
+            {/* 獨立推薦卡片 - 當本週訓練進度卡片不顯示時顯示 */}
             {(!weeklyProgress || weeklyProgress.exercises.length === 0) && 
               exercises && exercises.length > 0 && (() => {
-                const muscleFieldMap: { field: keyof Exercise; name: string }[] = [
-                  { field: 'muscleChest', name: '胸' },
-                  { field: 'muscleBack', name: '背' },
-                  { field: 'muscleLegs', name: '腿' },
-                  { field: 'muscleShoulders', name: '肩' },
-                  { field: 'muscleArms', name: '二头肌' },
-                  { field: 'muscleCore', name: '核心' },
-                  { field: 'muscleGlutes', name: '臀' },
-                  { field: 'muscleFullBody', name: '三头肌' },
-                ];
       
                 const trainedMuscles = new Set(
                   muscleGroupStats?.muscleGroups?.map(g => g.muscleGroup) || []
                 );
-                const untrainedMuscles = muscleFieldMap.filter(m => !trainedMuscles.has(m.name));
+                const untrainedMuscles = MUSCLE_FIELDS.filter(m => !trainedMuscles.has(m.name));
       
                 if (untrainedMuscles.length === 0) return null;
       
@@ -263,7 +235,7 @@ export function ProgressTab() {
                         const value = ex[um.field] as number | null;
                         return value && value > 0;
                       })
-                      .map(um => um.name);
+                      .map(um => displayLabel(um.name));
                     return { exercise: ex, targetMuscles };
                   })
                   .slice(0, 5);
@@ -275,12 +247,12 @@ export function ProgressTab() {
                     <CardHeader className="pb-3">
                       <CardTitle className="flex items-center gap-2">
                         <Dumbbell className="h-5 w-5" />
-                        建议训练
+                        建議訓練
                       </CardTitle>
                     </CardHeader>
                     <CardContent>
                       <p className="text-sm text-muted-foreground mb-3">
-                        未锻炼肌群: {untrainedMuscles.map(m => m.name).join('、')}
+                        未鍛鍊肌群: {untrainedMuscles.map(m => displayLabel(m.name)).join('、')}
                       </p>
                       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                         {recommendedExercises.map(({ exercise, targetMuscles }) => (
@@ -295,7 +267,7 @@ export function ProgressTab() {
                               <Plus className="h-4 w-4 text-primary shrink-0 ml-2" />
                             </div>
                             <div className="text-xs text-muted-foreground truncate">
-                              锻炼: {targetMuscles.join('、')}
+                              鍛鍊: {targetMuscles.join('、')}
                             </div>
                           </div>
                         ))}

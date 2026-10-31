@@ -25,15 +25,22 @@ type RankingDetailDialogProps = {
 };
 
 const METRIC_LABELS = {
-  total: '总基准值',
+  total: '總基準值',
   strength: '力量',
   cardio: '有氧',
-  activity: '活动量',
+  activity: '活動量',
 } as const;
+
+export const fetchRankingDetail = (metric: string) => async (): Promise<RankingDetailResponse> => {
+  const response = await fetch(`/api/stats/ranking-detail?metric=${metric}`, { credentials: 'include' });
+  if (!response.ok) throw new Error('Failed to fetch ranking detail');
+  return response.json();
+};
 
 export function RankingDetailDialog({ open, onOpenChange, metric }: RankingDetailDialogProps) {
   const { data, isLoading } = useQuery<RankingDetailResponse>({
     queryKey: ['/api/stats/ranking-detail', metric],
+    queryFn: fetchRankingDetail(metric),
     enabled: open,
   });
 
@@ -41,9 +48,9 @@ export function RankingDetailDialog({ open, onOpenChange, metric }: RankingDetai
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl" data-testid="dialog-ranking-detail">
         <DialogHeader>
-          <DialogTitle>{METRIC_LABELS[metric]}排名详情</DialogTitle>
+          <DialogTitle>{METRIC_LABELS[metric]}排名詳情</DialogTitle>
           <DialogDescription>
-            查看当前周及前后2名的排名情况
+            檢視當前週及前後2名的排名情況
           </DialogDescription>
         </DialogHeader>
 
@@ -59,9 +66,9 @@ export function RankingDetailDialog({ open, onOpenChange, metric }: RankingDetai
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-20">排名</TableHead>
-                  <TableHead>周次</TableHead>
-                  <TableHead className="text-right">数值</TableHead>
-                  <TableHead className="text-right">与平均值</TableHead>
+                  <TableHead>週次</TableHead>
+                  <TableHead className="text-right">數值</TableHead>
+                  <TableHead className="text-right">與平均值</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -84,8 +91,8 @@ export function RankingDetailDialog({ open, onOpenChange, metric }: RankingDetai
                         )}
                       </TableCell>
                       <TableCell>
-                        {snapshot.year}年 第{snapshot.weekNumber}周
-                        {isCurrentWeek && <span className="ml-2 text-xs text-muted-foreground">(本周)</span>}
+                        {snapshot.year}年 第{snapshot.weekNumber}週
+                        {isCurrentWeek && <span className="ml-2 text-xs text-muted-foreground">(本週)</span>}
                       </TableCell>
                       <TableCell className="text-right font-semibold">
                         {snapshot.value.toFixed(1)}
@@ -103,7 +110,7 @@ export function RankingDetailDialog({ open, onOpenChange, metric }: RankingDetai
           </div>
         ) : (
           <div className="text-center py-8 text-muted-foreground">
-            暂无排名数据
+            暫無排名資料
           </div>
         )}
       </DialogContent>

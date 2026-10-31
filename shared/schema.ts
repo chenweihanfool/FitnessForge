@@ -196,20 +196,6 @@ export const whitelist = pgTable("whitelist", {
 export type WhitelistEntry = typeof whitelist.$inferSelect;
 export type InsertWhitelistEntry = typeof whitelist.$inferInsert;
 
-// 雷達圖快照表
-export const radarSnapshots = pgTable("radar_snapshots", {
-  weekStart: varchar("week_start").primaryKey(),
-  scoresJson: text("scores_json").notNull(), // JSON: { [muscleName]: compositeScore }
-  recommendationsJson: text("recommendations_json").notNull(), // JSON: string[]
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-  updatedAt: timestamp("updated_at").notNull().defaultNow(),
-});
-
-export type RadarSnapshot = typeof radarSnapshots.$inferSelect;
-export type InsertRadarSnapshot = typeof radarSnapshots.$inferInsert;
-
-export type RadarScores = Record<string, number>;
-
 // 排名快照类型（用于排名详情）
 export type RankingSnapshot = {
   weekStart: string;

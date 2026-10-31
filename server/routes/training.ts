@@ -28,7 +28,7 @@ trainingRouter.get("/overview", async (_req, res) => {
 trainingRouter.get("/exercise-stats/:exerciseId", async (req, res) => {
   try {
     const exercise = await storage.getExercise(req.params.exerciseId);
-    if (!exercise) return res.status(404).json({ error: "运动不存在" });
+    if (!exercise) return res.status(404).json({ error: "運動不存在" });
     const entries = (await storage.getWorkoutEntries()).filter((e) => e.exerciseId === exercise.id);
     res.json(computeExerciseStats(exercise, entries));
   } catch (error) {

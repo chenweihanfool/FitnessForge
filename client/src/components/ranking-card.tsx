@@ -39,13 +39,13 @@ export function RankingCard({
     <Card data-testid="card-ranking">
       <CardHeader>
         <div className="flex items-center justify-between">
-          <CardTitle>本周排名</CardTitle>
+          <CardTitle>本週排名</CardTitle>
           {getMedalIcon()}
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="flex items-center justify-between">
-          <span className="text-sm text-muted-foreground">当前排名</span>
+          <span className="text-sm text-muted-foreground">當前排名</span>
           {getRankBadge()}
         </div>
         
@@ -53,20 +53,20 @@ export function RankingCard({
           <div className="flex items-center justify-between text-sm">
             <div className="flex items-center gap-2">
               <TrendingUp className="h-4 w-4 text-chart-3" />
-              <span className="text-muted-foreground">历史最佳</span>
+              <span className="text-muted-foreground">歷史最佳</span>
             </div>
             <span className="font-semibold" data-testid="text-best-week">
-              {bestWeekValue !== null ? bestWeekValue.toFixed(1) : "暂无"}
+              {bestWeekValue !== null ? bestWeekValue.toFixed(1) : "暫無"}
             </span>
           </div>
           
           <div className="flex items-center justify-between text-sm">
             <div className="flex items-center gap-2">
               <TrendingDown className="h-4 w-4 text-destructive" />
-              <span className="text-muted-foreground">历史最差</span>
+              <span className="text-muted-foreground">歷史最差</span>
             </div>
             <span className="font-semibold" data-testid="text-worst-week">
-              {worstWeekValue !== null ? worstWeekValue.toFixed(1) : "暂无"}
+              {worstWeekValue !== null ? worstWeekValue.toFixed(1) : "暫無"}
             </span>
           </div>
           
@@ -83,7 +83,7 @@ export function RankingCard({
 
         <div className="pt-2 border-t">
           <p className="text-xs text-muted-foreground text-center">
-            共 {totalWeeks} 周数据
+            共 {totalWeeks} 週數據
           </p>
         </div>
       </CardContent>

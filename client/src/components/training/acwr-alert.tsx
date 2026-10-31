@@ -3,7 +3,7 @@ import { useTrainingOverview } from "@/hooks/use-training";
 import { ACWR_ZONE_META } from "./acwr-meta";
 
 // 疲勞風險只有在「注意」或「高風險」時才出現的提示條，平常不佔版面。
-// 有傳 onShowDetails 才會顯示「詳情」按鈕（快速記錄對話框裡不需要）。
+// 有傳 onShowDetails 才會顯示「詳情」按鈕（快速記錄對話方塊裡不需要）。
 export function AcwrAlert({ onShowDetails }: { onShowDetails?: () => void }) {
   const { data } = useTrainingOverview();
   const acwr = data?.acwr;

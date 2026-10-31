@@ -42,14 +42,14 @@ export function RankingMetricCard({
     }
   };
 
-  // 计算进度条相关数值
-  // 进度条范围：0 到 topValue * 1.1（留一点空间）
+  // 計算進度條相關數值
+  // 進度條範圍：0 到 topValue * 1.1（留一點空間）
   const maxScale = topValue > 0 ? topValue * 1.1 : 100;
   const currentPercent = maxScale > 0 ? Math.min((currentValue / maxScale) * 100, 100) : 0;
   const avgPercent = maxScale > 0 ? Math.min((averageValue / maxScale) * 100, 100) : 0;
   const topPercent = maxScale > 0 ? Math.min((topValue / maxScale) * 100, 100) : 0;
 
-  // 进度条颜色：超过平均为绿色，低于平均为红色
+  // 進度條顏色：超過平均為綠色，低於平均為紅色
   const progressColor = currentValue >= averageValue ? 'bg-chart-3' : 'bg-destructive';
 
   return (
@@ -69,16 +69,16 @@ export function RankingMetricCard({
           {getRankBadge()}
         </div>
         
-        {/* 带刻度的进度条 */}
+        {/* 帶刻度的進度條 */}
         <div className="space-y-1">
           <div className="relative h-3 bg-muted rounded-full overflow-visible">
-            {/* 当前值进度条 */}
+            {/* 當前值進度條 */}
             <div 
               className={`absolute left-0 top-0 h-full rounded-full ${progressColor} transition-all`}
               style={{ width: `${currentPercent}%` }}
             />
             
-            {/* 平均值刻度线 */}
+            {/* 平均值刻度線 */}
             {avgPercent > 0 && avgPercent <= 100 && (
               <div 
                 className="absolute top-0 h-full w-0.5 bg-primary z-10"
@@ -91,7 +91,7 @@ export function RankingMetricCard({
               </div>
             )}
             
-            {/* 最高值刻度线 */}
+            {/* 最高值刻度線 */}
             {topPercent > 0 && topPercent <= 100 && (
               <div 
                 className="absolute top-0 h-full w-0.5 bg-chart-4 z-10"
@@ -105,7 +105,7 @@ export function RankingMetricCard({
             )}
           </div>
           
-          {/* 刻度数值标签 */}
+          {/* 刻度數值標籤 */}
           <div className="flex justify-between text-[10px] text-muted-foreground">
             <span>0</span>
             <span className="text-primary">均:{averageValue.toFixed(0)}</span>
@@ -113,7 +113,7 @@ export function RankingMetricCard({
           </div>
         </div>
 
-        {/* 距离平均的差值 */}
+        {/* 距離平均的差值 */}
         <div className="flex items-center justify-between text-xs">
           <span className="text-muted-foreground">距平均</span>
           <span className={`font-medium ${deltaToAverage >= 0 ? 'text-chart-3' : 'text-destructive'}`}>

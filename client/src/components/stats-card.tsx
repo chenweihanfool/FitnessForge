@@ -47,11 +47,11 @@ export function StatsCard({
           <p className="text-xs text-muted-foreground mt-1">{subtitle}</p>
         )}
         {clickable && (
-          <p className="text-xs text-primary mt-2">点击查看详情</p>
+          <p className="text-xs text-primary mt-2">點選檢視詳情</p>
         )}
         {trend && (
           <p className={`text-xs mt-2 ${trend.isPositive ? "text-chart-3" : "text-destructive"}`}>
-            {trend.isPositive ? "↑" : "↓"} {Math.abs(trend.value).toFixed(1)}% 与上周相比
+            {trend.isPositive ? "↑" : "↓"} {Math.abs(trend.value).toFixed(1)}% 與上週相比
           </p>
         )}
       </CardContent>

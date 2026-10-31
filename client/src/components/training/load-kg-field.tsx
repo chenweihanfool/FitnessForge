@@ -4,7 +4,7 @@ import { FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessa
 import { Input } from "@/components/ui/input";
 
 // 非力量項目的「負重（公斤）」欄位（跑步機負重背心、手持啞鈴等）。
-// 只用來追蹤歷史，不影響基準值；力量項目的負重就是強度系數，不需要這一欄。
+// 只用來追蹤歷史，不影響基準值；力量項目的負重就是強度係數，不需要這一欄。
 export function LoadKgField({ control, testId }: { control: Control<InsertWorkoutEntry>; testId: string }) {
   return (
     <FormField

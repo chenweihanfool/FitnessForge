@@ -19,14 +19,14 @@ import {
 import { Badge } from "@/components/ui/badge";
 
 const menuItems = [
-  { title: "仪表板", url: "/", icon: Home },
-  { title: "运动管理", url: "/exercises", icon: Dumbbell },
-  { title: "数据记录", url: "/entries", icon: BarChart3 },
+  { title: "儀表板", url: "/", icon: Home },
+  { title: "運動管理", url: "/exercises", icon: Dumbbell },
+  { title: "資料記錄", url: "/entries", icon: BarChart3 },
   { title: "週報告", url: "/report", icon: FileText },
-  { title: "生涯全览", url: "/career", icon: Trophy },
-  { title: "数据导入", url: "/import", icon: FileUp },
-  { title: "数据导出", url: "/export", icon: FileDown },
-  { title: "设置", url: "/settings", icon: Settings },
+  { title: "生涯全覽", url: "/career", icon: Trophy },
+  { title: "資料匯入", url: "/import", icon: FileUp },
+  { title: "資料匯出", url: "/export", icon: FileDown },
+  { title: "設定", url: "/settings", icon: Settings },
 ];
 
 export function AppSidebar() {
@@ -52,14 +52,14 @@ export function AppSidebar() {
             <Dumbbell className="h-6 w-6 text-primary-foreground" />
           </div>
           <div>
-            <h2 className="text-lg font-bold text-sidebar-foreground">健身追踪</h2>
-            <p className="text-xs text-sidebar-foreground/70">数据管理系统</p>
+            <h2 className="text-lg font-bold text-sidebar-foreground">健身追蹤</h2>
+            <p className="text-xs text-sidebar-foreground/70">資料管理系統</p>
           </div>
         </div>
       </SidebarHeader>
       <SidebarContent>
         <SidebarGroup>
-          <SidebarGroupLabel>导航菜单</SidebarGroupLabel>
+          <SidebarGroupLabel>導航選單</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
               {menuItems.map((item) => {
@@ -80,7 +80,7 @@ export function AppSidebar() {
                   <SidebarMenuButton asChild isActive={location === "/admin"} data-testid="nav-admin">
                     <Link href="/admin">
                       <Shield className="h-4 w-4" />
-                      <span>管理員後台</span>
+                      <span>管理員後臺</span>
                     </Link>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
@@ -91,7 +91,7 @@ export function AppSidebar() {
 
         {rankingData && (
           <SidebarGroup>
-            <SidebarGroupLabel>本周快報</SidebarGroupLabel>
+            <SidebarGroupLabel>本週快報</SidebarGroupLabel>
             <SidebarGroupContent>
               <div className="px-3 space-y-3" data-testid="sidebar-weekly-snapshot">
                 <div className="flex items-center justify-between gap-1">
@@ -155,7 +155,7 @@ export function AppSidebar() {
         )}
         <div className="rounded-md bg-sidebar-accent p-3">
           <p className="text-xs text-sidebar-accent-foreground/80">
-            追踪您的健身数据，突破个人记录
+            追蹤您的健身資料，突破個人記錄
           </p>
         </div>
       </SidebarFooter>

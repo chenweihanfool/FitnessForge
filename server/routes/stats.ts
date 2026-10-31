@@ -10,7 +10,7 @@ export function registerStatsRoutes(app: Express) {
       const rankingData = await storage.getRankingData();
       res.json(rankingData);
     } catch (error) {
-      res.status(500).json({ error: "获取排名数据失败" });
+      res.status(500).json({ error: "取得排名資料失敗" });
     }
   });
 
@@ -19,12 +19,12 @@ export function registerStatsRoutes(app: Express) {
     try {
       const metric = req.query.metric as string;
       if (!metric || !['total', 'strength', 'cardio', 'activity'].includes(metric)) {
-        return res.status(400).json({ error: "无效的metric参数，必须是total、strength、cardio或activity之一" });
+        return res.status(400).json({ error: "無效的metric參數，必須是total、strength、cardio或activity之一" });
       }
       const detail = await storage.getRankingDetail(metric as 'total' | 'strength' | 'cardio' | 'activity');
       res.json(detail);
     } catch (error) {
-      res.status(500).json({ error: "获取排名详情失败" });
+      res.status(500).json({ error: "取得排名詳情失敗" });
     }
   });
 
@@ -34,7 +34,7 @@ export function registerStatsRoutes(app: Express) {
       const trends = await storage.getAllWeeklyStats();
       res.json(trends);
     } catch (error) {
-      res.status(500).json({ error: "获取趋势数据失败" });
+      res.status(500).json({ error: "取得趨勢資料失敗" });
     }
   });
 
@@ -44,7 +44,7 @@ export function registerStatsRoutes(app: Express) {
       const details = await storage.getCurrentWeekDetails();
       res.json(details);
     } catch (error) {
-      res.status(500).json({ error: "获取本周详细数据失败" });
+      res.status(500).json({ error: "取得本週詳細資料失敗" });
     }
   });
 
@@ -85,7 +85,7 @@ export function registerStatsRoutes(app: Express) {
       
       res.json(breakdown);
     } catch (error) {
-      res.status(500).json({ error: "获取分类统计失败" });
+      res.status(500).json({ error: "取得分類統計失敗" });
     }
   });
 
@@ -95,7 +95,7 @@ export function registerStatsRoutes(app: Express) {
       const average = await storage.getExerciseWeeklyAverage(req.params.exerciseId);
       res.json({ average });
     } catch (error) {
-      res.status(500).json({ error: "获取运动周平均值失败" });
+      res.status(500).json({ error: "取得運動週平均值失敗" });
     }
   });
 
@@ -105,7 +105,7 @@ export function registerStatsRoutes(app: Express) {
       const progress = await storage.getWeeklyProgress();
       res.json(progress);
     } catch (error) {
-      res.status(500).json({ error: "获取本周进度失败" });
+      res.status(500).json({ error: "取得本週進度失敗" });
     }
   });
 
@@ -115,7 +115,7 @@ export function registerStatsRoutes(app: Express) {
       const contributions = await storage.getDailyContributions();
       res.json(contributions);
     } catch (error) {
-      res.status(500).json({ error: "获取每日贡献度失败" });
+      res.status(500).json({ error: "取得每日貢獻度失敗" });
     }
   });
 
@@ -124,12 +124,12 @@ export function registerStatsRoutes(app: Express) {
     try {
       const { date } = req.query;
       if (!date || typeof date !== 'string') {
-        return res.status(400).json({ error: "缺少日期参数" });
+        return res.status(400).json({ error: "缺少日期參數" });
       }
       const entries = await storage.getEntriesByDate(date);
       res.json(entries);
     } catch (error) {
-      res.status(500).json({ error: "获取当日锻炼记录失败" });
+      res.status(500).json({ error: "取得當日鍛鍊記錄失敗" });
     }
   });
 
@@ -139,20 +139,20 @@ export function registerStatsRoutes(app: Express) {
       const { weekStart } = req.query;
       
       if (!weekStart || typeof weekStart !== 'string') {
-        return res.status(400).json({ error: "缺少weekStart参数" });
+        return res.status(400).json({ error: "缺少weekStart參數" });
       }
 
       // 验证日期格式
       const date = new Date(weekStart);
       if (isNaN(date.getTime())) {
-        return res.status(400).json({ error: "weekStart日期格式无效" });
+        return res.status(400).json({ error: "weekStart日期格式無效" });
       }
 
       const details = await storage.getWeekDetails(weekStart);
       res.json(details);
     } catch (error) {
-      console.error("获取周详细数据失败:", error);
-      res.status(500).json({ error: "获取周详细数据失败" });
+      console.error("取得週詳細資料失敗:", error);
+      res.status(500).json({ error: "取得週詳細資料失敗" });
     }
   });
 
@@ -171,14 +171,24 @@ export function registerStatsRoutes(app: Express) {
     }
   });
 
+  // 肌群歷史（每週達成率、進步判定、區間比較、連續達標）
+  app.get("/api/stats/muscle-history", async (_req, res) => {
+    try {
+      res.json(await storage.getMuscleHistory());
+    } catch (error) {
+      console.error("產生肌群歷史失敗:", error);
+      res.status(500).json({ error: "產生肌群歷史失敗" });
+    }
+  });
+
   // 获取生涯全览数据
   app.get("/api/stats/career-overview", async (req, res) => {
     try {
       const overview = await storage.getCareerOverview();
       res.json(overview);
     } catch (error) {
-      console.error("获取生涯全览失败:", error);
-      res.status(500).json({ error: "获取生涯全览失败" });
+      console.error("取得生涯全覽失敗:", error);
+      res.status(500).json({ error: "取得生涯全覽失敗" });
     }
   });
 
@@ -188,8 +198,8 @@ export function registerStatsRoutes(app: Express) {
       const stats = await storage.getMuscleGroupWeeklyStats();
       res.json(stats);
     } catch (error) {
-      console.error("获取肌群周统计失败:", error);
-      res.status(500).json({ error: "获取肌群周统计失败" });
+      console.error("取得肌群週統計失敗:", error);
+      res.status(500).json({ error: "取得肌群週統計失敗" });
     }
   });
 
@@ -199,8 +209,8 @@ export function registerStatsRoutes(app: Express) {
       const history = await storage.getWeeklyMuscleStatsHistory();
       res.json(history);
     } catch (error) {
-      console.error("获取肌群历史统计失败:", error);
-      res.status(500).json({ error: "获取肌群历史统计失败" });
+      console.error("取得肌群歷史統計失敗:", error);
+      res.status(500).json({ error: "取得肌群歷史統計失敗" });
     }
   });
 
@@ -210,8 +220,8 @@ export function registerStatsRoutes(app: Express) {
       const averages = await storage.getMuscleGroupAverages();
       res.json(averages);
     } catch (error) {
-      console.error("获取肌群平均值失败:", error);
-      res.status(500).json({ error: "获取肌群平均值失败" });
+      console.error("取得肌群平均值失敗:", error);
+      res.status(500).json({ error: "取得肌群平均值失敗" });
     }
   });
 }

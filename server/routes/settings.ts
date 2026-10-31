@@ -13,8 +13,8 @@ export function registerSettingsRoutes(app: Express) {
         activityWeight: parseFloat(settings['activityWeight'] ?? '20'),
       });
     } catch (error) {
-      console.error("获取设置失败:", error);
-      res.status(500).json({ error: "获取设置失败" });
+      console.error("取得設定失敗:", error);
+      res.status(500).json({ error: "取得設定失敗" });
     }
   });
 
@@ -25,19 +25,19 @@ export function registerSettingsRoutes(app: Express) {
       const c = Number(cardioWeight);
       const a = Number(activityWeight);
       if (isNaN(s) || isNaN(c) || isNaN(a) || s < 0 || c < 0 || a < 0) {
-        return res.status(400).json({ error: "权重必须是非负数" });
+        return res.status(400).json({ error: "權重必須是非負數" });
       }
       const total = s + c + a;
       if (Math.abs(total - 100) > 0.01) {
-        return res.status(400).json({ error: "权重总和必须为100" });
+        return res.status(400).json({ error: "權重總和必須為100" });
       }
       await storage.setUserSetting('strengthWeight', String(s));
       await storage.setUserSetting('cardioWeight', String(c));
       await storage.setUserSetting('activityWeight', String(a));
       res.json({ success: true, strengthWeight: s, cardioWeight: c, activityWeight: a });
     } catch (error) {
-      console.error("保存设置失败:", error);
-      res.status(500).json({ error: "保存设置失败" });
+      console.error("儲存設定失敗:", error);
+      res.status(500).json({ error: "儲存設定失敗" });
     }
   });
 }

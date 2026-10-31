@@ -153,9 +153,9 @@ export default function AdminPage() {
       <div>
         <h1 className="text-3xl font-bold flex items-center gap-2">
           <Shield className="h-7 w-7" />
-          管理員後台
+          管理員後臺
         </h1>
-        <p className="text-muted-foreground mt-2">管理可存取系統的用戶白名單</p>
+        <p className="text-muted-foreground mt-2">管理可存取系統的使用者白名單</p>
       </div>
 
       {/* Add user */}
@@ -205,7 +205,7 @@ export default function AdminPage() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
             <Users className="h-4 w-4" />
-            白名單用戶
+            白名單使用者
             <Badge variant="secondary">{whitelist.length}</Badge>
           </CardTitle>
         </CardHeader>
@@ -218,7 +218,7 @@ export default function AdminPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>用戶名</TableHead>
+                  <TableHead>使用者名稱</TableHead>
                   <TableHead>備註</TableHead>
                   <TableHead>新增者</TableHead>
                   <TableHead>新增時間</TableHead>

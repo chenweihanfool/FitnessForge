@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { MUSCLE_DUE_DAYS, type MuscleStatus, type OverdueExercise } from "@shared/training/recovery";
 import { useTrainingOverview } from "@/hooks/use-training";
+import { displayLabel } from "@shared/labels";
 
 const addEntryHref = (exerciseId: string) => `/entries?addExercise=${exerciseId}`;
 
@@ -15,7 +16,7 @@ function MuscleRow({ muscle }: { muscle: MuscleStatus }) {
   return (
     <div className="space-y-1.5" data-testid={`muscle-status-${muscle.name}`}>
       <div className="flex items-center justify-between gap-2">
-        <span className="font-medium">{muscle.name}</span>
+        <span className="font-medium">{displayLabel(muscle.name)}</span>
         <span className="text-xs text-muted-foreground">
           {fatigued ? (
             <span className="flex items-center gap-1 text-amber-600 dark:text-amber-400">
