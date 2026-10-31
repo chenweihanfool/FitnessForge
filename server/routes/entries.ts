@@ -11,7 +11,7 @@ export function registerEntryRoutes(app: Express) {
       const entries = await storage.getWorkoutEntries();
       res.json(entries);
     } catch (error) {
-      res.status(500).json({ error: "获取记录列表失败" });
+      res.status(500).json({ error: "獲取記錄列表失敗" });
     }
   });
 
@@ -64,7 +64,7 @@ export function registerEntryRoutes(app: Express) {
       });
     } catch (error) {
       console.error("获取本周步数失败:", error);
-      res.status(500).json({ error: "获取本周步数失败" });
+      res.status(500).json({ error: "獲取本週步數失敗" });
     }
   });
 
@@ -73,11 +73,11 @@ export function registerEntryRoutes(app: Express) {
     try {
       const entry = await storage.getWorkoutEntry(req.params.id);
       if (!entry) {
-        return res.status(404).json({ error: "记录不存在" });
+        return res.status(404).json({ error: "記錄不存在" });
       }
       res.json(entry);
     } catch (error) {
-      res.status(500).json({ error: "获取记录失败" });
+      res.status(500).json({ error: "獲取記錄失敗" });
     }
   });
 
@@ -89,7 +89,7 @@ export function registerEntryRoutes(app: Express) {
       res.status(201).json(entry);
     } catch (error) {
       console.error("创建记录失败:", error);
-      res.status(400).json({ error: "创建记录失败，请检查输入数据", details: error instanceof Error ? error.message : String(error) });
+      res.status(400).json({ error: "建立記錄失敗，請檢查輸入資料", details: error instanceof Error ? error.message : String(error) });
     }
   });
 
@@ -99,12 +99,12 @@ export function registerEntryRoutes(app: Express) {
       const validatedData = insertWorkoutEntrySchema.parse(req.body);
       const entry = await storage.updateWorkoutEntry(req.params.id, validatedData);
       if (!entry) {
-        return res.status(404).json({ error: "记录不存在" });
+        return res.status(404).json({ error: "記錄不存在" });
       }
       res.json(entry);
     } catch (error) {
       console.error("更新记录失败:", error);
-      res.status(400).json({ error: "更新记录失败，请检查输入数据", details: error instanceof Error ? error.message : String(error) });
+      res.status(400).json({ error: "更新記錄失敗，請檢查輸入資料", details: error instanceof Error ? error.message : String(error) });
     }
   };
   app.patch("/api/entries/:id", handleUpdateEntry);
@@ -115,11 +115,11 @@ export function registerEntryRoutes(app: Express) {
     try {
       const success = await storage.deleteWorkoutEntry(req.params.id);
       if (!success) {
-        return res.status(404).json({ error: "记录不存在" });
+        return res.status(404).json({ error: "記錄不存在" });
       }
       res.status(204).send();
     } catch (error) {
-      res.status(500).json({ error: "删除记录失败" });
+      res.status(500).json({ error: "刪除記錄失敗" });
     }
   });
 }

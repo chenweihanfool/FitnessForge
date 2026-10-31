@@ -103,9 +103,9 @@ export default function Career() {
           <Trophy className="h-6 w-6 text-primary-foreground" />
         </div>
         <div>
-          <h1 className="text-2xl font-bold">生涯记录全览</h1>
+          <h1 className="text-2xl font-bold">生涯記錄全覽</h1>
           <p className="text-sm text-muted-foreground">
-            追踪您的每周表现和成就
+            追蹤您的每週表現和成就
           </p>
         </div>
       </div>
@@ -115,12 +115,12 @@ export default function Career() {
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
               <Calendar className="h-4 w-4" />
-              总周数
+              總週數
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-bold">{totalWeeks}</div>
-            <p className="text-xs text-muted-foreground mt-1">周的训练记录</p>
+            <p className="text-xs text-muted-foreground mt-1">週的訓練記錄</p>
           </CardContent>
         </Card>
 
@@ -128,7 +128,7 @@ export default function Career() {
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
               <Star className="h-4 w-4" />
-              生涯总星星
+              生涯總星星
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -136,7 +136,7 @@ export default function Career() {
               {data?.totalStars || 0}
             </div>
             <p className="text-xs text-muted-foreground mt-1">
-              累计获得的星星
+              累計獲得的星星
             </p>
           </CardContent>
         </Card>
@@ -145,14 +145,14 @@ export default function Career() {
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
               <TrendingUp className="h-4 w-4" />
-              平均每周
+              平均每週
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-bold">
               {(data?.averageStars || 0).toFixed(1)}
             </div>
-            <p className="text-xs text-muted-foreground mt-1">颗星星</p>
+            <p className="text-xs text-muted-foreground mt-1">顆星星</p>
           </CardContent>
         </Card>
       </div>
@@ -224,8 +224,8 @@ export default function Career() {
                   <TableHeader>
                     <TableRow>
                       <TableHead>年份</TableHead>
-                      <TableHead className="text-right">记录周数</TableHead>
-                      <TableHead className="text-right">星星数</TableHead>
+                      <TableHead className="text-right">記錄週數</TableHead>
+                      <TableHead className="text-right">星星數</TableHead>
                       <TableHead className="text-right">取得率</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -286,7 +286,7 @@ export default function Career() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Calendar className="h-5 w-5" />
-            每周记录
+            每週記錄
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -295,11 +295,11 @@ export default function Career() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="w-[120px]">周次</TableHead>
-                    <TableHead className="text-right">总分</TableHead>
+                    <TableHead className="w-[120px]">週次</TableHead>
+                    <TableHead className="text-right">總分</TableHead>
                     <TableHead className="text-right">力量</TableHead>
                     <TableHead className="text-right">有氧</TableHead>
-                    <TableHead className="text-right">活动量</TableHead>
+                    <TableHead className="text-right">活動量</TableHead>
                     <TableHead className="text-center">排名</TableHead>
                     <TableHead className="text-center">星星</TableHead>
                   </TableRow>
@@ -314,11 +314,11 @@ export default function Career() {
                       <TableCell className="font-medium">
                         <div className="flex flex-col">
                           <span>
-                            {week.year}年第{week.weekNumber}周
+                            {week.year}年第{week.weekNumber}週
                           </span>
                           {index === 0 && (
                             <span className="text-xs text-primary">
-                              本周
+                              本週
                             </span>
                           )}
                         </div>
@@ -371,7 +371,7 @@ export default function Career() {
             </div>
           ) : (
             <div className="text-center py-12 text-muted-foreground">
-              暂无训练记录
+              暫無訓練記錄
             </div>
           )}
         </CardContent>

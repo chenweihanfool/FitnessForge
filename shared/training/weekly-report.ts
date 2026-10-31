@@ -1,4 +1,5 @@
 import { splitBaselineByCategory } from "../baseline";
+import { displayLabel } from "../labels";
 import {
   RADAR_AXIS_NAMES,
   accumulateMuscleTotals,
@@ -13,6 +14,7 @@ import { computeAcwr, type AcwrZone } from "./acwr";
 import { computeExerciseStats, type StatsMetric } from "./exercise-stats";
 import { computeMilestones, DISCIPLINE_DAYS, type MilestoneResult } from "./milestones";
 import { MUSCLE_FIELDS, countsAsTraining } from "./recovery";
+import { computeStreak, type StreakResult } from "./streak";
 import { dayIndexToKey, taipeiDayIndex } from "./time";
 
 // 週報告：把一週的訓練整理成指標、每日分布、肌群變化、個人紀錄與文字觀察。
@@ -34,10 +36,6 @@ const SCORE_SHIFT = 0.15;
 /** 肌群複合分跟前 4 週平均差多少分才算明顯變化 */
 const MUSCLE_SHIFT = 30;
 const LOW_STREAK_WEEKS = 3;
-
-/** 資料庫裡的肌群名稱是舊的簡體字串，畫面一律轉成這裡的顯示名稱 */
-export const MUSCLE_LABELS: Record<string, string> = { "二头肌": "二頭肌", "三头肌": "三頭肌" };
-export const muscleLabel = (name: string) => MUSCLE_LABELS[name] ?? name;
 
 export interface ReportScore {
   total: number;
@@ -120,6 +118,7 @@ export interface WeeklyReport {
   rank: number;
   totalWeeks: number;
   milestones: MilestoneResult;
+  streak: StreakResult;
   careerAvgTotal: number;
   trainingDays: number;
   prevTrainingDays: number | null;
@@ -173,7 +172,7 @@ interface WeekBucket {
   entries: WorkoutEntryWithExercise[];
 }
 
-const toMuscleEntry = (e: WorkoutEntryWithExercise) => ({
+export const toMuscleEntry = (e: WorkoutEntryWithExercise) => ({
   ...e,
   weightFactor: e.exercise.weightFactor,
   unit: e.exercise.unit,
@@ -459,6 +458,9 @@ export function buildWeeklyReport(input: WeeklyReportInput): WeeklyReport {
     rank,
     totalWeeks: allWeeks.length,
     milestones,
+    streak: computeStreak(
+      allWeeks.filter((w) => w <= week).map((w) => ({ trainingDays: buckets.get(w)?.days.size ?? 0, inProgress: w === currentWeekIdx })),
+    ),
     careerAvgTotal,
     trainingDays: bucket?.days.size ?? 0,
     prevTrainingDays: prevWeekIdx === null ? null : buckets.get(prevWeekIdx)?.days.size ?? 0,
@@ -487,7 +489,51 @@ export function buildWeeklyReport(input: WeeklyReportInput): WeeklyReport {
   return report;
 }
 
-const joinNames = (names: string[]) => names.map(muscleLabel).join("、");
+export interface WeeklyReportSummary {
+  weekStart: string;
+  weekEnd: string;
+  totalScore: number;
+  scoreChangePct: number | null;
+  stars: number;
+  rank: number;
+  totalWeeks: number;
+  trainingDays: number;
+  strengthSets: number;
+  cardioMinutes: number;
+  dailySteps: number | null;
+  acwr: number | null;
+  acwrZone: AcwrZone;
+  streak: number;
+  records: string[];
+  observations: ReportObservation[];
+  focus: string[];
+}
+
+/** 週報告的精簡版，透過 /api/public/summary 給入口網的身體頁 */
+export function summarizeWeeklyReport(r: WeeklyReport): WeeklyReportSummary {
+  const base = r.avgPrev4?.total;
+  return {
+    weekStart: r.weekStart,
+    weekEnd: r.weekEnd,
+    totalScore: Math.round(r.score.total),
+    scoreChangePct: base ? Math.round((r.score.total / base - 1) * 100) : null,
+    stars: r.milestones.achievedCount,
+    rank: r.rank,
+    totalWeeks: r.totalWeeks,
+    trainingDays: r.trainingDays,
+    strengthSets: r.strengthSets,
+    cardioMinutes: r.cardioMinutes,
+    dailySteps: r.dailySteps,
+    acwr: r.acwr.ratio,
+    acwrZone: r.acwr.zone,
+    streak: r.streak.current,
+    records: r.records.map((p) => p.name),
+    observations: r.observations,
+    focus: r.focus.map((f) => displayLabel(f.name)),
+  };
+}
+
+const joinNames = (names: string[]) => names.map(displayLabel).join("、");
 
 /** 依規則產生文字觀察。進行中的週還沒練完，不提「不足」類的提醒。 */
 export function buildObservations(r: WeeklyReport): ReportObservation[] {
@@ -519,8 +565,8 @@ export function buildObservations(r: WeeklyReport): ReportObservation[] {
       .sort((a, b) => b.shift - a.shift);
     const up = shifts[0];
     const down = shifts[shifts.length - 1];
-    if (up.shift >= MUSCLE_SHIFT) out.push({ tone: "good", text: `${muscleLabel(up.name)}進步最多，複合分比前 4 週平均高 ${up.shift} 分。` });
-    if (down.shift <= -MUSCLE_SHIFT) out.push({ tone: "warn", text: `${muscleLabel(down.name)}退步最多，複合分比前 4 週平均低 ${-down.shift} 分。` });
+    if (up.shift >= MUSCLE_SHIFT) out.push({ tone: "good", text: `${displayLabel(up.name)}進步最多，複合分比前 4 週平均高 ${up.shift} 分。` });
+    if (down.shift <= -MUSCLE_SHIFT) out.push({ tone: "warn", text: `${displayLabel(down.name)}退步最多，複合分比前 4 週平均低 ${-down.shift} 分。` });
   }
 
   if (finished) {

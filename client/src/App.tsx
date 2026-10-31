@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { VersionHistoryDialog } from "@/components/version-history-dialog";
 import { QuickLogDialog } from "@/components/quick-log-dialog";
+import { MobileBottomNav } from "@/components/mobile-bottom-nav";
 import { Plus, Home } from "lucide-react";
 import { changelog } from "@/data/changelog";
 import { useState } from "react";
@@ -99,6 +100,7 @@ function AppShell() {
               <Button
                 size="icon"
                 variant="default"
+                className="hidden md:inline-flex"
                 data-testid="button-quick-add"
                 onClick={() => setShowQuickLog(true)}
               >
@@ -110,6 +112,7 @@ function AppShell() {
           <main className="flex-1 overflow-auto p-4 lg:p-6">
             <Router />
           </main>
+          <MobileBottomNav onQuickAdd={() => setShowQuickLog(true)} />
         </div>
       </div>
 

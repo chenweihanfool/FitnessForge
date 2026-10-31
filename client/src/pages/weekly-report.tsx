@@ -28,11 +28,12 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { makeChartTooltip } from "@/components/training/chart-tooltip";
 import { ACWR_DANGER, ACWR_SWEET_HIGH, ACWR_SWEET_LOW, type AcwrZone } from "@shared/training/acwr";
-import { muscleLabel, type ReportDay, type ReportObservation, type ReportScore, type ReportTrendWeek, type WeeklyReport } from "@shared/training/weekly-report";
+import { type ReportDay, type ReportObservation, type ReportScore, type ReportTrendWeek, type WeeklyReport } from "@shared/training/weekly-report";
+import { displayLabel } from "@shared/labels";
 
 const WEEKDAYS = ["週一", "週二", "週三", "週四", "週五", "週六", "週日"];
-const STRENGTH = "hsl(var(--report-strength))";
-const CARDIO = "hsl(var(--report-cardio))";
+const STRENGTH = "hsl(var(--chart-1))";
+const CARDIO = "hsl(var(--chart-2))";
 
 const ZONE_LABEL: Record<AcwrZone, string> = {
   insufficient: "資料不足",
@@ -155,6 +156,9 @@ function Milestones({ report }: { report: WeeklyReport }) {
           </li>
         ))}
       </ul>
+      <p className="border-t pt-2 text-xs tabular-nums text-muted-foreground">
+        連續達標 {report.streak.current} 週，最佳 {report.streak.best} 週（每週 {report.streak.target} 天）
+      </p>
     </div>
   );
 }
@@ -187,7 +191,7 @@ function DailyChart({ days }: { days: ReportDay[] }) {
 
 function MuscleRadar({ report }: { report: WeeklyReport }) {
   const data = report.muscles.map((m) => ({
-    name: muscleLabel(m.name),
+    name: displayLabel(m.name),
     current: m.composite,
     previous: m.prevAvgComposite ?? 0,
   }));
@@ -234,7 +238,7 @@ function MuscleTable({ report }: { report: WeeklyReport }) {
             const unit = m.name === "有氧" ? "分" : "組";
             return (
               <tr key={m.name} className="border-b border-border/60 last:border-0">
-                <td className="whitespace-nowrap px-2 py-2 font-medium">{muscleLabel(m.name)}</td>
+                <td className="whitespace-nowrap px-2 py-2 font-medium">{displayLabel(m.name)}</td>
                 <td className="px-2 py-2">
                   <div className="flex items-center gap-2">
                     <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
@@ -438,7 +442,7 @@ export default function WeeklyReportPage() {
                   {report.focus.map((f) => (
                     <li key={f.name} className="space-y-1.5">
                       <p className="flex items-baseline justify-between gap-2 text-sm">
-                        <span className="font-medium">{muscleLabel(f.name)}</span>
+                        <span className="font-medium">{displayLabel(f.name)}</span>
                         <span className="text-xs tabular-nums text-muted-foreground">複合分 {f.composite}%</span>
                       </p>
                       <div className="flex flex-wrap gap-1">

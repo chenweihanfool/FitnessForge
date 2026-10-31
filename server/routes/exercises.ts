@@ -11,7 +11,7 @@ export function registerExerciseRoutes(app: Express) {
       const exercises = await storage.getExercises();
       res.json(exercises);
     } catch (error) {
-      res.status(500).json({ error: "获取运动列表失败" });
+      res.status(500).json({ error: "獲取運動列表失敗" });
     }
   });
 
@@ -20,11 +20,11 @@ export function registerExerciseRoutes(app: Express) {
     try {
       const exercise = await storage.getExercise(req.params.id);
       if (!exercise) {
-        return res.status(404).json({ error: "运动类型不存在" });
+        return res.status(404).json({ error: "運動類型不存在" });
       }
       res.json(exercise);
     } catch (error) {
-      res.status(500).json({ error: "获取运动失败" });
+      res.status(500).json({ error: "獲取運動失敗" });
     }
   });
 
@@ -36,7 +36,7 @@ export function registerExerciseRoutes(app: Express) {
       res.status(201).json(exercise);
     } catch (error) {
       console.error("创建运动失败:", error);
-      res.status(400).json({ error: "创建运动失败，请检查输入数据", details: error instanceof Error ? error.message : String(error) });
+      res.status(400).json({ error: "建立運動失敗，請檢查輸入資料", details: error instanceof Error ? error.message : String(error) });
     }
   });
 
@@ -46,11 +46,11 @@ export function registerExerciseRoutes(app: Express) {
       const validatedData = insertExerciseSchema.parse(req.body);
       const exercise = await storage.updateExercise(req.params.id, validatedData);
       if (!exercise) {
-        return res.status(404).json({ error: "运动类型不存在" });
+        return res.status(404).json({ error: "運動類型不存在" });
       }
       res.json(exercise);
     } catch (error) {
-      res.status(400).json({ error: "更新运动失败" });
+      res.status(400).json({ error: "更新運動失敗" });
     }
   });
 
@@ -61,7 +61,7 @@ export function registerExerciseRoutes(app: Express) {
       const count = entries.filter(e => e.exerciseId === req.params.id).length;
       res.json({ count });
     } catch (error) {
-      res.status(500).json({ error: "获取记录数量失败" });
+      res.status(500).json({ error: "獲取記錄數量失敗" });
     }
   });
 
@@ -70,11 +70,11 @@ export function registerExerciseRoutes(app: Express) {
     try {
       const success = await storage.deleteExercise(req.params.id);
       if (!success) {
-        return res.status(404).json({ error: "运动类型不存在" });
+        return res.status(404).json({ error: "運動類型不存在" });
       }
       res.status(204).send();
     } catch (error) {
-      res.status(500).json({ error: "删除运动失败" });
+      res.status(500).json({ error: "刪除運動失敗" });
     }
   });
 }

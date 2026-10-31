@@ -17,6 +17,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import type { BestWeekDetails } from "./types";
+import { displayLabel } from "@shared/labels";
 
 export function BestWeekDialog({
   open,
@@ -38,27 +39,27 @@ export function BestWeekDialog({
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <TrendingUp className="h-5 w-5 text-primary" />
-              历史最佳周详情
+              歷史最佳週詳情
             </DialogTitle>
             <DialogDescription>
-              {bestWeekDetails && `${bestWeekDetails.year}年 第${bestWeekDetails.weekNumber}周 | 周总值: ${bestWeekDetails.totalBaselineValue.toFixed(1)}`}
+              {bestWeekDetails && `${bestWeekDetails.year}年 第${bestWeekDetails.weekNumber}週 | 週總值: ${bestWeekDetails.totalBaselineValue.toFixed(1)}`}
             </DialogDescription>
           </DialogHeader>
 
           {bestWeekDetails ? (
             <div className="space-y-6">
-              {/* 运动项目明细表格 */}
+              {/* 運動項目明細表格 */}
               <div>
-                <h3 className="text-base font-semibold mb-3">运动项目明细</h3>
+                <h3 className="text-base font-semibold mb-3">運動項目明細</h3>
                 <div className="rounded-md border">
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>运动类型</TableHead>
-                        <TableHead className="text-right">记录次数</TableHead>
-                        <TableHead className="text-right">总数值</TableHead>
-                        <TableHead className="text-right">基准值</TableHead>
-                        <TableHead className="text-right">与平均值对比</TableHead>
+                        <TableHead>運動類型</TableHead>
+                        <TableHead className="text-right">記錄次數</TableHead>
+                        <TableHead className="text-right">總數值</TableHead>
+                        <TableHead className="text-right">基準值</TableHead>
+                        <TableHead className="text-right">與平均值對比</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -71,10 +72,10 @@ export function BestWeekDialog({
                         return (
                           <TableRow key={detail.exerciseId} data-testid={`row-exercise-${detail.exerciseId}`}>
                             <TableCell className="font-medium">
-                              {detail.exerciseName}
+                              {displayLabel(detail.exerciseName)}
                               {detail.exerciseCategory && (
                                 <span className="ml-2 text-xs text-muted-foreground">
-                                  ({detail.exerciseCategory})
+                                  ({displayLabel(detail.exerciseCategory)})
                                 </span>
                               )}
                             </TableCell>
@@ -99,7 +100,7 @@ export function BestWeekDialog({
                                     </span>
                                   </div>
                                   <div className="text-xs text-muted-foreground text-right">
-                                    <span>当周: {detail.totalValue.toFixed(1)} {detail.exerciseUnit}</span>
+                                    <span>當週: {detail.totalValue.toFixed(1)} {detail.exerciseUnit}</span>
                                     <span className="mx-1">|</span>
                                     <span>平均: {detail.weeklyAverage.toFixed(1)} {detail.exerciseUnit}</span>
                                   </div>
@@ -113,7 +114,7 @@ export function BestWeekDialog({
                                   </div>
                                 </div>
                               ) : (
-                                <span className="text-xs text-muted-foreground">无历史数据</span>
+                                <span className="text-xs text-muted-foreground">無歷史資料</span>
                               )}
                             </TableCell>
                           </TableRow>
@@ -130,13 +131,13 @@ export function BestWeekDialog({
                   onClick={() => onOpenChange(false)}
                   data-testid="button-close-best-week"
                 >
-                  关闭
+                  關閉
                 </Button>
               </div>
             </div>
           ) : (
             <div className="flex items-center justify-center h-48">
-              <p className="text-muted-foreground">加载中...</p>
+              <p className="text-muted-foreground">載入中...</p>
             </div>
           )}
         </DialogContent>

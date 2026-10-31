@@ -73,6 +73,7 @@ import { ExerciseStatsPanel } from "@/components/training/exercise-stats-panel";
 import { LoadKgField } from "@/components/training/load-kg-field";
 import { StrengthLoadFields } from "@/components/training/strength-load-fields";
 import { useExerciseStats } from "@/hooks/use-training";
+import { displayLabel } from "@shared/labels";
 
 interface WeeklyProgress {
   weekStart: string;
@@ -128,7 +129,7 @@ export default function Entries() {
   // 從兩顆按鈕變成一顆按鈕 + 選單，行為跟原本一致。
   const [setsTemplate, setSetsTemplate] = useState<'progressive' | 'custom' | null>(null);
 
-  // 逐組遞增樣板參數：重量每組遞增 progIncrement，次數每組遞減
+  // 逐組遞增樣板引數：重量每組遞增 progIncrement，次數每組遞減
   // progRepsDecrement（遞減 0 代表每組次數都一樣，等同原本「逐組遞增」的
   // 行為，只是多開放次數也能跟著遞減）。
   const [progRepsPerSet, setProgRepsPerSet] = useState<number | "">(5);
@@ -150,7 +151,7 @@ export default function Entries() {
   // 位），因為要避免「addedLoad 每次變動都疊加到上一次已經加總過的
   // weightFactor 上」這種重複累加的錯誤——form 實際送出的 weightFactor 由
   // 下面的 effect 統一算成 baseWeightFactor + addedLoad 寫入，兩個獨立輸入
-  // 框永遠對應各自單純的數字，不會互相污染。
+  // 框永遠對應各自單純的數字，不會互相汙染。
   const [baseWeightFactor, setBaseWeightFactor] = useState<number | "">("");
   const [addedLoad, setAddedLoad] = useState<number | "">(0);
   const { toast } = useToast();
@@ -191,7 +192,7 @@ export default function Entries() {
       setAddedLoad(0);
       toast({
         title: "成功",
-        description: "运动记录已添加",
+        description: "運動記錄已新增",
       });
       setLocation("/");
     },
@@ -204,7 +205,7 @@ export default function Entries() {
       setDeletingEntry(null);
       toast({
         title: "成功",
-        description: "运动记录已删除",
+        description: "運動記錄已刪除",
       });
     },
   });
@@ -219,7 +220,7 @@ export default function Entries() {
       editForm.reset();
       toast({
         title: "成功",
-        description: "运动记录已更新",
+        description: "運動記錄已更新",
       });
     },
   });
@@ -248,18 +249,18 @@ export default function Entries() {
     },
   });
 
-  // 处理从dashboard点击运动卡片跳转过来的情况
+  // 處理從dashboard點選運動卡片跳轉過來的情況
   useEffect(() => {
     const params = new URLSearchParams(searchString);
     const addExerciseId = params.get('addExercise');
     
     if (addExerciseId && exercises) {
-      // 验证该运动类型存在
+      // 驗證該運動類型存在
       const exerciseExists = exercises.some(e => e.id === addExerciseId);
       if (exerciseExists) {
         form.setValue('exerciseId', addExerciseId);
         setIsCreateOpen(true);
-        // 清除URL参数，避免刷新页面时重复触发
+        // 清除URL引數，避免重新整理頁面時重複觸發
         setLocation('/entries', { replace: true });
       }
     }
@@ -282,8 +283,8 @@ export default function Entries() {
     setProgNumSets(4);
     setCustomSets([{ weight: "", reps: "" }]);
     // 基礎重量預設回新選定運動的重量係數，附加負重歸零——這裡是唯一一處統一
-    // 處理，不管是使用者手動在下拉選單選運動、還是從快速記錄／課表點擊直接
-    // 帶 ?addExercise= 網址參數進來（那個路徑是 form.setValue 直接改
+    // 處理，不管是使用者手動在下拉選單選運動、還是從快速記錄／課表點選直接
+    // 帶 ?addExercise= 網址引數進來（那個路徑是 form.setValue 直接改
     // exerciseId，不會經過 Select 的 onValueChange），都會觸發這個 effect。
     const selectedExercise = exercises?.find((e) => e.id === selectedExerciseId);
     setBaseWeightFactor(selectedExercise?.weightFactor ?? "");
@@ -410,7 +411,7 @@ export default function Entries() {
 
   const handleEditEntry = (entry: WorkoutEntryWithExercise) => {
     setEditingEntry(entry);
-    // 预填充表单数据
+    // 預填充表單資料
     const taipeiDate = toTaipeiTime(entry.date);
     editForm.reset({
       exerciseId: entry.exerciseId,
@@ -443,8 +444,8 @@ export default function Entries() {
     <div className="space-y-6" data-testid="page-entries">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold">数据记录</h1>
-          <p className="text-muted-foreground mt-2">记录您的运动数据</p>
+          <h1 className="text-3xl font-bold">資料記錄</h1>
+          <p className="text-muted-foreground mt-2">記錄您的運動資料</p>
         </div>
         <Dialog open={isCreateOpen} onOpenChange={(open) => {
           setIsCreateOpen(open);
@@ -463,13 +464,13 @@ export default function Entries() {
           <DialogTrigger asChild>
             <Button data-testid="button-create-entry">
               <Plus className="mr-2 h-4 w-4" />
-              添加记录
+              新增記錄
             </Button>
           </DialogTrigger>
           <DialogContent className="max-h-[90vh] overflow-y-auto">
             <DialogHeader>
-              <DialogTitle>添加运动记录</DialogTitle>
-              <DialogDescription>记录您的运动数据和相关信息</DialogDescription>
+              <DialogTitle>新增運動記錄</DialogTitle>
+              <DialogDescription>記錄您的運動資料和相關資訊</DialogDescription>
             </DialogHeader>
 
             <Form {...form}>
@@ -485,7 +486,7 @@ export default function Entries() {
                     
                     return (
                       <FormItem>
-                        <FormLabel>运动类型</FormLabel>
+                        <FormLabel>運動類型</FormLabel>
                         <Select onValueChange={(value) => {
                           field.onChange(value);
                           // 換運動就清掉上一個運動帶進來的數字（新運動有歷史的話會再自動預填）
@@ -499,13 +500,13 @@ export default function Entries() {
                         }} value={field.value}>
                           <FormControl>
                             <SelectTrigger data-testid="select-exercise">
-                              <SelectValue placeholder="选择运动类型" />
+                              <SelectValue placeholder="選擇運動類型" />
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
                             {exercises?.map((exercise) => (
                               <SelectItem key={exercise.id} value={exercise.id} data-testid={`select-option-${exercise.id}`}>
-                                {exercise.name}
+                                {displayLabel(exercise.name)}
                               </SelectItem>
                             ))}
                           </SelectContent>
@@ -514,9 +515,9 @@ export default function Entries() {
                           <div className="space-y-1.5 mt-2 p-2 rounded-md bg-muted/50" data-testid="exercise-progress-info">
                             {currentWeekProgress && (
                               <FormDescription className="text-sm">
-                                <span className="font-medium">本周进度: </span>
+                                <span className="font-medium">本週進度: </span>
                                 {isAverageSteps 
-                                  ? `${(currentWeekProgress.currentWeekValue / 7).toFixed(0)} 步/天 (${currentWeekProgress.currentWeekValue.toFixed(0)} 步/周)`
+                                  ? `${(currentWeekProgress.currentWeekValue / 7).toFixed(0)} 步/天 (${currentWeekProgress.currentWeekValue.toFixed(0)} 步/週)`
                                   : `${currentWeekProgress.currentWeekValue.toFixed(1)} ${selectedExercise?.unit || ''}`
                                 }
                                 {currentWeekProgress.differencePercentage !== null && currentWeekProgress.weeklyAverage !== null && currentWeekProgress.weeklyAverage > 0 && (
@@ -528,8 +529,8 @@ export default function Entries() {
                             )}
                             {weeklyAverage !== null && weeklyAverage !== undefined && (
                               <FormDescription className="text-sm text-muted-foreground">
-                                <span className="font-medium">历史周平均: </span>
-                                {isAverageSteps ? `${(weeklyAverage / 7).toFixed(0)} 步/天 (${weeklyAverage.toFixed(0)} 步/周)` : `${weeklyAverage.toFixed(1)} ${selectedExercise?.unit || ''}`}
+                                <span className="font-medium">歷史週平均: </span>
+                                {isAverageSteps ? `${(weeklyAverage / 7).toFixed(0)} 步/天 (${weeklyAverage.toFixed(0)} 步/週)` : `${weeklyAverage.toFixed(1)} ${selectedExercise?.unit || ''}`}
                               </FormDescription>
                             )}
                           </div>
@@ -564,13 +565,13 @@ export default function Entries() {
                         if (!isStrengthEx) {
                           return (
                             <FormItem>
-                              <FormLabel>权重系数</FormLabel>
+                              <FormLabel>權重係數</FormLabel>
                               <FormControl>
                                 <Input
                                   type="number"
                                   step="0.01"
                                   min="0"
-                                  placeholder="输入权重系数"
+                                  placeholder="輸入權重係數"
                                   {...field}
                                   value={field.value ?? selectedExercise?.weightFactor ?? 1}
                                   onChange={(e) => field.onChange(parseFloat(e.target.value) || 1)}
@@ -578,7 +579,7 @@ export default function Entries() {
                                 />
                               </FormControl>
                               <FormDescription className="text-xs text-muted-foreground">
-                                {`默认值: ${selectedExercise?.weightFactor ?? 1}（可临时修改本次记录的权重）`}
+                                {`預設值: ${selectedExercise?.weightFactor ?? 1}（可臨時修改本次記錄的權重）`}
                               </FormDescription>
                               <FormMessage />
                             </FormItem>
@@ -626,23 +627,23 @@ export default function Entries() {
                     const currentSets = form.watch("sets");
 
                     const valueLabel = isAverageSteps
-                      ? '每日平均步数'
+                      ? '每日平均步數'
                       : isJumpingJacks
-                        ? '次数'
+                        ? '次數'
                         : isCardio
-                          ? '运动时间（分钟）'
+                          ? '運動時間（分鐘）'
                           : isStrength
-                            ? (setsTemplate !== null ? '次数（已自動填入平均值）' : '次数（下）')
-                            : '数据值';
+                            ? (setsTemplate !== null ? '次數（已自動填入平均值）' : '次數（下）')
+                            : '資料值';
                     const valuePlaceholder = isAverageSteps
-                      ? "输入每日平均步数"
+                      ? "輸入每日平均步數"
                       : isJumpingJacks
-                        ? "输入次数"
+                        ? "輸入次數"
                         : isCardio
-                          ? "输入运动分钟数"
+                          ? "輸入運動分鐘數"
                           : isStrength
-                            ? "输入每組次數（下）"
-                            : "输入数据值";
+                            ? "輸入每組次數（下）"
+                            : "輸入資料值";
 
                     return (
                       <FormItem>
@@ -888,7 +889,7 @@ export default function Entries() {
                         </FormControl>
                         {isCardio && selectedExercise && (
                           <FormDescription className="text-xs text-muted-foreground">
-                            强度型态: {(() => {
+                            強度型態: {(() => {
                               const f = selectedExercise.intensityFactor ?? 1;
                               const labels: Record<number, string> = { 1: '普通慢跑', 1.5: '開合跳', 2: '負重行走/高強度間歇' };
                               return labels[f] ?? `${f}`;
@@ -899,19 +900,19 @@ export default function Entries() {
                           <FormDescription>
                             {isAverageSteps ? (
                               <>
-                                每周总步数: {(field.value * 7).toFixed(0)} 步 |{" "}
-                                基准值: {calculateBaselineValue(field.value * 7, form.watch("exerciseId"), currentWeightFactor, currentSets).toFixed(2)}
+                                每週總步數: {(field.value * 7).toFixed(0)} 步 |{" "}
+                                基準值: {calculateBaselineValue(field.value * 7, form.watch("exerciseId"), currentWeightFactor, currentSets).toFixed(2)}
                               </>
                             ) : (
                               <>
-                                基准值: {calculateBaselineValue(field.value, form.watch("exerciseId"), currentWeightFactor, currentSets).toFixed(2)}
+                                基準值: {calculateBaselineValue(field.value, form.watch("exerciseId"), currentWeightFactor, currentSets).toFixed(2)}
                               </>
                             )}
                           </FormDescription>
                         )}
                         {isStrength && field.value > 0 && selectedExercise && (
                           <div className="rounded-md bg-muted/30 border px-3 py-2 text-xs space-y-1">
-                            <p className="font-medium text-muted-foreground">合計強度換算參考（{field.value}下 × {currentSets || 1}组）</p>
+                            <p className="font-medium text-muted-foreground">合計強度換算參考（{field.value}下 × {currentSets || 1}組）</p>
                             <div className="flex flex-wrap gap-x-3 gap-y-0.5">
                               {[-20, -10, -5, 0, 5, 10, 20].map((delta) => {
                                 const baseWF = currentWeightFactor ?? selectedExercise.weightFactor;
@@ -929,7 +930,7 @@ export default function Entries() {
                         )}
                         {isAverageSteps && (
                           <FormDescription className="text-xs text-muted-foreground">
-                            系统将自动乘以7计算每周总步数
+                            系統將自動乘以7計算每週總步數
                           </FormDescription>
                         )}
                         <FormMessage />
@@ -948,13 +949,13 @@ export default function Entries() {
                       name="sets"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>{isRunning ? "距離（公里，可选）" : "组数（可选）"}</FormLabel>
+                          <FormLabel>{isRunning ? "距離（公里，可選）" : "組數（可選）"}</FormLabel>
                           <FormControl>
                             <Input
                               type="number"
                               step={isRunning ? "0.01" : "1"}
                               min={isRunning ? "0" : "1"}
-                              placeholder={isRunning ? "输入跑步距離（公里）" : "输入组数"}
+                              placeholder={isRunning ? "輸入跑步距離（公里）" : "輸入組數"}
                               {...field}
                               value={field.value ?? ""}
                               readOnly={isStrengthExercise && setsTemplate !== null}
@@ -969,10 +970,10 @@ export default function Entries() {
                           </FormControl>
                           <FormDescription>
                             {isRunning
-                              ? "留空将根据预设配速估算距離"
+                              ? "留空將根據預設配速估算距離"
                               : isStrengthExercise && setsTemplate !== null
                                 ? "已由逐組自動填入"
-                                : "记录本次训练的组数，用于追踪各肌群训练量"}
+                                : "記錄本次訓練的組數，用於追蹤各肌群訓練量"}
                           </FormDescription>
                           <FormMessage />
                         </FormItem>
@@ -985,7 +986,7 @@ export default function Entries() {
                   name="date"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>日期时间（台北时间 UTC+8）</FormLabel>
+                      <FormLabel>日期時間（臺北時間 UTC+8）</FormLabel>
                       <FormControl>
                         <Input
                           type="datetime-local"
@@ -994,7 +995,7 @@ export default function Entries() {
                         />
                       </FormControl>
                       <FormDescription>
-                        请输入台北时间，系统将自动转换为UTC存储
+                        請輸入臺北時間，系統將自動轉換為UTC儲存
                       </FormDescription>
                       <FormMessage />
                     </FormItem>
@@ -1005,10 +1006,10 @@ export default function Entries() {
                   name="notes"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>备注（可选）</FormLabel>
+                      <FormLabel>備註（可選）</FormLabel>
                       <FormControl>
                         <Textarea
-                          placeholder="记录感受、进展等..."
+                          placeholder="記錄感受、進展等..."
                           {...field}
                           data-testid="input-entry-notes"
                         />
@@ -1027,7 +1028,7 @@ export default function Entries() {
                     取消
                   </Button>
                   <Button type="submit" disabled={createMutation.isPending} data-testid="button-submit-entry">
-                    {createMutation.isPending ? "保存中..." : "保存"}
+                    {createMutation.isPending ? "儲存中..." : "儲存"}
                   </Button>
                 </div>
               </form>
@@ -1049,20 +1050,20 @@ export default function Entries() {
       ) : entries && entries.length > 0 ? (
         <Card>
           <CardHeader>
-            <CardTitle>运动记录列表</CardTitle>
-            <CardDescription>共 {entries.length} 条记录</CardDescription>
+            <CardTitle>運動記錄列表</CardTitle>
+            <CardDescription>共 {entries.length} 條記錄</CardDescription>
           </CardHeader>
           <CardContent>
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>运动</TableHead>
-                  <TableHead>数据值</TableHead>
-                  <TableHead>组数</TableHead>
-                  <TableHead>强度 / 负重</TableHead>
-                  <TableHead>基准值</TableHead>
+                  <TableHead>運動</TableHead>
+                  <TableHead>資料值</TableHead>
+                  <TableHead>組數</TableHead>
+                  <TableHead>強度 / 負重</TableHead>
+                  <TableHead>基準值</TableHead>
                   <TableHead>日期</TableHead>
-                  <TableHead>备注</TableHead>
+                  <TableHead>備註</TableHead>
                   <TableHead className="text-right">操作</TableHead>
                 </TableRow>
               </TableHeader>
@@ -1073,7 +1074,7 @@ export default function Entries() {
                       <TableCell className="font-medium">
                         <div className="flex items-center gap-2">
                           <Activity className="h-4 w-4 text-primary" />
-                          {entry.exercise.name}
+                          {displayLabel(entry.exercise.name)}
                         </div>
                       </TableCell>
                       <TableCell>
@@ -1083,7 +1084,7 @@ export default function Entries() {
                         {entry.sets
                           ? (entry.exercise.name === '跑步' || entry.exercise.name === '跑步機負重')
                             ? `${entry.sets} 公里`
-                            : `${entry.sets} 组`
+                            : `${entry.sets} 組`
                           : "-"}
                       </TableCell>
                       <TableCell data-testid={`load-${entry.id}`}>
@@ -1138,7 +1139,7 @@ export default function Entries() {
           <CardContent className="flex flex-col items-center justify-center h-64">
             <Activity className="h-12 w-12 text-muted-foreground mb-4" />
             <p className="text-muted-foreground text-center">
-              还没有运动记录，点击"添加记录"开始记录
+              還沒有運動記錄，點選"新增記錄"開始記錄
             </p>
           </CardContent>
         </Card>
@@ -1147,8 +1148,8 @@ export default function Entries() {
       <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
         <DialogContent className="max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>编辑运动记录</DialogTitle>
-            <DialogDescription>修改运动数据和相关信息</DialogDescription>
+            <DialogTitle>編輯運動記錄</DialogTitle>
+            <DialogDescription>修改運動資料和相關資訊</DialogDescription>
           </DialogHeader>
 
           <Form {...editForm}>
@@ -1162,7 +1163,7 @@ export default function Entries() {
                   
                   return (
                     <FormItem>
-                      <FormLabel>运动类型</FormLabel>
+                      <FormLabel>運動類型</FormLabel>
                       <Select onValueChange={(value) => {
                         field.onChange(value);
                         const exercise = exercises?.find((e) => e.id === value);
@@ -1172,13 +1173,13 @@ export default function Entries() {
                       }} value={field.value}>
                         <FormControl>
                           <SelectTrigger data-testid="select-exercise">
-                            <SelectValue placeholder="选择运动类型" />
+                            <SelectValue placeholder="選擇運動類型" />
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
                           {exercises?.map((exercise) => (
                             <SelectItem key={exercise.id} value={exercise.id} data-testid={`select-option-${exercise.id}`}>
-                              {exercise.name}
+                              {displayLabel(exercise.name)}
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -1199,13 +1200,13 @@ export default function Entries() {
                     name="weightFactor"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>{selectedExercise?.category === '力量' ? '合計強度（動作強度＋外加負重）' : '权重系数'}</FormLabel>
+                        <FormLabel>{selectedExercise?.category === '力量' ? '合計強度（動作強度＋外加負重）' : '權重係數'}</FormLabel>
                         <FormControl>
                           <Input
                             type="number"
                             step="0.01"
                             min="0"
-                            placeholder={selectedExercise?.category === '力量' ? "输入合計強度" : "输入权重系数"}
+                            placeholder={selectedExercise?.category === '力量' ? "輸入合計強度" : "輸入權重係數"}
                             {...field}
                             value={field.value ?? selectedExercise?.weightFactor ?? 1}
                             onChange={(e) => field.onChange(parseFloat(e.target.value) || 1)}
@@ -1215,7 +1216,7 @@ export default function Entries() {
                         <FormDescription className="text-xs text-muted-foreground">
                           {selectedExercise?.category === '力量'
                             ? `動作強度預設 ${selectedExercise?.weightFactor ?? 1}。合計強度 = 動作強度 + 外加負重（kg）`
-                            : `默认值: ${selectedExercise?.weightFactor ?? 1}（可临时修改本次记录的权重）`}
+                            : `預設值: ${selectedExercise?.weightFactor ?? 1}（可臨時修改本次記錄的權重）`}
                         </FormDescription>
                         <FormMessage />
                       </FormItem>
@@ -1239,19 +1240,19 @@ export default function Entries() {
                   const currentWeightFactor = editForm.watch("weightFactor");
                   
                   const valueLabel = isAverageSteps 
-                    ? '每日平均步数' 
+                    ? '每日平均步數' 
                     : isJumpingJacks
-                      ? '次数'
+                      ? '次數'
                       : isCardio 
-                        ? '运动时间（分钟）' 
-                        : '数据值';
+                        ? '運動時間（分鐘）' 
+                        : '資料值';
                   const valuePlaceholder = isAverageSteps 
-                    ? "输入每日平均步数" 
+                    ? "輸入每日平均步數" 
                     : isJumpingJacks
-                      ? "输入次数"
+                      ? "輸入次數"
                       : isCardio 
-                        ? "输入运动分钟数" 
-                        : "输入数据值";
+                        ? "輸入運動分鐘數" 
+                        : "輸入資料值";
                   
                   return (
                     <FormItem>
@@ -1268,7 +1269,7 @@ export default function Entries() {
                       </FormControl>
                       {isCardio && selectedExercise && (
                         <FormDescription className="text-xs text-muted-foreground">
-                          强度型态: {(() => {
+                          強度型態: {(() => {
                             const f = selectedExercise.intensityFactor ?? 1;
                             const labels: Record<number, string> = { 1: '普通慢跑', 1.5: '開合跳', 2: '負重行走/高強度間歇' };
                             return labels[f] ?? `${f}`;
@@ -1279,19 +1280,19 @@ export default function Entries() {
                         <FormDescription>
                           {isAverageSteps ? (
                             <>
-                              每周总步数: {(field.value * 7).toFixed(0)} 步 | 
-                              基准值: {calculateBaselineValue(field.value * 7, editForm.watch("exerciseId"), currentWeightFactor, editForm.watch("sets")).toFixed(2)}
+                              每週總步數: {(field.value * 7).toFixed(0)} 步 | 
+                              基準值: {calculateBaselineValue(field.value * 7, editForm.watch("exerciseId"), currentWeightFactor, editForm.watch("sets")).toFixed(2)}
                             </>
                           ) : (
                             <>
-                              基准值: {calculateBaselineValue(field.value, editForm.watch("exerciseId"), currentWeightFactor, editForm.watch("sets")).toFixed(2)}
+                              基準值: {calculateBaselineValue(field.value, editForm.watch("exerciseId"), currentWeightFactor, editForm.watch("sets")).toFixed(2)}
                             </>
                           )}
                         </FormDescription>
                       )}
                       {isAverageSteps && (
                         <FormDescription className="text-xs text-muted-foreground">
-                          系统将自动乘以7计算每周总步数
+                          系統將自動乘以7計算每週總步數
                         </FormDescription>
                       )}
                       <FormMessage />
@@ -1319,13 +1320,13 @@ export default function Entries() {
                     name="sets"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>{isRunning ? "距離（公里，可选）" : "组数（可选）"}</FormLabel>
+                        <FormLabel>{isRunning ? "距離（公里，可選）" : "組數（可選）"}</FormLabel>
                         <FormControl>
                           <Input
                             type="number"
                             step={isRunning ? "0.01" : "1"}
                             min={isRunning ? "0" : "1"}
-                            placeholder={isRunning ? "输入跑步距離（公里）" : "输入组数"}
+                            placeholder={isRunning ? "輸入跑步距離（公里）" : "輸入組數"}
                             {...field}
                             value={field.value ?? ""}
                             onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)}
@@ -1334,8 +1335,8 @@ export default function Entries() {
                         </FormControl>
                         <FormDescription>
                           {isRunning
-                            ? "留空将根据预设配速估算距離"
-                            : "记录本次训练的组数，用于追踪各肌群训练量"}
+                            ? "留空將根據預設配速估算距離"
+                            : "記錄本次訓練的組數，用於追蹤各肌群訓練量"}
                         </FormDescription>
                         <FormMessage />
                       </FormItem>
@@ -1348,7 +1349,7 @@ export default function Entries() {
                 name="date"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>日期时间（台北时间 UTC+8）</FormLabel>
+                    <FormLabel>日期時間（臺北時間 UTC+8）</FormLabel>
                     <FormControl>
                       <Input
                         type="datetime-local"
@@ -1357,7 +1358,7 @@ export default function Entries() {
                       />
                     </FormControl>
                     <FormDescription>
-                      请输入台北时间，系统将自动转换为UTC存储
+                      請輸入臺北時間，系統將自動轉換為UTC儲存
                     </FormDescription>
                     <FormMessage />
                   </FormItem>
@@ -1368,10 +1369,10 @@ export default function Entries() {
                 name="notes"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>备注（可选）</FormLabel>
+                    <FormLabel>備註（可選）</FormLabel>
                     <FormControl>
                       <Textarea
-                        placeholder="记录感受、进展等..."
+                        placeholder="記錄感受、進展等..."
                         {...field}
                         data-testid="input-entry-notes"
                       />
@@ -1390,7 +1391,7 @@ export default function Entries() {
                   取消
                 </Button>
                 <Button type="submit" disabled={updateMutation.isPending} data-testid="button-submit-entry">
-                  {updateMutation.isPending ? "保存中..." : "保存修改"}
+                  {updateMutation.isPending ? "儲存中..." : "儲存修改"}
                 </Button>
               </div>
             </form>
@@ -1401,9 +1402,9 @@ export default function Entries() {
       <AlertDialog open={!!deletingEntry} onOpenChange={(open) => !open && setDeletingEntry(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>确认删除</AlertDialogTitle>
+            <AlertDialogTitle>確認刪除</AlertDialogTitle>
             <AlertDialogDescription>
-              确定要删除这条运动记录吗？此操作无法撤销。
+              確定要刪除這條運動記錄嗎？此操作無法撤銷。
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -1413,7 +1414,7 @@ export default function Entries() {
               disabled={deleteMutation.isPending}
               data-testid="button-confirm-delete-entry"
             >
-              {deleteMutation.isPending ? "删除中..." : "删除"}
+              {deleteMutation.isPending ? "刪除中..." : "刪除"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

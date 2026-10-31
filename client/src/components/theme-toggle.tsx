@@ -26,7 +26,7 @@ export function ThemeToggle() {
       size="icon"
       onClick={toggleTheme}
       data-testid="button-theme-toggle"
-      aria-label="切换主题"
+      aria-label="切換主題"
     >
       {theme === "light" ? (
         <Moon className="h-5 w-5" />

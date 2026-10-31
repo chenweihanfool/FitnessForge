@@ -14,10 +14,8 @@ import {
   userSettings,
   users,
   whitelist,
-  radarSnapshots,
   type User,
   type WhitelistEntry,
-  type RadarSnapshot,
 } from "@shared/schema";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { eq, and, gte, lte, lt, ne, desc, sql, sum, count, isNull } from "drizzle-orm";
@@ -25,7 +23,8 @@ import { Pool } from "pg";
 import { calculateBaseline, splitBaselineByCategory } from "@shared/baseline";
 import { accumulateMuscleTotals, computeMuscleCompositeScore, computeBalanceScore, computeCoverageScore, applyActivityBonus } from "@shared/muscleGroupStats";
 import { computeMilestones } from "@shared/training/milestones";
-import { buildWeeklyReport, type WeeklyReport } from "@shared/training/weekly-report";
+import { buildMuscleHistory, type MuscleHistory } from "@shared/training/muscle-history";
+import { buildWeeklyReport, summarizeWeeklyReport, type WeeklyReport } from "@shared/training/weekly-report";
 
 
 // importExercises 的實作邏輯跟用哪個 storage 實作無關——只透過
@@ -194,6 +193,7 @@ export interface IStorage {
     }>;
   }>;
   getWeeklyReport(weekStart?: string): Promise<WeeklyReport>;
+  getMuscleHistory(): Promise<MuscleHistory>;
   getCareerOverview(): Promise<{
     weeks: Array<{
       weekStart: string;
@@ -254,10 +254,6 @@ export interface IStorage {
     weekCount: number;
   }>;
   migrateHistoricalMuscleStats(): Promise<{ migratedWeeks: number }>;
-  // 一次性回填：幫既有 radarSnapshots 補上「有氧」這個新軸的複合分，只新增這一個
-  // key，不動原本已存的 8 個肌群分數（那些是用當時的歷史平均算的，重算會跟著
-  // 現在的平均值飄動，沒必要也沒被要求動）。
-  backfillAerobicRadarSnapshots(): Promise<{ updatedSnapshots: number }>;
   // 用「目前」exercises 表裡的參數（movementCoefficient／intensityFactor／
   // weightFactor 等）重新計算每一筆歷史記錄的 baselineValue 並寫回資料庫，
   // 連帶更新受影響週的肌群統計——importExercises 批次調整完參數後，要靠這支
@@ -286,9 +282,6 @@ export interface IStorage {
   removeFromWhitelist(username: string): Promise<boolean>;
 
   // 雷達圖快照
-  upsertRadarSnapshot(weekStart: string, scoresJson: string, recommendationsJson: string): Promise<RadarSnapshot>;
-  getRadarSnapshot(weekStart: string): Promise<RadarSnapshot | null>;
-  getAllRadarSnapshots(): Promise<RadarSnapshot[]>;
   getPublicLifeScore(): Promise<{
     thisWeekCount: number;
     daysSinceLastWorkout: number;
@@ -1268,7 +1261,7 @@ export class DbStorage implements IStorage {
               exerciseId: bestExercise.id,
               exerciseName: bestExercise.name,
               exerciseUnit: bestExercise.unit,
-              reason: `${laggingMuscle.name}肌群${setsText}，建议加强`,
+              reason: `${laggingMuscle.name}肌群${setsText}，建議加強`,
             });
             
             // 最多推荐3个基于肌群落后的运动
@@ -1294,7 +1287,7 @@ export class DbStorage implements IStorage {
         exerciseId: exercise.exerciseId,
         exerciseName: exercise.exerciseName,
         exerciseUnit: exercise.exerciseUnit,
-        reason: `已${exercise.daysSinceLastWorkout}天未训练`,
+        reason: `已${exercise.daysSinceLastWorkout}天未訓練`,
       });
     }
     
@@ -1311,7 +1304,7 @@ export class DbStorage implements IStorage {
           exerciseId: belowAverage[0].exerciseId,
           exerciseName: belowAverage[0].exerciseName,
           exerciseUnit: belowAverage[0].exerciseUnit,
-          reason: `低于平均值${Math.abs(belowAverage[0].differencePercentage!).toFixed(0)}%，需加强`,
+          reason: `低於平均值${Math.abs(belowAverage[0].differencePercentage!).toFixed(0)}%，需加強`,
         });
       }
     }
@@ -1329,7 +1322,7 @@ export class DbStorage implements IStorage {
     const weekStart = this.getWeekStart(now);
     const weekEnd = this.getWeekEnd(weekStart);
     
-    const dayNames = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+    const dayNames = ['週日', '週一', '週二', '週三', '週四', '週五', '週六'];
     const dailyData: Array<{
       date: string;
       dayOfWeek: number;
@@ -1681,6 +1674,10 @@ export class DbStorage implements IStorage {
       },
       weekStart,
     });
+  }
+
+  async getMuscleHistory() {
+    return buildMuscleHistory(await this.getWorkoutEntries());
   }
 
   async getCareerOverview() {
@@ -2042,40 +2039,6 @@ export class DbStorage implements IStorage {
     return { migratedWeeks: weekStarts.length };
   }
 
-  async backfillAerobicRadarSnapshots(): Promise<{ updatedSnapshots: number }> {
-    const { aerobicAvg } = await this.getMuscleGroupAverages();
-    const snapshots = await this.getAllRadarSnapshots();
-
-    let updatedSnapshots = 0;
-    for (const snap of snapshots) {
-      const scores: Record<string, number> = JSON.parse(snap.scoresJson);
-      if ('有氧' in scores) continue; // 已經回填過，跳過
-
-      const weeklyStats = await this.getMuscleGroupWeeklyStats(snap.weekStart);
-      const g = weeklyStats.muscleGroups.find(m => m.muscleGroup === '有氧');
-      const minutes = g?.totalSets ?? 0; // getMuscleGroupWeeklyStats 把有氧的分鐘數放在 totalSets 欄位裡，跟其他肌群共用同一個回傳形狀
-      const volume = g?.totalVolume ?? 0;
-
-      const { composite } = computeMuscleCompositeScore('有氧', minutes, volume, aerobicAvg);
-      scores['有氧'] = composite;
-
-      // 只新增有氧這個 key，原本 8 個肌群的分數（用當時的歷史平均算的）跟
-      // recommendationsJson 都維持原樣不動，見 IStorage.backfillAerobicRadarSnapshots 的說明
-      await this.upsertRadarSnapshot(snap.weekStart, JSON.stringify(scores), snap.recommendationsJson);
-      updatedSnapshots++;
-    }
-
-    return { updatedSnapshots };
-  }
-
-  // 2026-09-12：拿掉原本寫死在這裡的「運動名稱→movementCoefficient/
-  // intensityFactor」對照表——那份表其實是繞過 updateExercise() 當時的一個
-  // bug（createExercise／updateExercise 漏寫 movementCoefficient／
-  // intensityFactor／muscle 系列欄位，表單編輯完全存不進去，只能改用這種
-  // 硬寫死值 + 全表重算的方式救回來，已在上面修掉）留下的產物，不是這支函式
-  // 該有的職責。現在單純讀「目前」exercises 表裡的值，讓 importExercises
-  // 批次調整參數之後，呼叫這支就能把調整結果套用到全部歷史記錄——不用再為了
-  // 改係數就得改這支函式本身。
   async recalculateAllBaselines(): Promise<{ updatedEntries: number; updatedWeeks: number }> {
     const allEntries = await this.db
       .select({
@@ -2287,27 +2250,6 @@ export class DbStorage implements IStorage {
   async removeFromWhitelist(username: string): Promise<boolean> {
     const rows = await this.db.delete(whitelist).where(eq(whitelist.username, username)).returning();
     return rows.length > 0;
-  }
-
-  async upsertRadarSnapshot(weekStart: string, scoresJson: string, recommendationsJson: string): Promise<RadarSnapshot> {
-    const rows = await this.db
-      .insert(radarSnapshots)
-      .values({ weekStart, scoresJson, recommendationsJson, updatedAt: new Date() })
-      .onConflictDoUpdate({
-        target: radarSnapshots.weekStart,
-        set: { scoresJson, recommendationsJson, updatedAt: new Date() },
-      })
-      .returning();
-    return rows[0];
-  }
-
-  async getRadarSnapshot(weekStart: string): Promise<RadarSnapshot | null> {
-    const rows = await this.db.select().from(radarSnapshots).where(eq(radarSnapshots.weekStart, weekStart));
-    return rows[0] ?? null;
-  }
-
-  async getAllRadarSnapshots(): Promise<RadarSnapshot[]> {
-    return await this.db.select().from(radarSnapshots).orderBy(radarSnapshots.weekStart);
   }
 
   async getPublicLifeScore() {
@@ -2641,6 +2583,8 @@ export class DbStorage implements IStorage {
       // 標出來，不是只送調整後的 coverageScore 讓人以為那是純肌群數字。
       activityBonusPoints,
       workoutDays: await this.getWorkoutDays(now),
+      // 上一個完整週的週報摘要，給 Aiportal 身體頁
+      weeklyReport: summarizeWeeklyReport(await this.getWeeklyReport()),
     };
   }
 }

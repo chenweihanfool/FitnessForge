@@ -40,10 +40,10 @@ export default function SettingsPage() {
     onSuccess: () => {
       invalidateWorkoutData();
       queryClient.invalidateQueries({ queryKey: ["/api/settings"] });
-      toast({ title: "設置已保存", description: "權重比例已更新" });
+      toast({ title: "設定已儲存", description: "權重比例已更新" });
     },
     onError: (error: Error) => {
-      toast({ title: "保存失敗", description: error.message, variant: "destructive" });
+      toast({ title: "儲存失敗", description: error.message, variant: "destructive" });
     },
   });
 
@@ -69,7 +69,7 @@ export default function SettingsPage() {
   return (
     <div className="space-y-6 max-w-2xl">
       <div>
-        <h1 className="text-2xl font-bold" data-testid="text-settings-title">設置</h1>
+        <h1 className="text-2xl font-bold" data-testid="text-settings-title">設定</h1>
         <p className="text-muted-foreground">配置綜合評分權重</p>
       </div>
 
@@ -129,7 +129,7 @@ export default function SettingsPage() {
               disabled={!isValid || saveMutation.isPending}
               data-testid="button-save-settings"
             >
-              {saveMutation.isPending ? "保存中..." : "保存"}
+              {saveMutation.isPending ? "儲存中..." : "儲存"}
             </Button>
           </div>
         </CardContent>

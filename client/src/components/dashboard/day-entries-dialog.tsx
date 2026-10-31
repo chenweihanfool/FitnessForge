@@ -8,6 +8,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import type { DayEntriesData } from "./types";
+import { displayLabel } from "@shared/labels";
 
 export function DayEntriesDialog({ date, dayName, onClose }: { date: string | null; dayName: string; onClose: () => void }) {
   const { data: dayEntriesData, isLoading: dayEntriesLoading } = useQuery<DayEntriesData>({
@@ -24,15 +25,15 @@ export function DayEntriesDialog({ date, dayName, onClose }: { date: string | nu
       <Dialog open={!!date} onOpenChange={(open) => !open && onClose()}>
         <DialogContent className="max-w-md max-h-[80vh] flex flex-col">
           <DialogHeader>
-            <DialogTitle>{dayName}锻炼记录</DialogTitle>
+            <DialogTitle>{dayName}鍛鍊記錄</DialogTitle>
             <DialogDescription>
-              当日共 {dayEntriesData?.entries.length || 0} 条记录
+              當日共 {dayEntriesData?.entries.length || 0} 條記錄
             </DialogDescription>
           </DialogHeader>
           
           {dayEntriesLoading ? (
             <div className="flex items-center justify-center h-24">
-              <p className="text-muted-foreground">加载中...</p>
+              <p className="text-muted-foreground">載入中...</p>
             </div>
           ) : dayEntriesData && dayEntriesData.entries.length > 0 ? (
             <div className="space-y-3 overflow-y-auto flex-1 min-h-0">
@@ -43,9 +44,9 @@ export function DayEntriesDialog({ date, dayName, onClose }: { date: string | nu
                   data-testid={`day-entry-${entry.id}`}
                 >
                   <div className="flex flex-col gap-0.5">
-                    <span className="font-medium">{entry.exerciseName}</span>
+                    <span className="font-medium">{displayLabel(entry.exerciseName)}</span>
                     <span className="text-xs text-muted-foreground">
-                      {entry.exerciseCategory || "未分类"}
+                      {entry.exerciseCategory || "未分類"}
                     </span>
                   </div>
                   <div className="flex flex-col items-end gap-0.5">
@@ -55,12 +56,12 @@ export function DayEntriesDialog({ date, dayName, onClose }: { date: string | nu
                         <span className="text-muted-foreground font-normal">
                           {(entry.exerciseName === '跑步' || entry.exerciseName === '跑步機負重')
                             ? ` / ${entry.sets}km`
-                            : entry.sets > 1 ? ` x ${entry.sets}组` : ''}
+                            : entry.sets > 1 ? ` x ${entry.sets}組` : ''}
                         </span>
                       )}
                     </span>
                     <span className="text-xs text-muted-foreground">
-                      基准值: {entry.baselineValue.toFixed(1)}
+                      基準值: {entry.baselineValue.toFixed(1)}
                     </span>
                   </div>
                 </div>
@@ -69,16 +70,16 @@ export function DayEntriesDialog({ date, dayName, onClose }: { date: string | nu
               <div className="pt-3 border-t space-y-2">
                 {dayEntriesData.dailyStepsBaseline > 0 && (
                   <div className="flex justify-between items-center text-sm">
-                    <span className="text-muted-foreground">每周平均步数(分配)</span>
-                    <span className="font-medium">{dayEntriesData.dailyStepsBaseline.toFixed(1)} 基准值</span>
+                    <span className="text-muted-foreground">每週平均步數(分配)</span>
+                    <span className="font-medium">{dayEntriesData.dailyStepsBaseline.toFixed(1)} 基準值</span>
                   </div>
                 )}
                 <div className="flex justify-between items-center">
-                  <span className="text-sm text-muted-foreground">当日总计</span>
+                  <span className="text-sm text-muted-foreground">當日總計</span>
                   <span className="font-bold">
                     {(dayEntriesData.totalBaselineValue - 
                       (dayEntriesData.entries.find(e => e.exerciseName === '每周平均步数')?.baselineValue || 0) + 
-                      dayEntriesData.dailyStepsBaseline).toFixed(1)} 基准值
+                      dayEntriesData.dailyStepsBaseline).toFixed(1)} 基準值
                   </span>
                 </div>
               </div>
@@ -87,17 +88,17 @@ export function DayEntriesDialog({ date, dayName, onClose }: { date: string | nu
             <div className="space-y-3">
               <div className="pt-3 border-t space-y-2">
                 <div className="flex justify-between items-center text-sm">
-                  <span className="text-muted-foreground">每周平均步数(分配)</span>
-                  <span className="font-medium">{dayEntriesData.dailyStepsBaseline.toFixed(1)} 基准值</span>
+                  <span className="text-muted-foreground">每週平均步數(分配)</span>
+                  <span className="font-medium">{dayEntriesData.dailyStepsBaseline.toFixed(1)} 基準值</span>
                 </div>
                 <div className="flex justify-between items-center">
-                  <span className="text-sm text-muted-foreground">当日总计</span>
-                  <span className="font-bold">{dayEntriesData.dailyStepsBaseline.toFixed(1)} 基准值</span>
+                  <span className="text-sm text-muted-foreground">當日總計</span>
+                  <span className="font-bold">{dayEntriesData.dailyStepsBaseline.toFixed(1)} 基準值</span>
                 </div>
               </div>
             </div>
           ) : (
-            <p className="text-center text-muted-foreground py-4">暂无锻炼记录</p>
+            <p className="text-center text-muted-foreground py-4">暫無鍛鍊記錄</p>
           )}
           
           <div className="flex justify-end">
@@ -106,7 +107,7 @@ export function DayEntriesDialog({ date, dayName, onClose }: { date: string | nu
               onClick={() => onClose()}
               data-testid="button-close-day-entries"
             >
-              关闭
+              關閉
             </Button>
           </div>
         </DialogContent>

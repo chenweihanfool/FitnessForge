@@ -67,7 +67,7 @@ export function TrendChart({ data, title }: TrendChartProps) {
     const year = getISOWeekYear(date);
     const weekNumber = getISOWeek(date);
     return {
-      week: `${year}年 第${weekNumber}周`,
+      week: `${year}年 第${weekNumber}週`,
       value: week.totalBaselineValue,
       trendLine: slope * index + intercept,
       entries: week.entryCount,
@@ -107,8 +107,8 @@ export function TrendChart({ data, title }: TrendChartProps) {
       <CardHeader>
         <div className="flex items-center justify-between flex-wrap gap-2">
           <div>
-            <CardTitle>{title || '趋势分析'}</CardTitle>
-            <CardDescription>每周基准值变化趋势</CardDescription>
+            <CardTitle>{title || '趨勢分析'}</CardTitle>
+            <CardDescription>每週基準值變化趨勢</CardDescription>
           </div>
           <Badge variant="outline" className={`flex items-center gap-1.5 text-sm px-3 py-1 ${cfg.badgeClass}`}>
             <StatusIcon className="h-3.5 w-3.5" />
@@ -149,15 +149,15 @@ export function TrendChart({ data, title }: TrendChartProps) {
                       {pt.isBest && <p className="text-xs text-amber-500 font-semibold">★ 歷史最佳週</p>}
                       {actualValue && (
                         <p className="text-sm text-muted-foreground">
-                          基准值: <span className="font-semibold text-foreground">{Number(actualValue.value).toFixed(1)}</span>
+                          基準值: <span className="font-semibold text-foreground">{Number(actualValue.value).toFixed(1)}</span>
                         </p>
                       )}
                       {trendValue && (
                         <p className="text-sm text-muted-foreground">
-                          趋势值: <span className="font-semibold" style={{ color: 'hsl(var(--chart-2))' }}>{Number(trendValue.value).toFixed(1)}</span>
+                          趨勢值: <span className="font-semibold" style={{ color: 'hsl(var(--chart-2))' }}>{Number(trendValue.value).toFixed(1)}</span>
                         </p>
                       )}
-                      <p className="text-xs text-muted-foreground">记录数: {pt.entries}</p>
+                      <p className="text-xs text-muted-foreground">記錄數: {pt.entries}</p>
                     </div>
                   );
                 }
@@ -185,7 +185,7 @@ export function TrendChart({ data, title }: TrendChartProps) {
               strokeWidth={2}
               strokeDasharray="5 5"
               dot={false}
-              name="趋势线"
+              name="趨勢線"
             />
           </ComposedChart>
         </ResponsiveContainer>

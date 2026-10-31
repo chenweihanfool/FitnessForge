@@ -1,4 +1,4 @@
-// 儀表板各卡片共用的 API 回應型別與格式化工具
+// 儀表板各卡片共用的 API 回應類型與格式化工具
 
 export type WeekDetails = {
   weekStart: string;

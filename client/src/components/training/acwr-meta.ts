@@ -1,6 +1,6 @@
 import type { AcwrZone } from "@shared/training/acwr";
 
-// ACWR 分區的顯示文案與顏色，儀表板、快速記錄、新增記錄共用同一份。
+// ACWR 分割槽的顯示文案與顏色，儀表板、快速記錄、新增記錄共用同一份。
 export const ACWR_ZONE_META: Record<
   AcwrZone,
   { label: string; advice: string; badge: string; bar: string; text: string }

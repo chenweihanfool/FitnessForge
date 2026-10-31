@@ -45,7 +45,7 @@ export default function LoginPage({ isWhitelistDenied, username }: LoginPageProp
                   <p className="font-medium text-destructive">存取遭拒</p>
                   {username && (
                     <p className="text-muted-foreground mt-0.5">
-                      帳號 <span className="font-mono font-semibold">{username}</span> 不在白名單中，請聯繫管理員新增授權。
+                      帳號 <span className="font-mono font-semibold">{username}</span> 不在白名單中，請聯絡管理員新增授權。
                     </p>
                   )}
                 </div>
@@ -62,7 +62,7 @@ export default function LoginPage({ isWhitelistDenied, username }: LoginPageProp
             </Button>
           )}
           <p className="text-center text-xs text-muted-foreground">
-            登入後即同意系統記錄您的健身數據
+            登入後即同意系統記錄您的健身資料
           </p>
         </CardContent>
       </Card>

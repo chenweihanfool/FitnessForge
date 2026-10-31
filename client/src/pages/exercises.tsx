@@ -40,6 +40,8 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
+import { MUSCLE_FIELDS } from "@shared/training/recovery";
+import { displayLabel } from "@shared/labels";
 
 const CATEGORIES = ["力量", "有氧", "柔韧性", "核心", "平衡", "活动量", "其他"];
 const MUSCLE_GROUPS = ["胸", "背", "腿", "肩", "二头肌", "核心", "臀", "三头肌"];
@@ -66,7 +68,7 @@ export default function Exercises() {
     queryKey: ["/api/exercises"],
   });
 
-  // 获取要删除的运动项目的记录数量
+  // 獲取要刪除的運動項目的記錄數量
   const { data: entryCountData } = useQuery<{ count: number }>({
     queryKey: ["/api/exercises", deletingExercise?.id, "entry-count"],
     enabled: !!deletingExercise,
@@ -80,7 +82,7 @@ export default function Exercises() {
       setIsCreateOpen(false);
       toast({
         title: "成功",
-        description: "运动类型已创建",
+        description: "運動類型已建立",
       });
     },
   });
@@ -93,7 +95,7 @@ export default function Exercises() {
       setEditingExercise(null);
       toast({
         title: "成功",
-        description: "运动类型已更新",
+        description: "運動類型已更新",
       });
     },
   });
@@ -105,21 +107,12 @@ export default function Exercises() {
       setDeletingExercise(null);
       toast({
         title: "成功",
-        description: "运动类型已删除",
+        description: "運動類型已刪除",
       });
     },
   });
 
-  const muscleGroupLabels = [
-    { field: 'muscleChest' as const, name: '胸' },
-    { field: 'muscleBack' as const, name: '背' },
-    { field: 'muscleLegs' as const, name: '腿' },
-    { field: 'muscleShoulders' as const, name: '肩' },
-    { field: 'muscleArms' as const, name: '二头肌' },
-    { field: 'muscleCore' as const, name: '核心' },
-    { field: 'muscleGlutes' as const, name: '臀' },
-    { field: 'muscleFullBody' as const, name: '三头肌' },
-  ];
+  const muscleGroupLabels = MUSCLE_FIELDS.map(({ field, name }) => ({ field, name: displayLabel(name) }));
 
   const form = useForm<InsertExercise>({
     resolver: zodResolver(insertExerciseSchema),
@@ -209,7 +202,7 @@ export default function Exercises() {
     });
   };
 
-  // 筛选运动列表
+  // 篩選運動列表
   const filteredExercises = exercises?.filter((ex) => {
     if (selectedCategory === "all") return true;
     if (selectedCategory === "uncategorized") return !ex.category;
@@ -221,21 +214,21 @@ export default function Exercises() {
       <div className="space-y-4">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold">运动管理</h1>
-            <p className="text-muted-foreground mt-2">管理您的运动类型和转换系数</p>
+            <h1 className="text-3xl font-bold">運動管理</h1>
+            <p className="text-muted-foreground mt-2">管理您的運動類型和轉換系數</p>
           </div>
           <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
           <DialogTrigger asChild>
             <Button data-testid="button-create-exercise">
               <Plus className="mr-2 h-4 w-4" />
-              创建运动
+              建立運動
             </Button>
           </DialogTrigger>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>创建运动类型</DialogTitle>
+              <DialogTitle>建立運動類型</DialogTitle>
               <DialogDescription>
-                添加新的运动类型，设置单位和重量转换系数
+                新增新的運動類型，設定單位和重量轉換系數
               </DialogDescription>
             </DialogHeader>
             <Form {...form}>
@@ -245,9 +238,9 @@ export default function Exercises() {
                   name="name"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>运动名称</FormLabel>
+                      <FormLabel>運動名稱</FormLabel>
                       <FormControl>
-                        <Input placeholder="例如：俯卧撑、深蹲" {...field} data-testid="input-exercise-name" />
+                        <Input placeholder="例如：俯臥撐、深蹲" {...field} data-testid="input-exercise-name" />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -258,7 +251,7 @@ export default function Exercises() {
                   name="unit"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>单位</FormLabel>
+                      <FormLabel>單位</FormLabel>
                       <FormControl>
                         <Input placeholder="例如：次、公斤、分鐘" {...field} data-testid="input-exercise-unit" />
                       </FormControl>
@@ -271,7 +264,7 @@ export default function Exercises() {
                   name="weightFactor"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>動作強度（重量系数）</FormLabel>
+                      <FormLabel>動作強度（重量係數）</FormLabel>
                       <FormControl>
                         <Input
                           type="number"
@@ -283,7 +276,7 @@ export default function Exercises() {
                         />
                       </FormControl>
                       <FormDescription>
-                        計分用的強度指標（數据 × 強度）。力量項目：徒手動作 = 體重當量，不是公斤數，只要動作之間相對高低合理即可。默认为 1.0
+                        計分用的強度指標（資料 × 強度）。力量項目：徒手動作 = 體重當量，不是公斤數，只要動作之間相對高低合理即可。預設為 1.0
                       </FormDescription>
                       <FormMessage />
                     </FormItem>
@@ -294,18 +287,18 @@ export default function Exercises() {
                   name="category"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>主要分类（可选）</FormLabel>
+                      <FormLabel>主要分類（可選）</FormLabel>
                       <Select onValueChange={field.onChange} value={field.value ?? undefined}>
                         <FormControl>
                           <SelectTrigger data-testid="select-exercise-category">
-                            <SelectValue placeholder="选择分类" />
+                            <SelectValue placeholder="選擇分類" />
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          <SelectItem value="none" data-testid="category-option-none">无分类</SelectItem>
+                          <SelectItem value="none" data-testid="category-option-none">無分類</SelectItem>
                           {CATEGORIES.map((cat) => (
                             <SelectItem key={cat} value={cat} data-testid={`category-option-${cat}`}>
-                              {cat}
+                              {displayLabel(cat)}
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -320,7 +313,7 @@ export default function Exercises() {
                     name="movementCoefficient"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>动作系数</FormLabel>
+                        <FormLabel>動作係數</FormLabel>
                         <FormControl>
                           <Input
                             type="number"
@@ -332,7 +325,7 @@ export default function Exercises() {
                           />
                         </FormControl>
                         <FormDescription>
-                          复合动作1.2 / 单关节0.8 / 自体重1.0
+                          複合動作1.2 / 單關節0.8 / 自體重1.0
                         </FormDescription>
                         <FormMessage />
                       </FormItem>
@@ -345,14 +338,14 @@ export default function Exercises() {
                     name="intensityFactor"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>强度型态</FormLabel>
+                        <FormLabel>強度型態</FormLabel>
                         <Select
                           onValueChange={(v) => field.onChange(parseFloat(v))}
                           value={String(field.value ?? 1)}
                         >
                           <FormControl>
                             <SelectTrigger data-testid="select-exercise-intensity-factor">
-                              <SelectValue placeholder="选择强度型态" />
+                              <SelectValue placeholder="選擇強度型態" />
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
@@ -364,7 +357,7 @@ export default function Exercises() {
                           </SelectContent>
                         </Select>
                         <FormDescription>
-                          有氧评分 = 分钟 x 组数 x 强度系数
+                          有氧評分 = 分鐘 x 組數 x 強度係數
                         </FormDescription>
                         <FormMessage />
                       </FormItem>
@@ -376,24 +369,24 @@ export default function Exercises() {
                   name="splitCategory"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>次要分类（可选）</FormLabel>
+                      <FormLabel>次要分類（可選）</FormLabel>
                       <Select onValueChange={field.onChange} value={field.value ?? undefined}>
                         <FormControl>
                           <SelectTrigger data-testid="select-exercise-split-category">
-                            <SelectValue placeholder="选择次要分类" />
+                            <SelectValue placeholder="選擇次要分類" />
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          <SelectItem value="none" data-testid="split-category-option-none">无次要分类</SelectItem>
+                          <SelectItem value="none" data-testid="split-category-option-none">無次要分類</SelectItem>
                           {CATEGORIES.map((cat) => (
                             <SelectItem key={cat} value={cat} data-testid={`split-category-option-${cat}`}>
-                              {cat}
+                              {displayLabel(cat)}
                             </SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
                       <FormDescription>
-                        混合运动可设置次要分类（如"跑步機負重"可同时算有氧和力量）
+                        混合運動可設定次要分類（如"跑步機負重"可同時算有氧和力量）
                       </FormDescription>
                       <FormMessage />
                     </FormItem>
@@ -405,7 +398,7 @@ export default function Exercises() {
                     name="splitRatio"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>次要分类分配比例</FormLabel>
+                        <FormLabel>次要分類分配比例</FormLabel>
                         <FormControl>
                           <Input
                             type="number"
@@ -419,7 +412,7 @@ export default function Exercises() {
                           />
                         </FormControl>
                         <FormDescription>
-                          分配给次要分类的比例（0-1），如0.5表示50%分给次要分类，50%分给主要分类
+                          分配給次要分類的比例（0-1），如0.5表示50%分給次要分類，50%分給主要分類
                         </FormDescription>
                         <FormMessage />
                       </FormItem>
@@ -427,9 +420,9 @@ export default function Exercises() {
                   />
                 )}
                 <div className="space-y-3">
-                  <FormLabel>肌群百分比（可选）</FormLabel>
+                  <FormLabel>肌群百分比（可選）</FormLabel>
                   <FormDescription className="text-xs">
-                    设置各肌群训练占比（0-100%），总和可超过100%
+                    設定各肌群訓練佔比（0-100%），總和可超過100%
                   </FormDescription>
                   <div className="grid grid-cols-4 gap-2">
                     {muscleGroupLabels.map(({ field: fieldName, name }) => (
@@ -468,7 +461,7 @@ export default function Exercises() {
                     取消
                   </Button>
                   <Button type="submit" disabled={createMutation.isPending} data-testid="button-submit-exercise">
-                    {createMutation.isPending ? "创建中..." : "创建"}
+                    {createMutation.isPending ? "建立中..." : "建立"}
                   </Button>
                 </div>
               </form>
@@ -480,20 +473,20 @@ export default function Exercises() {
           <Filter className="h-4 w-4 text-muted-foreground" />
           <Select value={selectedCategory} onValueChange={setSelectedCategory}>
             <SelectTrigger className="w-[180px]" data-testid="select-category-filter">
-              <SelectValue placeholder="选择分类" />
+              <SelectValue placeholder="選擇分類" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all" data-testid="category-all">全部</SelectItem>
-              <SelectItem value="uncategorized" data-testid="category-uncategorized">未分类</SelectItem>
+              <SelectItem value="uncategorized" data-testid="category-uncategorized">未分類</SelectItem>
               {CATEGORIES.map((cat) => (
                 <SelectItem key={cat} value={cat} data-testid={`category-${cat}`}>
-                  {cat}
+                  {displayLabel(cat)}
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
           <span className="text-sm text-muted-foreground">
-            共 {filteredExercises.length} 项运动
+            共 {filteredExercises.length} 項運動
           </span>
         </div>
       </div>
@@ -524,8 +517,8 @@ export default function Exercises() {
                       <Dumbbell className="h-5 w-5 text-primary" />
                     </div>
                     <div className="flex-1">
-                      <CardTitle className="text-lg">{exercise.name}</CardTitle>
-                      <CardDescription>单位: {exercise.unit}</CardDescription>
+                      <CardTitle className="text-lg">{displayLabel(exercise.name)}</CardTitle>
+                      <CardDescription>單位: {exercise.unit}</CardDescription>
                     </div>
                   </div>
                   <div className="flex gap-1">
@@ -560,22 +553,22 @@ export default function Exercises() {
               <CardContent>
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
-                    <span className="text-sm text-muted-foreground">{exercise.category === '力量' ? '動作強度' : '重量系数'}</span>
+                    <span className="text-sm text-muted-foreground">{exercise.category === '力量' ? '動作強度' : '重量係數'}</span>
                     <Badge variant="secondary" data-testid={`badge-weight-${exercise.id}`}>
                       {exercise.category === '力量' ? exercise.weightFactor : `× ${exercise.weightFactor}`}
                     </Badge>
                   </div>
                   {exercise.category && (
                     <div className="flex items-center justify-between">
-                      <span className="text-sm text-muted-foreground">分类</span>
+                      <span className="text-sm text-muted-foreground">分類</span>
                       <Badge variant="outline" data-testid={`badge-category-${exercise.id}`}>
-                        {exercise.category}
+                        {displayLabel(exercise.category ?? "")}
                       </Badge>
                     </div>
                   )}
                   {exercise.category === '力量' && exercise.movementCoefficient != null && exercise.movementCoefficient !== 1 && (
                     <div className="flex items-center justify-between">
-                      <span className="text-sm text-muted-foreground">动作系数</span>
+                      <span className="text-sm text-muted-foreground">動作係數</span>
                       <Badge variant="secondary" data-testid={`badge-movement-${exercise.id}`}>
                         {exercise.movementCoefficient}
                       </Badge>
@@ -583,7 +576,7 @@ export default function Exercises() {
                   )}
                   {exercise.category === '有氧' && exercise.intensityFactor != null && (
                     <div className="flex items-center justify-between">
-                      <span className="text-sm text-muted-foreground">强度型态</span>
+                      <span className="text-sm text-muted-foreground">強度型態</span>
                       <Badge variant="secondary" data-testid={`badge-intensity-${exercise.id}`}>
                         {getIntensityLabel(exercise.intensityFactor)} ({exercise.intensityFactor})
                       </Badge>
@@ -609,12 +602,12 @@ export default function Exercises() {
                   })()}
                   <p className="text-xs text-muted-foreground mt-2">
                     {exercise.category === '力量' 
-                      ? `评分 = ${exercise.weightFactor} x 次数 x 组数 x ${exercise.movementCoefficient ?? 1} / 10`
+                      ? `評分 = ${exercise.weightFactor} x 次數 x 組數 x ${exercise.movementCoefficient ?? 1} / 10`
                       : exercise.category === '有氧'
-                      ? `评分 = 分钟 x 组数 x ${exercise.intensityFactor ?? 1} (${getIntensityLabel(exercise.intensityFactor ?? 1)})`
+                      ? `評分 = 分鐘 x 組數 x ${exercise.intensityFactor ?? 1} (${getIntensityLabel(exercise.intensityFactor ?? 1)})`
                       : exercise.category === '活动量'
-                      ? `评分 = ln(1+步数/1000) x 5`
-                      : `评分 = 数据 x ${exercise.weightFactor}`
+                      ? `評分 = ln(1+步數/1000) x 5`
+                      : `評分 = 資料 x ${exercise.weightFactor}`
                     }
                   </p>
                 </div>
@@ -627,7 +620,7 @@ export default function Exercises() {
           <CardContent className="flex flex-col items-center justify-center h-64">
             <Dumbbell className="h-12 w-12 text-muted-foreground mb-4" />
             <p className="text-muted-foreground text-center">
-              还没有运动类型，点击"创建运动"开始添加
+              還沒有運動類型，點選"建立運動"開始新增
             </p>
           </CardContent>
         </Card>
@@ -636,8 +629,8 @@ export default function Exercises() {
       <Dialog open={!!editingExercise} onOpenChange={(open) => !open && setEditingExercise(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>编辑运动类型</DialogTitle>
-            <DialogDescription>修改运动的名称、单位或動作強度</DialogDescription>
+            <DialogTitle>編輯運動類型</DialogTitle>
+            <DialogDescription>修改運動的名稱、單位或動作強度</DialogDescription>
           </DialogHeader>
           <Form {...editForm}>
             <form onSubmit={editForm.handleSubmit(onUpdateSubmit)} className="space-y-4">
@@ -646,7 +639,7 @@ export default function Exercises() {
                 name="name"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>运动名称</FormLabel>
+                    <FormLabel>運動名稱</FormLabel>
                     <FormControl>
                       <Input {...field} data-testid="input-edit-name" />
                     </FormControl>
@@ -659,7 +652,7 @@ export default function Exercises() {
                 name="unit"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>单位</FormLabel>
+                    <FormLabel>單位</FormLabel>
                     <FormControl>
                       <Input {...field} data-testid="input-edit-unit" />
                     </FormControl>
@@ -672,7 +665,7 @@ export default function Exercises() {
                 name="weightFactor"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>動作強度（重量系数）</FormLabel>
+                    <FormLabel>動作強度（重量係數）</FormLabel>
                     <FormControl>
                       <Input
                         type="number"
@@ -691,18 +684,18 @@ export default function Exercises() {
                 name="category"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>主要分类（可选）</FormLabel>
+                    <FormLabel>主要分類（可選）</FormLabel>
                     <Select onValueChange={field.onChange} value={field.value ?? undefined}>
                       <FormControl>
                         <SelectTrigger data-testid="select-edit-category">
-                          <SelectValue placeholder="选择分类" />
+                          <SelectValue placeholder="選擇分類" />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        <SelectItem value="none" data-testid="edit-category-option-none">无分类</SelectItem>
+                        <SelectItem value="none" data-testid="edit-category-option-none">無分類</SelectItem>
                         {CATEGORIES.map((cat) => (
                           <SelectItem key={cat} value={cat} data-testid={`edit-category-option-${cat}`}>
-                            {cat}
+                            {displayLabel(cat)}
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -717,7 +710,7 @@ export default function Exercises() {
                   name="movementCoefficient"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>动作系数</FormLabel>
+                      <FormLabel>動作係數</FormLabel>
                       <FormControl>
                         <Input
                           type="number"
@@ -729,7 +722,7 @@ export default function Exercises() {
                         />
                       </FormControl>
                       <FormDescription>
-                        复合动作1.2 / 单关节0.8 / 自体重1.0
+                        複合動作1.2 / 單關節0.8 / 自體重1.0
                       </FormDescription>
                       <FormMessage />
                     </FormItem>
@@ -742,14 +735,14 @@ export default function Exercises() {
                   name="intensityFactor"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>强度型态</FormLabel>
+                      <FormLabel>強度型態</FormLabel>
                       <Select
                         onValueChange={(v) => field.onChange(parseFloat(v))}
                         value={String(field.value ?? 1)}
                       >
                         <FormControl>
                           <SelectTrigger data-testid="select-edit-intensity-factor">
-                            <SelectValue placeholder="选择强度型态" />
+                            <SelectValue placeholder="選擇強度型態" />
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
@@ -761,7 +754,7 @@ export default function Exercises() {
                         </SelectContent>
                       </Select>
                       <FormDescription>
-                        有氧评分 = 分钟 x 组数 x 强度系数
+                        有氧評分 = 分鐘 x 組數 x 強度係數
                       </FormDescription>
                       <FormMessage />
                     </FormItem>
@@ -773,24 +766,24 @@ export default function Exercises() {
                 name="splitCategory"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>次要分类（可选）</FormLabel>
+                    <FormLabel>次要分類（可選）</FormLabel>
                     <Select onValueChange={field.onChange} value={field.value ?? undefined}>
                       <FormControl>
                         <SelectTrigger data-testid="select-edit-split-category">
-                          <SelectValue placeholder="选择次要分类" />
+                          <SelectValue placeholder="選擇次要分類" />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        <SelectItem value="none" data-testid="edit-split-category-option-none">无次要分类</SelectItem>
+                        <SelectItem value="none" data-testid="edit-split-category-option-none">無次要分類</SelectItem>
                         {CATEGORIES.map((cat) => (
                           <SelectItem key={cat} value={cat} data-testid={`edit-split-category-option-${cat}`}>
-                            {cat}
+                            {displayLabel(cat)}
                           </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
                     <FormDescription>
-                      混合运动可设置次要分类（如"跑步機負重"可同时算有氧和力量）
+                      混合運動可設定次要分類（如"跑步機負重"可同時算有氧和力量）
                     </FormDescription>
                     <FormMessage />
                   </FormItem>
@@ -802,7 +795,7 @@ export default function Exercises() {
                   name="splitRatio"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>次要分类分配比例</FormLabel>
+                      <FormLabel>次要分類分配比例</FormLabel>
                       <FormControl>
                         <Input
                           type="number"
@@ -815,7 +808,7 @@ export default function Exercises() {
                         />
                       </FormControl>
                       <FormDescription>
-                        分配给次要分类的比例（0-1），如0.5表示50%分给次要分类，50%分给主要分类
+                        分配給次要分類的比例（0-1），如0.5表示50%分給次要分類，50%分給主要分類
                       </FormDescription>
                       <FormMessage />
                     </FormItem>
@@ -823,9 +816,9 @@ export default function Exercises() {
                 />
               )}
               <div className="space-y-3">
-                <FormLabel>肌群百分比（可选）</FormLabel>
+                <FormLabel>肌群百分比（可選）</FormLabel>
                 <FormDescription className="text-xs">
-                  设置各肌群训练占比（0-100%），总和可超过100%
+                  設定各肌群訓練佔比（0-100%），總和可超過100%
                 </FormDescription>
                 <div className="grid grid-cols-4 gap-2">
                   {muscleGroupLabels.map(({ field: fieldName, name }) => (
@@ -864,7 +857,7 @@ export default function Exercises() {
                   取消
                 </Button>
                 <Button type="submit" disabled={updateMutation.isPending} data-testid="button-submit-edit">
-                  {updateMutation.isPending ? "保存中..." : "保存"}
+                  {updateMutation.isPending ? "儲存中..." : "儲存"}
                 </Button>
               </div>
             </form>
@@ -875,16 +868,16 @@ export default function Exercises() {
       <AlertDialog open={!!deletingExercise} onOpenChange={(open) => !open && setDeletingExercise(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>确认删除</AlertDialogTitle>
+            <AlertDialogTitle>確認刪除</AlertDialogTitle>
             <AlertDialogDescription className="space-y-3">
-              <p>确定要删除"{deletingExercise?.name}"吗？</p>
+              <p>確定要刪除"{deletingExercise?.name}"嗎？</p>
               {deletingEntryCount > 0 && (
                 <p className="text-destructive font-medium">
-                  此运动项目有 {deletingEntryCount} 条历史记录，删除后将一并清除且无法恢复！
+                  此運動項目有 {deletingEntryCount} 條歷史記錄，刪除後將一併清除且無法恢復！
                 </p>
               )}
               <p className="text-muted-foreground text-sm border-t pt-2">
-                提示：如果只是想修改名称，请使用"编辑"功能，这样可以保留所有历史记录和统计数据。
+                提示：如果只是想修改名稱，請使用"編輯"功能，這樣可以保留所有歷史記錄和統計資料。
               </p>
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -896,7 +889,7 @@ export default function Exercises() {
               data-testid="button-confirm-delete"
               className="bg-destructive text-destructive-foreground"
             >
-              {deleteMutation.isPending ? "删除中..." : deletingEntryCount > 0 ? `删除及 ${deletingEntryCount} 条记录` : "删除"}
+              {deleteMutation.isPending ? "刪除中..." : deletingEntryCount > 0 ? `刪除及 ${deletingEntryCount} 條記錄` : "刪除"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

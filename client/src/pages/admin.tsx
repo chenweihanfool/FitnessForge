@@ -153,9 +153,9 @@ export default function AdminPage() {
       <div>
         <h1 className="text-3xl font-bold flex items-center gap-2">
           <Shield className="h-7 w-7" />
-          管理員後台
+          管理員後臺
         </h1>
-        <p className="text-muted-foreground mt-2">管理可存取系統的用戶白名單</p>
+        <p className="text-muted-foreground mt-2">管理可存取系統的使用者白名單</p>
       </div>
 
       {/* Add user */}
@@ -205,7 +205,7 @@ export default function AdminPage() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
             <Users className="h-4 w-4" />
-            白名單用戶
+            白名單使用者
             <Badge variant="secondary">{whitelist.length}</Badge>
           </CardTitle>
         </CardHeader>
@@ -218,7 +218,7 @@ export default function AdminPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>用戶名</TableHead>
+                  <TableHead>使用者名稱</TableHead>
                   <TableHead>備註</TableHead>
                   <TableHead>新增者</TableHead>
                   <TableHead>新增時間</TableHead>
@@ -253,16 +253,16 @@ export default function AdminPage() {
         </CardContent>
       </Card>
 
-      {/* 運動項目參數：JSON 匯出/匯入 + 全歷史重新計算 */}
+      {/* 運動項目引數：JSON 匯出/匯入 + 全歷史重新計算 */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
             <Dumbbell className="h-4 w-4" />
-            運動項目參數（JSON）
+            運動項目引數（JSON）
             <Badge variant="secondary">{exercises.length}</Badge>
           </CardTitle>
           <CardDescription>
-            匯出全部運動項目的完整參數（重量係數、動作係數、強度因子、肌群分配）備份或批次調整，
+            匯出全部運動項目的完整引數（重量係數、動作係數、強度因子、肌群分配）備份或批次調整，
             調整完再整份匯入覆蓋——匯入只會更新運動項目本身，不會自動套用到歷史記錄，
             需要的話請在匯入後另外按「重新計算歷史基準值」。
           </CardDescription>
@@ -300,8 +300,8 @@ export default function AdminPage() {
                 <AlertDialogHeader>
                   <AlertDialogTitle>重新計算所有歷史記錄的基準值？</AlertDialogTitle>
                   <AlertDialogDescription>
-                    會用目前運動項目的參數（重量係數、動作係數、強度因子）重新計算「每一筆」歷史運動記錄的基準值並覆蓋寫回，
-                    連帶更新受影響週的肌群統計。這個動作沒有復原功能，請確認運動項目參數已經調整成你要的樣子再執行。
+                    會用目前運動項目的引數（重量係數、動作係數、強度因子）重新計算「每一筆」歷史運動記錄的基準值並覆蓋寫回，
+                    連帶更新受影響週的肌群統計。這個動作沒有復原功能，請確認運動項目引數已經調整成你要的樣子再執行。
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>

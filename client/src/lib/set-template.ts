@@ -52,7 +52,7 @@ export interface ProgressionParams {
 
 const EPS = 1e-6;
 
-/** 看逐組明細是不是「等差遞增」：重量每組增加固定值、次數每組減少固定值（含 0）。是的話回傳樣板參數。 */
+/** 看逐組明細是不是「等差遞增」：重量每組增加固定值、次數每組減少固定值（含 0）。是的話回傳樣板引數。 */
 export function detectProgression(rows: SetRow[]): ProgressionParams | null {
   if (rows.length < 2) return null;
   const dw = rows[1].weight - rows[0].weight;

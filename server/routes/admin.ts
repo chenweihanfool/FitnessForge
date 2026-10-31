@@ -44,20 +44,7 @@ export function registerAdminRoutes(app: Express) {
       res.json({ success: true, ...result });
     } catch (error) {
       console.error("迁移肌群统计失败:", error);
-      res.status(500).json({ error: "迁移肌群统计失败" });
-    }
-  });
-
-  // 一次性回填：幫既有雷達圖快照補上「有氧」這個新軸，只加這一個 key，
-  // 不動原本已存的 8 個肌群分數。跑完之後歷史雷達圖快照就會顯示有氧軸，
-  // 不會因為缺 key 被當成 0% 拉低均衡度/覆蓋分數。
-  app.post("/api/admin/backfill-aerobic-radar-snapshots", requireAuth, requireAdmin, async (req, res) => {
-    try {
-      const result = await storage.backfillAerobicRadarSnapshots();
-      res.json({ success: true, ...result });
-    } catch (error) {
-      console.error("回填有氧雷達快照失敗:", error);
-      res.status(500).json({ error: "回填有氧雷達快照失敗" });
+      res.status(500).json({ error: "遷移肌群統計失敗" });
     }
   });
 
@@ -67,7 +54,7 @@ export function registerAdminRoutes(app: Express) {
       res.json({ success: true, ...result });
     } catch (error) {
       console.error("重新计算基线值失败:", error);
-      res.status(500).json({ error: "重新计算基线值失败" });
+      res.status(500).json({ error: "重新計算基線值失敗" });
     }
   });
 
@@ -99,7 +86,7 @@ export function registerAdminRoutes(app: Express) {
       res.json({ success: true, ...result });
     } catch (error) {
       console.error("转换运动单位失败:", error);
-      res.status(500).json({ error: "转换运动单位失败" });
+      res.status(500).json({ error: "轉換運動單位失敗" });
     }
   });
 }
