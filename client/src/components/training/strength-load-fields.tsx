@@ -12,7 +12,7 @@ export function StrengthLoadFields({
   added,
   defaultIntensity,
   maxIntensity,
-  readOnly,
+  addedReadOnly,
   templateNote,
   total,
   onIntensityChange,
@@ -22,7 +22,7 @@ export function StrengthLoadFields({
   added: number | "";
   defaultIntensity: number;
   maxIntensity: number;
-  readOnly: boolean;
+  addedReadOnly: boolean; // 逐組樣板：外加負重由樣板換算，唯讀；動作強度仍可改
   templateNote?: string;
   total: number;
   onIntensityChange: (v: number | "") => void;
@@ -31,7 +31,7 @@ export function StrengthLoadFields({
   const intensityNum = typeof intensity === "number" ? intensity : 0;
   const barPct = maxIntensity > 0 ? Math.min(100, (intensityNum / maxIntensity) * 100) : 0;
   const addedNum = typeof added === "number" ? added : 0;
-  const changed = !readOnly && intensity !== "" && intensityNum !== defaultIntensity;
+  const changed = intensity !== "" && intensityNum !== defaultIntensity;
 
   return (
     <FormItem data-testid="strength-load-fields">
@@ -44,17 +44,13 @@ export function StrengthLoadFields({
             step="0.5"
             min="0"
             placeholder="動作強度"
-            value={readOnly ? total : intensity}
-            readOnly={readOnly}
-            className={readOnly ? "bg-muted" : ""}
-            onChange={(e) => !readOnly && onIntensityChange(e.target.value ? parseFloat(e.target.value) : "")}
+            value={intensity}
+            onChange={(e) => onIntensityChange(e.target.value ? parseFloat(e.target.value) : "")}
             data-testid="input-entry-weight-factor"
           />
-          {!readOnly && (
-            <div className="h-1.5 overflow-hidden rounded-full bg-muted" aria-hidden>
-              <div className="h-full rounded-full bg-primary/70" style={{ width: `${barPct}%` }} data-testid="intensity-bar" />
-            </div>
-          )}
+          <div className="h-1.5 overflow-hidden rounded-full bg-muted" aria-hidden>
+            <div className="h-full rounded-full bg-primary/70" style={{ width: `${barPct}%` }} data-testid="intensity-bar" />
+          </div>
         </div>
         <div className="space-y-1">
           <label className="block text-xs text-muted-foreground">外加負重（kg，選填）</label>
@@ -63,16 +59,18 @@ export function StrengthLoadFields({
             step="0.5"
             min="0"
             placeholder="0"
-            value={readOnly ? "" : added}
-            readOnly={readOnly}
-            className={readOnly ? "bg-muted" : ""}
-            onChange={(e) => !readOnly && onAddedChange(e.target.value ? parseFloat(e.target.value) : "")}
+            value={added}
+            readOnly={addedReadOnly}
+            className={addedReadOnly ? "bg-muted" : ""}
+            onChange={(e) => !addedReadOnly && onAddedChange(e.target.value ? parseFloat(e.target.value) : "")}
             data-testid="input-entry-added-load"
           />
         </div>
       </div>
-      {readOnly ? (
-        <FormDescription className="text-xs">{templateNote}・合計強度 {total}</FormDescription>
+      {addedReadOnly ? (
+        <FormDescription className="text-xs" data-testid="text-strength-total">
+          {templateNote}・合計強度 <span className="font-semibold text-foreground">{total}</span>（{intensityNum} + 平均外加 {addedNum}）
+        </FormDescription>
       ) : (
         <FormDescription className="text-xs" data-testid="text-strength-total">
           合計強度 <span className="font-semibold text-foreground">{total}</span>

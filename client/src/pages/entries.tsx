@@ -291,6 +291,19 @@ export default function Entries() {
     setAddedLoad(0);
   }, [selectedExerciseId, exercises]);
 
+  // 逐組樣板（遞增／自訂）每組填的是「外加負重」，動作強度維持原本的值（例如深蹲 40）：
+  // 送出的合計強度 = 動作強度 + 次數加權平均外加負重。總訓練量照樣跟逐組相加一致，
+  // 因為 Σ(動作強度+外加)×次數 / Σ次數 = 動作強度 + 平均外加。
+  const baseNum = typeof baseWeightFactor === 'number' ? baseWeightFactor : 0;
+  const applyTemplateResult = (result: ReturnType<typeof computeCustomSets>) => {
+    if (!result) return;
+    const avgAdded = Math.round(result.avgWeight * 100) / 100;
+    form.setValue('value', parseFloat(result.avgReps.toFixed(2)));
+    form.setValue('sets', result.count);
+    form.setValue('weightFactor', Math.round((baseNum + result.avgWeight) * 100) / 100);
+    form.setValue('loadKg', avgAdded > 0 ? avgAdded : null); // 平均外加負重另存一份，下次預填與顯示用
+  };
+
   useEffect(() => {
     if (setsTemplate !== 'progressive') return;
     const start = typeof progStartWeight === 'number' ? progStartWeight : 0;
@@ -298,27 +311,15 @@ export default function Entries() {
     const n = typeof progNumSets === 'number' ? progNumSets : 0;
     const reps = typeof progRepsPerSet === 'number' ? progRepsPerSet : 1;
     const decrement = typeof progRepsDecrement === 'number' ? progRepsDecrement : 0;
-    if (start > 0 && n > 0 && reps > 0) {
-      const result = computeCustomSets(computeProgressiveSets(start, incr, n, reps, decrement));
-      if (result) {
-        form.setValue('value', parseFloat(result.avgReps.toFixed(2)));
-        form.setValue('sets', result.count);
-        form.setValue('weightFactor', parseFloat(result.avgWeight.toFixed(2)));
-        form.setValue('loadKg', null); // 逐組樣板沒有單一的外加負重
-      }
+    if (typeof progStartWeight === 'number' && start >= 0 && n > 0 && reps > 0) {
+      applyTemplateResult(computeCustomSets(computeProgressiveSets(start, incr, n, reps, decrement)));
     }
-  }, [setsTemplate, progRepsPerSet, progRepsDecrement, progStartWeight, progIncrement, progNumSets]);
+  }, [setsTemplate, progRepsPerSet, progRepsDecrement, progStartWeight, progIncrement, progNumSets, baseWeightFactor]);
 
   useEffect(() => {
     if (setsTemplate !== 'custom') return;
-    const result = computeCustomSets(customSets);
-    if (result) {
-      form.setValue('value', parseFloat(result.avgReps.toFixed(2)));
-      form.setValue('sets', result.count);
-      form.setValue('weightFactor', parseFloat(result.avgWeight.toFixed(2)));
-      form.setValue('loadKg', null);
-    }
-  }, [setsTemplate, customSets]);
+    applyTemplateResult(computeCustomSets(customSets));
+  }, [setsTemplate, customSets, baseWeightFactor]);
 
   // 簡易（非樣板）力量記錄：實際送出的 weightFactor = 基礎重量 + 附加負重，
   // 讓徒手動作的使用者額外背負重量時（負重背心、手持啞鈴等）不用自己心算
@@ -355,9 +356,16 @@ export default function Entries() {
     if (exercise.category === '力量' && last.load != null) {
       // 先還原動作強度 + 外加負重：新記錄有存外加負重；舊記錄沒有，就拿動作強度預設值去拆
       const external = last.externalLoad ?? Math.max(0, Math.round((last.load - exercise.weightFactor) * 100) / 100);
-      const base = Math.round((last.load - external) * 100) / 100;
+      let base = Math.round((last.load - external) * 100) / 100;
+      // 逐組樣板：每組明細是外加負重，動作強度 = 合計 − 平均外加。
+      // 舊版記錄的明細存的是合計強度（相減約為 0），就改用動作強度預設值。
+      const templateAvg = last.setDetails?.length ? computeCustomSets(last.setDetails)?.avgWeight : undefined;
+      if (templateAvg != null) {
+        base = Math.round((last.load - templateAvg) * 100) / 100;
+        if (base < 0.01) base = exercise.weightFactor;
+      }
       setBaseWeightFactor(base);
-      setAddedLoad(external);
+      setAddedLoad(templateAvg != null ? 0 : external);
       // 上次是逐組樣板就原樣還原：等差遞增 → 遞增樣板（起始重量/每組遞增/組數/次數/遞減），其他 → 逐組自訂
       if (last.setDetails?.length) {
         const progression = detectProgression(last.setDetails);
@@ -585,9 +593,10 @@ export default function Entries() {
                             </FormItem>
                           );
                         }
-                        // 力量項目：非樣板模式下拆成「動作強度」+「外加負重」兩欄，
-                        // 送出的 weightFactor（field.value）由上面那個 effect 統一
-                        // 算成兩者相加；樣板模式顯示樣板算好的合計，唯讀。
+                        // 力量項目：拆成「動作強度」+「外加負重」兩欄，送出的 weightFactor
+                        // （field.value）由上面的 effect 統一算成兩者相加。樣板模式下動作強度
+                        // 照樣可改，外加負重改顯示樣板算出的平均外加負重（唯讀）。
+                        const templateAdded = isProgReadOnly ? (form.watch('loadKg') ?? 0) : null;
                         const totalWeight = isProgReadOnly
                           ? field.value ?? 0
                           : (typeof baseWeightFactor === 'number' ? baseWeightFactor : 0)
@@ -595,11 +604,11 @@ export default function Entries() {
                         return (
                           <StrengthLoadFields
                             intensity={baseWeightFactor}
-                            added={addedLoad}
+                            added={templateAdded ?? addedLoad}
                             defaultIntensity={selectedExercise?.weightFactor ?? 1}
                             maxIntensity={maxStrengthIntensity}
-                            readOnly={isProgReadOnly}
-                            templateNote={setsTemplate === 'progressive' ? "已由遞增樣板自動填入平均強度" : "已由自訂樣板換算自動填入平均強度"}
+                            addedReadOnly={isProgReadOnly}
+                            templateNote={setsTemplate === 'progressive' ? "外加負重已由遞增樣板換算成平均" : "外加負重已由自訂樣板換算成平均"}
                             total={Math.round(totalWeight * 100) / 100}
                             onIntensityChange={setBaseWeightFactor}
                             onAddedChange={setAddedLoad}
@@ -696,7 +705,7 @@ export default function Entries() {
                         </div>
                         {isStrength && setsTemplate === 'progressive' && (
                           <div className="rounded-lg border bg-muted/30 p-3 space-y-3">
-                            <p className="text-xs font-medium text-muted-foreground">逐組遞增設定（每組填的是該組的合計強度，系統換算成平均）</p>
+                            <p className="text-xs font-medium text-muted-foreground">逐組遞增設定（每組填的是該組的外加負重 kg，系統換算成平均，再加上動作強度）</p>
                             <div className="grid grid-cols-2 gap-2">
                               <div>
                                 <label className="text-xs text-muted-foreground mb-1 block">起始次數（下）</label>
@@ -723,19 +732,19 @@ export default function Entries() {
                                 />
                               </div>
                               <div>
-                                <label className="text-xs text-muted-foreground mb-1 block">起始強度（合計）</label>
+                                <label className="text-xs text-muted-foreground mb-1 block">起始外加負重（kg）</label>
                                 <Input
                                   type="number"
                                   step="0.5"
                                   min="0"
-                                  placeholder="起始強度"
+                                  placeholder="起始負重"
                                   value={progStartWeight}
                                   onChange={(e) => setProgStartWeight(e.target.value ? parseFloat(e.target.value) : "")}
                                   data-testid="input-prog-start-weight"
                                 />
                               </div>
                               <div>
-                                <label className="text-xs text-muted-foreground mb-1 block">每組強度遞增</label>
+                                <label className="text-xs text-muted-foreground mb-1 block">每組負重遞增（kg）</label>
                                 <Input
                                   type="number"
                                   step="0.5"
@@ -759,7 +768,7 @@ export default function Entries() {
                                 />
                               </div>
                             </div>
-                            {typeof progStartWeight === 'number' && progStartWeight > 0 && typeof progNumSets === 'number' && progNumSets > 0 && (
+                            {typeof progStartWeight === 'number' && progStartWeight >= 0 && typeof progNumSets === 'number' && progNumSets > 0 && (
                               <div className="text-xs space-y-0.5">
                                 {(() => {
                                   const reps = typeof progRepsPerSet === 'number' ? progRepsPerSet : 1;
@@ -773,15 +782,15 @@ export default function Entries() {
                                   );
                                   const result = computeCustomSets(sets);
                                   if (!result) return null;
-                                  const baseline = calculateBaselineValue(result.avgReps, form.watch("exerciseId"), result.avgWeight, result.count);
+                                  const baseline = calculateBaselineValue(result.avgReps, form.watch("exerciseId"), baseNum + result.avgWeight, result.count);
                                   return (
                                     <>
                                       <p className="text-muted-foreground">
                                         <span className="font-medium">各組: </span>
-                                        {sets.map((s) => `${s.weight}×${s.reps}下`).join(' → ')}
+                                        {sets.map((s) => `+${s.weight}kg×${s.reps}下`).join(' → ')}
                                       </p>
                                       <p className="text-foreground font-medium">
-                                        換算：{result.avgReps.toFixed(1)}下 × {result.count}組 @ {result.avgWeight.toFixed(1)}（總訓練量相同）
+                                        換算：{result.avgReps.toFixed(1)}下 × {result.count}組 @ 動作強度 {baseNum} + 平均外加 {result.avgWeight.toFixed(1)} = {(baseNum + result.avgWeight).toFixed(1)}（總訓練量相同）
                                       </p>
                                       <p className="text-foreground font-medium">
                                         預估基準值: {baseline.toFixed(1)}
@@ -795,7 +804,7 @@ export default function Entries() {
                         )}
                         {isStrength && setsTemplate === 'custom' && (
                           <div className="rounded-lg border bg-muted/30 p-3 space-y-3">
-                            <p className="text-xs font-medium text-muted-foreground">逐組自訂（每組重量、次數可各自不同）</p>
+                            <p className="text-xs font-medium text-muted-foreground">逐組自訂（每組外加負重 kg、次數可各自不同；動作強度另外加上）</p>
                             <div className="space-y-2">
                               {customSets.map((s, idx) => (
                                 <div key={idx} className="flex items-center gap-2">
@@ -804,7 +813,7 @@ export default function Entries() {
                                     type="number"
                                     step="0.5"
                                     min="0"
-                                    placeholder="強度（合計）"
+                                    placeholder="外加負重 kg"
                                     value={s.weight}
                                     onChange={(e) => {
                                       const v = e.target.value ? parseFloat(e.target.value) : "";
@@ -850,18 +859,18 @@ export default function Entries() {
                             {(() => {
                               const result = computeCustomSets(customSets);
                               if (!result) return null;
-                              const baseline = calculateBaselineValue(result.avgReps, form.watch("exerciseId"), result.avgWeight, result.count);
+                              const baseline = calculateBaselineValue(result.avgReps, form.watch("exerciseId"), baseNum + result.avgWeight, result.count);
                               return (
                                 <div className="text-xs space-y-0.5">
                                   <p className="text-muted-foreground">
                                     <span className="font-medium">各組: </span>
                                     {customSets
-                                      .filter((s): s is { weight: number; reps: number } => typeof s.weight === 'number' && typeof s.reps === 'number' && s.weight > 0 && s.reps > 0)
-                                      .map((s) => `${s.weight}×${s.reps}`)
+                                      .filter((s): s is { weight: number; reps: number } => typeof s.weight === 'number' && typeof s.reps === 'number' && s.weight >= 0 && s.reps > 0)
+                                      .map((s) => `+${s.weight}kg×${s.reps}`)
                                       .join('、')}
                                   </p>
                                   <p className="text-foreground font-medium">
-                                    換算：{result.avgReps.toFixed(1)}下 × {result.count}組 @ {result.avgWeight.toFixed(1)}（總訓練量相同）
+                                    換算：{result.avgReps.toFixed(1)}下 × {result.count}組 @ 動作強度 {baseNum} + 平均外加 {result.avgWeight.toFixed(1)} = {(baseNum + result.avgWeight).toFixed(1)}（總訓練量相同）
                                   </p>
                                   <p className="text-foreground font-medium">
                                     預估基準值: {baseline.toFixed(1)}
