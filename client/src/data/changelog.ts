@@ -6,6 +6,14 @@ export interface ChangelogEntry {
 }
 export const changelog: ChangelogEntry[] = [
   {
+    version: "v3.40",
+    date: "2026-11-08",
+    title: "預填上次的遞增樣板不再變成逐組自訂",
+    items: [
+      "修 bug：上次用遞增樣板、次數減到 1 被夾住（例如 8→6→4→2→1），下次預填會打開「逐組自訂」而不是「遞增樣板」。現在認得出被夾到 1 的遞增，原樣還原成遞增樣板",
+    ],
+  },
+  {
     version: "v3.39",
     date: "2026-11-08",
     title: "逐組樣板改成填外加負重，不再覆蓋動作強度",

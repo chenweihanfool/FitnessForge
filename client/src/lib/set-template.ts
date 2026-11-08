@@ -53,15 +53,18 @@ export interface ProgressionParams {
 
 const EPS = 1e-6;
 
-/** 看逐組明細是不是「等差遞增」：重量每組增加固定值、次數每組減少固定值（含 0）。是的話回傳樣板參數。 */
+/**
+ * 看逐組明細是不是遞增樣板產生的：重量每組增加固定值、次數每組減少固定值（含 0），
+ * 次數減到 1 以下夾在 1（跟 computeProgressiveSets 一樣，例如 8→6→4→2→1）。是的話回傳樣板參數。
+ */
 export function detectProgression(rows: SetRow[]): ProgressionParams | null {
   if (rows.length < 2) return null;
   const dw = rows[1].weight - rows[0].weight;
   const dr = rows[0].reps - rows[1].reps; // 每組減少幾下
-  if (dr < 0 || rows[0].reps - dr * (rows.length - 1) < 1) return null;
+  if (dr < 0) return null;
   for (let i = 1; i < rows.length; i++) {
     if (Math.abs(rows[i].weight - rows[i - 1].weight - dw) > EPS) return null;
-    if (Math.abs(rows[i - 1].reps - rows[i].reps - dr) > EPS) return null;
+    if (Math.abs(rows[i].reps - Math.max(1, rows[0].reps - i * dr)) > EPS) return null;
   }
   return { startWeight: rows[0].weight, increment: dw, numSets: rows.length, repsPerSet: rows[0].reps, repsDecrement: dr };
 }
