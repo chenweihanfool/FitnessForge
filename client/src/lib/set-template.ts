@@ -1,6 +1,7 @@
 // 逐組樣板（遞增 / 自訂）的純計算。記錄本身只存平均值（次數 × 組數 @ 平均重量），
 // 但「總訓練量」要保持跟逐組實際相加一致，所以用「次數加權平均重量」換算；
 // 逐組明細另外存在 setDetails，下次才能原樣還原成同樣的遞增方式。
+// 每組的 weight 是「外加負重」（kg，可為 0）；合計強度 = 動作強度 + 平均外加負重，由頁面加上。
 
 export interface SetRow {
   weight: number;
@@ -10,7 +11,7 @@ export type SetRowInput = { weight: number | ""; reps: number | "" };
 
 export function validRows(rows: SetRowInput[]): SetRow[] {
   return rows.filter(
-    (s): s is SetRow => typeof s.weight === "number" && typeof s.reps === "number" && s.weight > 0 && s.reps > 0,
+    (s): s is SetRow => typeof s.weight === "number" && typeof s.reps === "number" && s.weight >= 0 && s.reps > 0,
   );
 }
 
